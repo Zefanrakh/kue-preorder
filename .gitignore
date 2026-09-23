@@ -1,0 +1,23 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
