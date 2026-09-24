@@ -6,7 +6,7 @@ Platform preorder kue dengan perhitungan bahan otomatis dari pesanan.
 - Aturan untuk AI agent (Antigravity dan Claude Code): [`.agents/rules/`](.agents/rules/) dan [`CLAUDE.md`](CLAUDE.md)
 - Alur kerja agent: [`.agents/workflows/`](.agents/workflows/)
 
-Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`), M0.2 (migrasi awal + sqlc + integration test), dan M0.3 (kontrak buf + ConnectRPC + verifikasi JWT Supabase) selesai.
+Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`), M0.2 (migrasi awal + sqlc + integration test), M0.3 (kontrak buf + ConnectRPC + verifikasi JWT Supabase), dan M0.4 (CI) selesai. Berikutnya M0.5 (observability).
 
 ## Kebutuhan
 
@@ -19,6 +19,7 @@ Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`),
 | sqlc | v1.31.1 | query bertipe (butuh gcc untuk dipasang) |
 | gcc | apa saja | `go test -race` dan sqlc (keduanya butuh cgo) |
 | Docker | apa saja | integration test (testcontainers) |
+| Node.js | 22 | pengecekan client TS (`api/`) |
 
 Pasang tool Go dengan versi yang sama seperti CI:
 
@@ -99,7 +100,19 @@ go vet -tags=integration ./...
 go test -race ./...                      # unit test
 go test -race -tags=integration ./...    # + integration test (butuh Docker)
 sqlc diff                                # hasil sqlc sudah ter-commit
-buf lint && buf breaking --against '.git#branch=main'
+buf lint && buf format --diff --exit-code && buf breaking --against '.git#branch=main'
+(cd api && npm ci && npm run typecheck)  # client TS lolos tsc strict
 ```
+
+## CI
+
+`.github/workflows/ci.yml` menjalankan semua perintah di atas pada setiap PR dan push ke `main`, dengan tiga job: `go`, `codegen`, dan `ts`. Kalau CI merah, jalankan perintah yang sama di lokal.
+
+Proteksi `main` (sekali saja, di GitHub → Settings → Branches → *Add branch ruleset* untuk `main`):
+- *Require a pull request before merging*
+- *Require status checks to pass*: pilih `Go (tidy, vet, lint, test)`, `Codegen (sqlc, buf, workflows)`, `TypeScript client`
+- *Block force pushes*
+
+Dependabot membuka PR pembaruan dependency tiap Senin pagi (Go, npm, Actions; masing-masing dikelompokkan). Versi tool di `ci.yml` (golangci-lint, sqlc, buf, actionlint) dan plugin `protoc-gen-es` di `buf.gen.yaml` diperbarui manual, bersama tabel di atas.
 
 Batas modul (§5) ditegakkan oleh `depguard`/`forbidigo` di `.golangci.yml` dan oleh `internal/archtest`.
