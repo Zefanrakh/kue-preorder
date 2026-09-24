@@ -5,11 +5,17 @@ go 1.26.0
 toolchain go1.26.8
 
 require (
+	connectrpc.com/connect v1.21.0
+	github.com/MicahParks/jwkset v0.11.3
+	github.com/MicahParks/keyfunc/v3 v3.8.2
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
+	golang.org/x/time v0.15.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -68,4 +74,9 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+)
+
+tool (
+	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	google.golang.org/protobuf/cmd/protoc-gen-go
 )
