@@ -389,6 +389,8 @@ shipments (
 
 **Otorisasi:** backend Go memakai satu koneksi DB. Otorisasi ditegakkan di service setiap modul, dan setiap query di-scope dengan `tenant_id` (serta `customer_id` untuk data milik pelanggan).
 
+**Row level security:** setiap tabel di schema `public` (termasuk `goose_db_version`) mengaktifkan RLS **tanpa policy**. Supabase membuka schema `public` lewat Data API dan anon key ikut terkirim ke browser, jadi tanpa RLS siapa pun bisa membaca tabel langsung. Go terhubung sebagai pemilik tabel sehingga tidak terpengaruh. Setiap migrasi yang membuat tabel wajib menyertakan `enable row level security`; integration test skema gagal kalau ada yang lupa. Kalau suatu saat Go memakai role DB terpisah (bukan pemilik tabel), role itu butuh `BYPASSRLS` atau policy eksplisit.
+
 ---
 
 ## 10. Recipe engine (murni dan teruji)
@@ -783,7 +785,8 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 | `payments` | Besaran DP, tenggat, hangus, refund, penjaga `paid_in_full` | Tidak ada jalur serah terima tanpa lunas |
 | `scheduling` | Cutoff, hari libur, kapasitas dengan jam palsu | Batas waktu tepat di menit yang benar |
 | Jadwal ulang | Aksi massal 5 order → 2 batch dihitung ulang, 5 notifikasi, idempoten saat diulang | Wajib |
-| Repository | Integration test dengan testcontainers Postgres dan migrasi asli | Query terbukti benar |
+| Repository | Integration test (`-tags=integration`) dengan testcontainers Postgres 17 dan migrasi asli. Satu container per paket; migrasi sekali ke database template, lalu setiap test mendapat salinan sendiri (`internal/platform/db/dbtest`) | Query terbukti benar |
+| Skema | Setiap tabel milik tenant punya `tenant_id uuid not null` + FK ke `tenants`; setiap tabel mengaktifkan RLS; migrasi bisa naik-turun-naik | Invariant §9 dan §25 |
 | Webhook | Event yang sama dua kali → satu efek | Semua provider |
 | Kontrak | `buf breaking` + client TS kompilasi | Setiap PR |
 | Konkurensi | `go test -race`; recompute paralel batch yang sama | Setiap PR |
@@ -794,7 +797,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 
 ## 24. Migrasi, deploy, dan backup
 
-- Migrasi forward-only lewat goose. CI memastikan hasil `sqlc generate` sudah ter-commit. Seed awal: satu tenant default, channel `web`, kebijakan pembayaran default.
+- Migrasi forward-only lewat goose. File di `db/migrations` ditanam ke binary (`embed`) dan dijalankan lewat `platform/db.Migrate`, sehingga test dan deploy memakai file yang persis sama. CI memastikan hasil `sqlc generate` sudah ter-commit. Seed awal: satu tenant default (id tetap `00000000-0000-0000-0000-000000000001`), lalu channel `web` dan kebijakan pembayaran default menyusul di migrasi yang membuat tabelnya (M2).
 - Dua binary (`api`, `worker`) dari satu image Docker, di Fly.io / Railway / Render / Cloud Run region Singapura.
 - Next.js di Vercel.
 - Migrasi dijalankan sebagai langkah terpisah sebelum deploy aplikasi.
