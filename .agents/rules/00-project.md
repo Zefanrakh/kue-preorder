@@ -15,7 +15,7 @@ di commit yang sama.
 
 ## Stack (sudah diputuskan, jangan diganti tanpa diskusi)
 
-- Backend: Go 1.23+, modular monolith. Binary `cmd/api` dan `cmd/worker`.
+- Backend: Go 1.26+, modular monolith. Binary `cmd/api` dan `cmd/worker`.
 - Kontrak API: ConnectRPC + buf. Sumber di `api/proto`, hasil di `api/gen/go` dan `api/gen/ts`.
 - DB: Supabase Postgres, akses lewat pgx + sqlc. Migrasi goose di `db/migrations`.
 - Job: River. Rumus user: expr-lang/expr (sandbox).

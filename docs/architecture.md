@@ -46,7 +46,7 @@ pelanggan, dan pengiriman lewat Biteship.
 
 | Lapisan | Pilihan | Alasan |
 |---|---|---|
-| Bahasa | Go 1.23+ | Error eksplisit, tipe kuat, concurrency rapi, dependency stabil |
+| Bahasa | Go 1.26+ | Error eksplisit, tipe kuat, concurrency rapi, dependency stabil. Minimal 1.26 karena pgx v5.11 dan tool (golangci-lint, goose, buf) membutuhkannya |
 | HTTP / RPC | **ConnectRPC + buf** (protobuf) | Kontrak bertipe dari ujung ke ujung, client TypeScript di-generate otomatis |
 | Akses DB | **pgx** + **sqlc** | Query SQL bertipe, tanpa ORM |
 | Migrasi | **goose** | Forward-only, versi jelas, tanpa auto-migrate |
@@ -143,11 +143,13 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 /deploy                # Dockerfile, config deploy
 ```
 
-**Aturan dependensi** (ditegakkan lewat `depguard` di golangci-lint):
-- `recipe` tidak mengimpor apa pun dari `internal/`.
-- `aggregation` hanya mengimpor `recipe` dan interface dari modul lain.
-- Modul tidak pernah mengimpor paket `postgres/` milik modul lain.
-- Waktu selalu lewat `platform/clock` (bukan `time.Now()` langsung), supaya cutoff dan tenggat bisa diuji.
+**Aturan dependensi:**
+- `recipe` tidak mengimpor apa pun dari `internal/`. (`depguard`)
+- `aggregation` hanya mengimpor `recipe`, `platform`, dan paket akar modul lain (tempat interface service-nya). (`internal/archtest`)
+- Modul tidak pernah mengimpor paket `postgres/` milik modul lain. `cmd/` boleh, karena di sanalah semua adapter dirakit. (`internal/archtest`)
+- Waktu selalu lewat `platform/clock` (bukan `time.Now()`, `time.Since()`, atau `time.Until()` langsung), supaya cutoff dan tenggat bisa diuji. (`forbidigo`)
+
+`depguard` dan `forbidigo` berjalan di golangci-lint. Dua aturan lainnya tidak bisa dinyatakan secara umum di `depguard`, jadi `internal/archtest` memeriksanya dari graf import hasil `go list`, termasuk import di file test.
 
 ---
 
@@ -860,8 +862,9 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 ## 28. Environment variables
 
 ```
-DATABASE_URL=
+DATABASE_URL=                    # Supabase: session pooler / direct (5432), bukan transaction pooler
 APP_ENV=                         # development | staging | production
+PORT=                            # opsional, default 8080
 SUPABASE_URL=
 SUPABASE_JWKS_URL=
 SUPABASE_SERVICE_ROLE_KEY=       # hanya server, untuk Storage
