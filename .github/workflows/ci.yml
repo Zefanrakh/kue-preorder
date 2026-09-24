@@ -31,6 +31,10 @@ jobs:
         run: go mod tidy -diff
       - name: go vet
         run: go vet -tags=integration ./...
+      # Known vulnerabilities in code paths we actually call, dependencies and
+      # the Go standard library included.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -96,6 +100,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: api/package-lock.json
-      - run: npm ci
+      # api/.npmrc already sets ignore-scripts; the flag keeps CI safe even if
+      # that file changes. Lifecycle scripts are how npm worms run on install.
+      - run: npm ci --ignore-scripts
+      - name: Registry signatures and provenance
+        run: npm audit signatures
       - name: tsc (strict) over the generated client
         run: npm run typecheck

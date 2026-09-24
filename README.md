@@ -101,18 +101,37 @@ go test -race ./...                      # unit test
 go test -race -tags=integration ./...    # + integration test (butuh Docker)
 sqlc diff                                # hasil sqlc sudah ter-commit
 buf lint && buf format --diff --exit-code && buf breaking --against '.git#branch=main'
-(cd api && npm ci && npm run typecheck)  # client TS lolos tsc strict
+go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...          # celah keamanan yang sudah dikenal
+(cd api && npm ci && npm audit signatures && npm run typecheck)  # client TS lolos tsc strict
 ```
 
 ## CI
 
 `.github/workflows/ci.yml` menjalankan semua perintah di atas pada setiap PR dan push ke `main`, dengan tiga job: `go`, `codegen`, dan `ts`. Kalau CI merah, jalankan perintah yang sama di lokal.
 
-Proteksi `main` (sekali saja, di GitHub → Settings → Branches → *Add branch ruleset* untuk `main`):
-- *Require a pull request before merging*
-- *Require status checks to pass*: pilih `Go (tidy, vet, lint, test)`, `Codegen (sqlc, buf, workflows)`, `TypeScript client`
-- *Block force pushes*
+**Aturan merge:** hanya merge PR kalau ketiga job hijau. Repo ini private di paket GitHub Free, yang tidak menyediakan proteksi branch maupun *required status checks*, jadi aturan ini dijaga dengan disiplin, bukan dipaksa oleh GitHub. Kalau repo pindah ke paket berbayar atau menjadi public, aktifkan ruleset untuk `main`: *Require a pull request*, *Require status checks* (ketiga job di atas), dan *Block force pushes*.
 
-Dependabot membuka PR pembaruan dependency tiap Senin pagi (Go, npm, Actions; masing-masing dikelompokkan). Versi tool di `ci.yml` (golangci-lint, sqlc, buf, actionlint) dan plugin `protoc-gen-es` di `buf.gen.yaml` diperbarui manual, bersama tabel di atas.
+Kuota Actions paket Free (2.000 menit/bulan untuk repo private) jauh cukup: satu run sekitar 8 menit. Semua budget billing di-set $0, jadi kelebihan pemakaian dihentikan, bukan ditagih.
+
+## Dependency dan supply chain
+
+Pengaman yang sudah terpasang:
+- **Dependabot** membuka PR tiap Senin pagi (Go, npm, Actions; masing-masing dikelompokkan) dengan **cooldown 7 hari** (14 hari untuk versi mayor): versi baru baru diusulkan setelah berumur seminggu. Rilis dari akun maintainer yang dibajak biasanya ketahuan dan ditarik dalam hitungan jam atau hari. Update keamanan tidak ikut ditunda.
+- **`api/.npmrc`** mematikan *lifecycle scripts* (`preinstall`/`postinstall`), jalur utama worm npm berjalan saat install, di laptop maupun di CI.
+- **CI** memeriksa tanda tangan registry dan provenance npm (`npm audit signatures`), celah yang dikenal di kode Go (`govulncheck`), dan menjalankan action yang dikunci ke commit SHA dengan token hanya-baca dan tanpa secret.
+- Modul Go tidak punya script install, dan setiap versi dikunci `go.sum` serta dicocokkan dengan checksum database publik Go.
+
+Aturan untuk PR Dependabot:
+1. **Jangan pernah aktifkan auto-merge.**
+2. Merge hanya kalau CI hijau.
+3. Baca changelog atau release notes versi barunya.
+4. Periksa diff `package-lock.json` / `go.sum`: curigai dependency baru yang tidak dijelaskan di changelog, dan paket dengan `"hasInstallScript": true`.
+5. Jangan mencoba PR yang mencurigakan dengan `npm install` di laptop.
+
+Pakai `npm ci` untuk memasang dependency; `npm install <paket>` hanya saat memang menambah dependency, dan sebutkan alasannya di PR.
+
+**Kalau ada kabar paket yang kita pakai disusupi:** jangan merge PR-nya (atau revert kalau sudah), lalu ganti semua kredensial di mesin yang sempat memasang versi itu: token GitHub, SSH key, npm token, dan key Supabase.
+
+Versi tool di `ci.yml` (golangci-lint, sqlc, buf, actionlint, govulncheck) dan plugin `protoc-gen-es` di `buf.gen.yaml` tidak diurus Dependabot; perbarui manual bersama tabel di atas.
 
 Batas modul (§5) ditegakkan oleh `depguard`/`forbidigo` di `.golangci.yml` dan oleh `internal/archtest`.
