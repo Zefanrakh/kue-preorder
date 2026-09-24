@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 
@@ -10,6 +11,17 @@ import (
 
 func env(vars map[string]string) func(string) string {
 	return func(key string) string { return vars[key] }
+}
+
+// valid returns a complete production environment with overrides applied.
+func valid(overrides map[string]string) map[string]string {
+	vars := map[string]string{
+		"APP_ENV":      "production",
+		"DATABASE_URL": "postgres://db",
+		"SUPABASE_URL": "https://abc.supabase.co",
+	}
+	maps.Copy(vars, overrides)
+	return vars
 }
 
 func TestLoad_ValidEnvironment(t *testing.T) {
@@ -22,14 +34,14 @@ func TestLoad_ValidEnvironment(t *testing.T) {
 	}{
 		{
 			name:     "defaults port to 8080",
-			vars:     map[string]string{"APP_ENV": "production", "DATABASE_URL": "postgres://db"},
+			vars:     valid(nil),
 			wantPort: 8080,
 			wantAddr: ":8080",
 			wantLvl:  slog.LevelInfo,
 		},
 		{
 			name:     "reads port and debug level in development",
-			vars:     map[string]string{"APP_ENV": "development", "DATABASE_URL": "postgres://db", "PORT": "9000"},
+			vars:     valid(map[string]string{"APP_ENV": "development", "PORT": "9000"}),
 			wantPort: 9000,
 			wantAddr: ":9000",
 			wantLvl:  slog.LevelDebug,
@@ -57,13 +69,69 @@ func TestLoad_ValidEnvironment(t *testing.T) {
 	}
 }
 
+func TestLoad_SupabaseURLs(t *testing.T) {
+	tests := []struct {
+		name       string
+		vars       map[string]string
+		wantURL    string
+		wantJWKS   string
+		wantIssuer string
+	}{
+		{
+			name:       "derives JWKS and issuer",
+			vars:       valid(nil),
+			wantURL:    "https://abc.supabase.co",
+			wantJWKS:   "https://abc.supabase.co/auth/v1/.well-known/jwks.json",
+			wantIssuer: "https://abc.supabase.co/auth/v1",
+		},
+		{
+			name:       "trims trailing slash",
+			vars:       valid(map[string]string{"SUPABASE_URL": "https://abc.supabase.co/"}),
+			wantURL:    "https://abc.supabase.co",
+			wantJWKS:   "https://abc.supabase.co/auth/v1/.well-known/jwks.json",
+			wantIssuer: "https://abc.supabase.co/auth/v1",
+		},
+		{
+			name:       "JWKS override",
+			vars:       valid(map[string]string{"SUPABASE_JWKS_URL": "https://keys.example.com/jwks.json"}),
+			wantURL:    "https://abc.supabase.co",
+			wantJWKS:   "https://keys.example.com/jwks.json",
+			wantIssuer: "https://abc.supabase.co/auth/v1",
+		},
+		{
+			name:       "http allowed in development for a local stack",
+			vars:       valid(map[string]string{"APP_ENV": "development", "SUPABASE_URL": "http://127.0.0.1:54321"}),
+			wantURL:    "http://127.0.0.1:54321",
+			wantJWKS:   "http://127.0.0.1:54321/auth/v1/.well-known/jwks.json",
+			wantIssuer: "http://127.0.0.1:54321/auth/v1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(env(tt.vars))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.SupabaseURL != tt.wantURL {
+				t.Errorf("SupabaseURL = %q, want %q", cfg.SupabaseURL, tt.wantURL)
+			}
+			if cfg.JWKSURL != tt.wantJWKS {
+				t.Errorf("JWKSURL = %q, want %q", cfg.JWKSURL, tt.wantJWKS)
+			}
+			if got := cfg.AuthIssuer(); got != tt.wantIssuer {
+				t.Errorf("AuthIssuer() = %q, want %q", got, tt.wantIssuer)
+			}
+		})
+	}
+}
+
 func TestLoad_MissingRequiredVarsListsAll(t *testing.T) {
 	_, err := config.Load(env(map[string]string{"DATABASE_URL": "   "}))
 	if err == nil {
 		t.Fatal("Load() error = nil, want error")
 	}
-	if !strings.Contains(err.Error(), "missing required environment variables: APP_ENV, DATABASE_URL") {
-		t.Errorf("error = %q, want both APP_ENV and DATABASE_URL listed", err)
+	if !strings.Contains(err.Error(), "missing required environment variables: APP_ENV, DATABASE_URL, SUPABASE_URL") {
+		t.Errorf("error = %q, want APP_ENV, DATABASE_URL, and SUPABASE_URL listed", err)
 	}
 }
 
@@ -73,21 +141,13 @@ func TestLoad_RejectsInvalidValues(t *testing.T) {
 		vars    map[string]string
 		wantMsg string
 	}{
-		{
-			name:    "unknown APP_ENV",
-			vars:    map[string]string{"APP_ENV": "prod", "DATABASE_URL": "postgres://db"},
-			wantMsg: `APP_ENV="prod"`,
-		},
-		{
-			name:    "non-numeric PORT",
-			vars:    map[string]string{"APP_ENV": "staging", "DATABASE_URL": "postgres://db", "PORT": "http"},
-			wantMsg: `PORT="http"`,
-		},
-		{
-			name:    "PORT out of range",
-			vars:    map[string]string{"APP_ENV": "staging", "DATABASE_URL": "postgres://db", "PORT": "70000"},
-			wantMsg: `PORT="70000"`,
-		},
+		{"unknown APP_ENV", valid(map[string]string{"APP_ENV": "prod"}), `APP_ENV="prod"`},
+		{"non-numeric PORT", valid(map[string]string{"PORT": "http"}), `PORT="http"`},
+		{"PORT out of range", valid(map[string]string{"PORT": "70000"}), `PORT="70000"`},
+		{"SUPABASE_URL over http in production", valid(map[string]string{"SUPABASE_URL": "http://abc.supabase.co"}), "must use https"},
+		{"SUPABASE_URL not absolute", valid(map[string]string{"SUPABASE_URL": "abc.supabase.co"}), `SUPABASE_URL="abc.supabase.co"`},
+		{"SUPABASE_URL only a slash", valid(map[string]string{"SUPABASE_URL": "/"}), "SUPABASE_URL"},
+		{"JWKS override over http in staging", valid(map[string]string{"APP_ENV": "staging", "SUPABASE_JWKS_URL": "http://keys"}), "SUPABASE_JWKS_URL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,7 +167,7 @@ func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load() error = nil, want error")
 	}
-	for _, want := range []string{"DATABASE_URL", `APP_ENV="prod"`, `PORT="0"`} {
+	for _, want := range []string{"DATABASE_URL", "SUPABASE_URL", `APP_ENV="prod"`, `PORT="0"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want it to mention %s", err, want)
 		}

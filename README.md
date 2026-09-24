@@ -6,7 +6,7 @@ Platform preorder kue dengan perhitungan bahan otomatis dari pesanan.
 - Aturan untuk AI agent (Antigravity dan Claude Code): [`.agents/rules/`](.agents/rules/) dan [`CLAUDE.md`](CLAUDE.md)
 - Alur kerja agent: [`.agents/workflows/`](.agents/workflows/)
 
-Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`) dan M0.2 (migrasi awal + sqlc + integration test) selesai.
+Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`), M0.2 (migrasi awal + sqlc + integration test), dan M0.3 (kontrak buf + ConnectRPC + verifikasi JWT Supabase) selesai.
 
 ## Kebutuhan
 
@@ -45,11 +45,42 @@ Salin `.env.example` menjadi `.env`, isi nilainya, lalu set variabelnya di shell
 # PowerShell
 $env:APP_ENV = "development"
 $env:DATABASE_URL = "postgres://..."
+$env:SUPABASE_URL = "https://<project-ref>.supabase.co"
 go run ./cmd/api      # http://localhost:8080/healthz
 go run ./cmd/worker
 ```
 
-`/healthz` hanya mengecek proses hidup. `/readyz` juga mengecek database dan menjawab 503 selama database belum bisa dihubungi.
+`/healthz` hanya mengecek proses hidup. `/readyz` juga mengecek database dan menjawab 503 selama database belum bisa dihubungi. `api` menolak start kalau migrasi belum dijalankan (tenant default belum ada).
+
+## Kontrak API
+
+```sh
+buf lint
+buf generate                                  # api/gen/go + api/gen/ts, lalu commit hasilnya
+buf breaking --against '.git#branch=main'
+```
+
+Coba `WhoAmI` dengan token user sungguhan. Ambil token lewat endpoint Auth memakai publishable key (`sb_publishable_…`, aman dibagikan):
+
+```sh
+TOKEN=$(curl -s "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: $SUPABASE_PUBLISHABLE_KEY" -H "Content-Type: application/json" \
+  -d '{"email":"...","password":"..."}' | jq -r .access_token)
+
+curl -s http://localhost:8080/kuepreorder.identity.v1.IdentityService/WhoAmI \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" -d '{}'
+```
+
+## Staf pertama
+
+Peran `owner` pertama diberikan lewat Supabase SQL editor, setelah user itu mendaftar di Supabase Auth:
+
+```sql
+insert into staff_roles (tenant_id, auth_user_id, role)
+select '00000000-0000-0000-0000-000000000001', id, 'owner'
+from auth.users
+where email = 'email-ibu@example.com';
+```
 
 ## Database
 
@@ -68,6 +99,7 @@ go vet -tags=integration ./...
 go test -race ./...                      # unit test
 go test -race -tags=integration ./...    # + integration test (butuh Docker)
 sqlc diff                                # hasil sqlc sudah ter-commit
+buf lint && buf breaking --against '.git#branch=main'
 ```
 
 Batas modul (§5) ditegakkan oleh `depguard`/`forbidigo` di `.golangci.yml` dan oleh `internal/archtest`.

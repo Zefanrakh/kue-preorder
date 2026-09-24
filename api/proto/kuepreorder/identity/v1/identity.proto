@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package kuepreorder.identity.v1;
+
+// IdentityService tells a signed-in user who they are to the shop.
+service IdentityService {
+  // WhoAmI returns the caller's tenant, staff roles, and customer record.
+  // Requires a Supabase access token in the Authorization header.
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+message WhoAmIRequest {}
+
+message WhoAmIResponse {
+  // Tenant the request was resolved to (UUID).
+  string tenant_id = 1;
+  // Supabase Auth user id (UUID).
+  string auth_user_id = 2;
+  // Staff roles in this tenant, sorted; empty for customers.
+  repeated StaffRole roles = 3;
+  // The user's customer record in this tenant (UUID), if one exists.
+  optional string customer_id = 4;
+}
+
+// StaffRole is a staff member's role in a tenant.
+enum StaffRole {
+  STAFF_ROLE_UNSPECIFIED = 0;
+  // Shop owner: catalog, prices, schedules, and staff.
+  STAFF_ROLE_OWNER = 1;
+  // Kitchen: stock checks, shopping, and production.
+  STAFF_ROLE_KITCHEN = 2;
+}

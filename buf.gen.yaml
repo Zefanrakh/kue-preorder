@@ -1,0 +1,21 @@
+version: v2
+# Go plugins run through `go tool`, so their versions come from go.mod and
+# always match the runtime libraries. The TS plugin is pinned on the BSR.
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/Zefanrakh/kue-preorder/api/gen/go
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: api/gen/go
+    opt: paths=source_relative
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: api/gen/go
+    opt: paths=source_relative
+  - remote: buf.build/bufbuild/es:v2.15.0
+    out: api/gen/ts
+    opt: target=ts
+clean: true
+inputs:
+  - directory: api/proto

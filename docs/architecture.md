@@ -179,6 +179,11 @@ Satu sumber kebenaran di `/api/proto` (buf). `buf generate` menghasilkan server 
 
 CI menjalankan `buf lint` dan `buf breaking` untuk mendeteksi perubahan kontrak yang merusak client lama.
 
+Tata letak:
+- Paket proto per modul: `kuepreorder.<modul>.v1` di `api/proto/kuepreorder/<modul>/v1/`. Lint `STANDARD`, breaking `FILE`.
+- `buf.gen.yaml` memakai managed mode untuk `go_package`. Plugin Go (`protoc-gen-go`, `protoc-gen-connect-go`) dijalankan lewat `go tool`, jadi versinya ikut `go.mod` dan selalu cocok dengan library runtime. Plugin TS (`buf.build/bufbuild/es`, protobuf-es v2) dikunci versinya di BSR; client memakai `@connectrpc/connect` v2.
+- Hasil generate (`api/gen/go`, `api/gen/ts`) di-commit.
+
 ---
 
 ## 8. Auth (Supabase)
@@ -188,6 +193,19 @@ CI menjalankan `buf lint` dan `buf breaking` untuk mendeteksi perubahan kontrak 
 3. Go memverifikasi JWT memakai JWKS Supabase (di-cache, dirotasi otomatis), lalu memetakan `sub` ke `customers.auth_user_id`.
 4. Peran (pelanggan / admin / ibu) disimpan di tabel `staff_roles` milik aplikasi, bukan di klaim JWT, supaya bisa dicabut seketika.
 5. Guest tidak login. Guest melacak pesanan lewat `guest_access_token` di URL, dengan rate limit.
+
+**Verifikasi token** (`internal/identity`):
+- Kunci publik diambil dari `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, di-refresh tiap jam. Token dengan `kid` baru (rotasi key) memicu refresh paling sering sekali per menit, tanpa membuat request menunggu. Gagal mengambil JWKS saat start tidak menghentikan `api`; token ditolak sampai key berhasil dimuat, dan kegagalannya di-log.
+- Hanya algoritma **ES256/RS256** yang diterima. HS256 (secret lama) dan `none` ditolak, sehingga token tidak bisa memilih algoritma yang lebih lemah.
+- Klaim yang diperiksa: `iss` = `<SUPABASE_URL>/auth/v1`, `aud` = `authenticated`, `exp` wajib, `iat` tidak di masa depan, toleransi selisih jam 30 detik, waktu dari `platform/clock`. `role` harus `authenticated`, bukan anonymous sign-in, dan `sub` harus UUID.
+
+**Autentikasi vs otorisasi:**
+- Interceptor Connect hanya **mengautentikasi**. Tanpa header `Authorization`, request lanjut sebagai anonim. Header yang ada tapi tidak valid langsung `Unauthenticated`, supaya client dengan sesi rusak tidak diam-diam menjadi anonim. Token tidak pernah di-log.
+- Service tiap modul **mengotorisasi** lewat `identity.Service.Principal(ctx)` (user, tenant, peran, `customer_id`).
+- Mode single-tenant: `api` menolak start kalau jumlah tenant bukan tepat satu.
+- Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
+
+**Setelan project Supabase:** Data API dimatikan (lihat §9), signing key aktif ECC P-256 (ES256). Menjelang go-live: pindah ke API key baru (`sb_publishable_…` untuk browser, `sb_secret_…` untuk server), lalu revoke secret HS256 lama. Kunci anon/service_role lama ikut mati saat itu.
 
 ---
 
@@ -390,6 +408,8 @@ shipments (
 **Otorisasi:** backend Go memakai satu koneksi DB. Otorisasi ditegakkan di service setiap modul, dan setiap query di-scope dengan `tenant_id` (serta `customer_id` untuk data milik pelanggan).
 
 **Row level security:** setiap tabel di schema `public` (termasuk `goose_db_version`) mengaktifkan RLS **tanpa policy**. Supabase membuka schema `public` lewat Data API dan anon key ikut terkirim ke browser, jadi tanpa RLS siapa pun bisa membaca tabel langsung. Go terhubung sebagai pemilik tabel sehingga tidak terpengaruh. Setiap migrasi yang membuat tabel wajib menyertakan `enable row level security`; integration test skema gagal kalau ada yang lupa. Kalau suatu saat Go memakai role DB terpisah (bukan pemilik tabel), role itu butuh `BYPASSRLS` atau policy eksplisit.
+
+Di project Supabase, **Data API dimatikan** dan "Automatically expose new tables" mati, sementara "automatic RLS" menyala. Frontend tidak pernah mengakses tabel; supabase-js hanya dipakai untuk Auth dan Storage, yang tidak bergantung pada Data API. Jadi ada tiga lapis: Data API mati, tabel tidak dibuka otomatis, dan RLS aktif.
 
 ---
 
@@ -868,9 +888,9 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 DATABASE_URL=                    # Supabase: session pooler / direct (5432), bukan transaction pooler
 APP_ENV=                         # development | staging | production
 PORT=                            # opsional, default 8080
-SUPABASE_URL=
-SUPABASE_JWKS_URL=
-SUPABASE_SERVICE_ROLE_KEY=       # hanya server, untuk Storage
+SUPABASE_URL=                    # wajib; issuer token = <SUPABASE_URL>/auth/v1
+SUPABASE_JWKS_URL=               # opsional; default <SUPABASE_URL>/auth/v1/.well-known/jwks.json
+SUPABASE_SERVICE_ROLE_KEY=       # hanya server, untuk Storage (M5; akan memakai secret key sb_secret_…)
 XENDIT_SECRET_KEY=
 XENDIT_WEBHOOK_TOKEN=
 BITESHIP_API_KEY=
