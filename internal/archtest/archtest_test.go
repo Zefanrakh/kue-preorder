@@ -101,7 +101,8 @@ func aggregationViolations(pkgs []goPackage) []string {
 
 func listPackages(t *testing.T) []goPackage {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "go", "list", "-json=ImportPath,Imports,TestImports,XTestImports", modulePath+"/...")
+	// -tags=integration so the imports of integration tests are checked too.
+	cmd := exec.CommandContext(t.Context(), "go", "list", "-tags=integration", "-json=ImportPath,Imports,TestImports,XTestImports", modulePath+"/...")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
