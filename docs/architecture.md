@@ -144,7 +144,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 ```
 
 **Aturan dependensi:**
-- `recipe` tidak mengimpor apa pun dari `internal/`. (`depguard`)
+- `recipe` tidak mengimpor apa pun dari `internal/`. Lebih ketat lagi, `recipe` hanya boleh mengimpor standard library, `expr-lang/expr`, dan (di test) `pgregory.net/rapid`. (`depguard`, daftar izin)
 - `aggregation` hanya mengimpor `recipe`, `platform`, dan paket akar modul lain (tempat interface service-nya). (`internal/archtest`)
 - Modul tidak pernah mengimpor paket `postgres/` milik modul lain. `cmd/` boleh, karena di sanalah semua adapter dirakit. (`internal/archtest`)
 - Waktu selalu lewat `platform/clock` (bukan `time.Now()`, `time.Since()`, atau `time.Until()` langsung), supaya cutoff dan tenggat bisa diuji. (`forbidigo`)
@@ -468,15 +468,30 @@ if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 
 `fit.go` menyediakan `FitAffine`, `FitPower` (least squares di ruang log-log), dan `FitPiecewise`. Hasil fit disimpan ke `params`; titik ukur mentah disimpan ke `measured_points`.
 
-**Invariant yang diuji (property test):**
+**Kontrak bersama semua model** (ditegakkan di satu tempat, `evaluate`, bukan per model):
+- `u` harus finite dan `>= 0` (boleh pecahan); selain itu `ErrInvalidUnits`.
+- **`Resolve(0) == 0` untuk semua model**, termasuk `affine` yang punya bagian tetap `a`: tidak ada pesanan, tidak ada bahan.
+- Hasil selalu finite dan `>= 0`; selain itu `ErrInvalidResult`.
+
+**Detail per model:**
+- `affine` dan `power`: `a`, `b` finite dan `>= 0`.
+- `piecewise`: minimal satu titik; `u` > 0 dan naik tegas; jumlah bahan tidak turun. Interpolasi linear dimulai dari titik implisit (0, 0); di atas titik terakhir, kemiringan segmen terakhir diteruskan (batch bisa lebih besar dari yang pernah diukur).
+- `formula`: sandbox `expr-lang/expr`. Hanya variabel `u`; fungsi yang tersedia hanya `abs`, `ceil`, `floor`, `round`, `max`, `min`, plus operator pangkat `**`/`^`. Fungsi waktu (`now()`, `date()`) dan fungsi koleksi dimatikan, jadi hasilnya deterministik. Rumus maksimal 500 karakter dan 200 node AST; memori saat berjalan dibatasi VM `expr`.
+- `params` dibaca ketat: field tak dikenal, field wajib yang hilang, atau data sisa ditolak (`ErrInvalidParams`).
+
+**Invariant yang diuji (property test dengan `pgregory.net/rapid`, plus fuzz test untuk sandbox rumus):**
 - `Resolve(0) == 0`
 - hasil selalu finite dan >= 0
 - tidak turun ketika `u` naik
-- untuk Power dengan `b < 1`: `Resolve(k) <= k * Resolve(1)`
+- untuk Power dengan `b < 1`: `Resolve(k) <= k * Resolve(1)` untuk `k >= 1` (untuk `k < 1` pertidaksamaannya memang terbalik)
 
-**Validasi saat menyimpan resep:** CMS menolak resep yang melanggar invariant di rentang u = 0.5..100. Kesalahan ditangkap saat input.
+**Validasi saat menyimpan resep (`recipe.Validate`):** CMS menolak resep yang melanggar invariant di rentang u = 0.5..100, diperiksa per langkah 0,5. Kesalahan ditangkap saat input. Keterbatasan: penurunan yang mulai dan selesai di antara dua titik sampel bisa lolos; saat berjalan, rumus seperti itu tetap menghasilkan angka finite dan >= 0.
 
-**Aturan presisi:** hitung `float64` per komponen → kali `waste_factor` → **bulatkan ke satuan bulat** per komponen → jumlahkan lintas komponen sebagai `int64` → bulatkan ke `pack_size` paling akhir.
+**Aturan presisi (`recipe.Quantity`):** hitung `float64` per komponen → kali `waste_factor` (harus `>= 1`) → **bulatkan ke satuan bulat** per komponen → jumlahkan lintas komponen sebagai `int64` → bulatkan ke `pack_size` paling akhir. Cara membulatkan per satuan dasar bahan:
+- `g`, `ml`: ke terdekat (setengah menjauhi nol).
+- `pcs`: **ke atas**, karena satu adonan tidak bisa memakai sebagian telur. Sisa pembulatan float (mis. 3,0000000000000004 butir) tidak dianggap tambahan satu butir.
+
+Jumlah di atas 2^53 ditolak karena tidak lagi presisi di `float64`.
 
 ---
 
@@ -881,6 +896,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | Pembayaran | DP boleh, SOP ketat; tanpa COD / tempo; serah terima wajib lunas (§14) |
 | Cutoff | Berbeda per varian; produksi maks. 4 jam; jadwal ulang massal + permintaan maaf (§15, §16) |
 | Pengiriman | Biteship, draft order saat DP, konfirmasi di hari pengambilan (§17) |
+| Pembulatan bahan | Per komponen: `g`/`ml` ke terdekat, `pcs` ke atas (§10) |
 
 ### Default yang dipakai (bisa diubah di CMS)
 

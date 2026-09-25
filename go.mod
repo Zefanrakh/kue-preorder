@@ -10,6 +10,7 @@ require (
 	github.com/MicahParks/jwkset v0.11.3
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/exaring/otelpgx v0.12.0
+	github.com/expr-lang/expr v1.17.8
 	github.com/getsentry/sentry-go v0.49.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -24,6 +25,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/time v0.15.0
 	google.golang.org/protobuf v1.36.12
+	pgregory.net/rapid v1.3.0
 )
 
 require (
