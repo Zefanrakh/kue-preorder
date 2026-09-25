@@ -3,3 +3,81 @@
 //   sqlc v1.31.1
 
 package postgres
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Component struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	Name      string
+	UnitLabel string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type Ingredient struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	Name           string
+	BaseUnit       string
+	IsPerishable   bool
+	ShelfLifeDays  *int32
+	LeftoverPolicy string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type IngredientSupplier struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	IngredientID uuid.UUID
+	SupplierID   uuid.UUID
+	SupplierSku  *string
+	PackSize     float64
+	PackUnit     string
+	PriceIdr     *int64
+	IsDefault    bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type Product struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	Name        string
+	Slug        string
+	Description string
+	ImagePath   *string
+	IsActive    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ProductVariant struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	ProductID         uuid.UUID
+	Sku               string
+	Name              string
+	Options           []byte
+	PriceIdr          int64
+	ProductionMinutes int32
+	MinNoticeHours    int32
+	IsActive          bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type Supplier struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	Name          string
+	WhatsappPhone *string
+	AdapterKey    string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
