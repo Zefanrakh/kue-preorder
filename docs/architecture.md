@@ -243,7 +243,7 @@ Rumus non-linear menempel di **komponen**, karena yang dibuat bersamaan adalah a
 products ( id, tenant_id, name, slug, description, image_path, is_active )
 
 product_variants (
-  id, tenant_id, product_id, sku text unique,
+  id, tenant_id, product_id, sku text,   -- unik per tenant
   name text,                         -- "Donut Coklat", "Lapis Legit 20x20"
   options jsonb,                     -- {"rasa":"coklat"} / {"ukuran":"20x20"}
   price_idr bigint,
@@ -283,6 +283,16 @@ ingredient_suppliers ( id, tenant_id, ingredient_id, supplier_id, supplier_sku,
                        pack_size numeric, pack_unit text,
                        price_idr bigint null, is_default bool )
 ```
+
+Aturan skema (migrasi `00003_catalog.sql`):
+- **Unik per tenant, bukan global:** `sku` varian, `slug` produk, serta nama komponen, bahan, dan supplier (tanpa membedakan huruf besar/kecil). Toko lain boleh memakai kode yang sama.
+- **Resep tidak bisa menyeberang tenant:** tabel induk punya `unique (tenant_id, id)` dan tabel anak memakai foreign key komposit `(tenant_id, …_id)`. Database menolak varian toko A yang memakai komponen toko B, bahan atau supplier tenant lain, dan seterusnya.
+- **Constraint:** `production_minutes` 1..240, `min_notice_hours` >= 0, `price_idr` >= 0, `units_per_item` > 0, `waste_factor` >= 1 (sama dengan `recipe.Quantity`), `model_type` salah satu dari empat model, `params` objek JSON, `measured_points` array JSON, `options` objek JSON, `slug` kebab-case, `base_unit` `g`/`ml`/`pcs`, `whatsapp_phone` format E.164 dan wajib untuk supplier `whatsapp`, `pack_size` > 0. Isi `params` divalidasi `recipe.Build` + `recipe.Validate` di service katalog.
+- **Bahan mudah rusak tidak boleh `leftover_policy = auto`** (§12: kalau ragu, jangan dihitung). `is_perishable` dan `leftover_policy` tidak bisa saling bertentangan.
+- **`pack_size` dalam satuan dasar bahan** (1000 untuk sak tepung 1 kg dalam gram, 10 untuk tray telur), jadi pembulatan ke kemasan tidak pernah mencampur satuan. `pack_unit` hanya label tampilan ("sak 1 kg", "tray"). `price_idr` di `ingredient_suppliers` adalah harga per kemasan.
+- **Paling banyak satu kemasan default per bahan** (indeks unik parsial `where is_default`): itulah kemasan yang dipakai pembulatan daftar belanja.
+- Setiap tabel katalog punya `created_at` dan `updated_at`.
+- Query baca untuk agregasi (`ComponentsOfVariants`, `IngredientsOfComponents`, `DefaultPacks`) selalu di-scope `tenant_id` dan berurutan deterministik. Varian yang dinonaktifkan tetap ikut, karena order yang masuk sebelumnya tetap harus diproduksi.
 
 ### 9.4 Stok (ledger)
 

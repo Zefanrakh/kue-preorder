@@ -2,8 +2,12 @@ version: "2"
 
 # One entry per module: db/queries/<module>.sql generates into that module's
 # postgres package, which only the module itself may import (internal/archtest).
-# sqlc rejects unknown top-level keys, so each new entry repeats the go options
-# below; keep them identical across entries.
+# sqlc rejects unknown top-level keys, so each entry repeats the go options;
+# keep them identical across entries.
+#
+# numeric maps to float64: catalog quantities (units per item, waste factor,
+# pack size) feed the recipe engine, which works in float64. Money is never
+# numeric; it is bigint rupiah.
 sql:
   - engine: postgresql
     schema: db/migrations
@@ -32,4 +36,47 @@ sql:
             go_type:
               import: time
               type: Time
+              pointer: true
+          - db_type: pg_catalog.numeric
+            go_type: float64
+          - db_type: pg_catalog.numeric
+            nullable: true
+            go_type:
+              type: float64
+              pointer: true
+
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries/catalog.sql
+    gen:
+      go:
+        package: postgres
+        out: internal/catalog/postgres
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+              pointer: true
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+          - db_type: pg_catalog.numeric
+            go_type: float64
+          - db_type: pg_catalog.numeric
+            nullable: true
+            go_type:
+              type: float64
               pointer: true
