@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package kuepreorder.validation.v1;
+
+// FieldErrors travels as a Connect error detail on InvalidArgument (bad
+// input) and AlreadyExists (a clash with an existing record): which request
+// fields are wrong and why, in words for the person editing. A form marks
+// each named field with its message.
+message FieldErrors {
+  // Request field name (snake_case, as in the request message) to the
+  // message to show, in Indonesian.
+  map<string, string> fields = 1;
+}

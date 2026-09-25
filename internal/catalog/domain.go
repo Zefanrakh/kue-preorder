@@ -1,6 +1,6 @@
 // Package catalog manages what the shop sells and what it is made of
 // (docs/architecture.md §6, §9.3): products and variants, components,
-// ingredients, suppliers, and packs. Recipe lines arrive in M1.5.
+// ingredients, suppliers, packs, and the recipes between them.
 //
 // Authorization happens in Service, following the role table in §8: owners
 // manage products, variants, prices, suppliers, and packs; owners and the
@@ -155,11 +155,11 @@ type Variant struct {
 	UpdatedAt         time.Time
 }
 
-// VariantInput holds the editable fields of a variant. The price is not here:
-// it is set once on creation and then changes only through
+// VariantInput holds the editable fields of a variant. Its product is chosen
+// once, in Service.CreateVariant, and never changes. The price is not here
+// either: it is set on creation and then changes only through
 // Service.ChangeVariantPrice, which is audited.
 type VariantInput struct {
-	ProductID         uuid.UUID // fixed after creation
 	SKU, Name         string
 	Options           map[string]string
 	ProductionMinutes int32
@@ -187,7 +187,6 @@ func (in VariantInput) normalize() VariantInput {
 
 func (in VariantInput) validate() error {
 	f := fields{}
-	f.check(in.ProductID != uuid.Nil, "product_id", "Pilih produknya.")
 	f.check(in.SKU != "" && !strings.ContainsAny(in.SKU, " \t\n"), "sku", "SKU wajib diisi dan tidak boleh berisi spasi.")
 	f.check(len(in.SKU) <= 64, "sku", "SKU paling panjang 64 karakter.")
 	f.check(in.Name != "", "name", "Nama varian wajib diisi.")
@@ -352,15 +351,15 @@ type Pack struct {
 	UpdatedAt    time.Time
 }
 
-// PackInput holds the editable fields of a pack. Which pack is the default
+// PackInput holds the editable fields of a pack. Its ingredient is chosen
+// once, in Service.CreatePack, and never changes; which pack is the default
 // changes only through Service.SetDefaultPack.
 type PackInput struct {
-	IngredientID uuid.UUID // fixed after creation
-	SupplierID   uuid.UUID
-	SupplierSKU  string
-	Size         float64
-	Unit         string
-	PriceIDR     *int64
+	SupplierID  uuid.UUID
+	SupplierSKU string
+	Size        float64
+	Unit        string
+	PriceIDR    *int64
 }
 
 func (in PackInput) normalize() PackInput {
@@ -371,7 +370,6 @@ func (in PackInput) normalize() PackInput {
 
 func (in PackInput) validate() error {
 	f := fields{}
-	f.check(in.IngredientID != uuid.Nil, "ingredient_id", "Pilih bahannya.")
 	f.check(in.SupplierID != uuid.Nil, "supplier_id", "Pilih suppliernya.")
 	f.check(in.Size > 0 && !math.IsInf(in.Size, 0) && !math.IsNaN(in.Size), "size", "Isi kemasan harus lebih dari 0, dalam satuan dasar bahan.")
 	f.check(in.Unit != "", "unit", "Nama kemasan wajib diisi, misalnya sak 1 kg.")

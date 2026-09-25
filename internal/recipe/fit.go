@@ -150,11 +150,14 @@ func usable(m Model) error {
 	return nil
 }
 
-// checkPoints accepts at least one point, each with finite U > 0 and a
+// checkPoints accepts 1 to MaxPoints points, each with finite U > 0 and a
 // finite amount >= 0.
 func checkPoints(points []Point) error {
 	if len(points) == 0 {
 		return fmt.Errorf("%w: no measured points", ErrFit)
+	}
+	if len(points) > MaxPoints {
+		return fmt.Errorf("%w: at most %d measured points, got %d", ErrFit, MaxPoints, len(points))
 	}
 	for i, p := range points {
 		if !isFinite(p.U) || !isFinite(p.Amount) || p.U <= 0 || p.Amount < 0 {

@@ -16,7 +16,11 @@ import (
 	"connectrpc.com/otelconnect"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	"github.com/Zefanrakh/kue-preorder/internal/catalog"
+	catalogrpc "github.com/Zefanrakh/kue-preorder/internal/catalog/connect"
+	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identityrpc "github.com/Zefanrakh/kue-preorder/internal/identity/connect"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
@@ -95,11 +99,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 		return fmt.Errorf("resolve tenant: %w", err)
 	}
 
+	identitySvc := identity.NewService(identityRepo, tenants)
 	handler, err := newHandler(handlerDeps{
 		logger:         logger,
 		tracerProvider: tel.TracerProvider(),
 		verifier:       identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{}),
-		identity:       identity.NewService(identityRepo, tenants),
+		identity:       identitySvc,
+		catalog:        catalog.NewService(catalogpg.NewRepository(database), identitySvc, clock.Real{}),
 		db:             database,
 	})
 	if err != nil {
@@ -124,6 +130,7 @@ type handlerDeps struct {
 	tracerProvider trace.TracerProvider
 	verifier       identityrpc.Verifier
 	identity       *identity.Service
+	catalog        *catalog.Service
 	db             httpserver.Pinger
 }
 
@@ -151,6 +158,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle("GET /healthz", httpserver.Healthz())
 	mux.Handle("GET /readyz", httpserver.Readyz(d.db, d.logger))
 	mux.Handle(identityv1connect.NewIdentityServiceHandler(identityrpc.NewHandler(d.identity, d.logger), connectOpts...))
+	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(d.catalog, d.logger), connectOpts...))
 
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, mux)), nil
 }

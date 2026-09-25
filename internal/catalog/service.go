@@ -93,17 +93,17 @@ func (s *Service) ListVariants(ctx context.Context, productID uuid.UUID) ([]Vari
 	return s.repo.ListVariants(ctx, p.TenantID, productID)
 }
 
-// CreateVariant adds a variant with its first price. Owners only.
-func (s *Service) CreateVariant(ctx context.Context, in VariantInput, priceIDR int64) (Variant, error) {
+// CreateVariant adds a variant of a product with its first price. Owners only.
+func (s *Service) CreateVariant(ctx context.Context, productID uuid.UUID, in VariantInput, priceIDR int64) (Variant, error) {
 	p, err := s.authorize(ctx, owners)
 	if err != nil {
 		return Variant{}, err
 	}
 	in = in.normalize()
-	if err := joinValidation(in.validate(), validatePrice(priceIDR)); err != nil {
+	if err := joinValidation(requireID(productID, "product_id", "Pilih produknya."), in.validate(), validatePrice(priceIDR)); err != nil {
 		return Variant{}, err
 	}
-	return s.repo.CreateVariant(ctx, p.TenantID, in, priceIDR, s.clock.Now())
+	return s.repo.CreateVariant(ctx, p.TenantID, productID, in, priceIDR, s.clock.Now())
 }
 
 // UpdateVariant replaces a variant's editable fields; the price and the
@@ -248,17 +248,17 @@ func (s *Service) ListPacks(ctx context.Context, ingredientID uuid.UUID) ([]Pack
 	return s.repo.ListPacks(ctx, p.TenantID, ingredientID)
 }
 
-// CreatePack adds a pack, not yet the default. Owners only.
-func (s *Service) CreatePack(ctx context.Context, in PackInput) (Pack, error) {
+// CreatePack adds a pack of an ingredient, not yet the default. Owners only.
+func (s *Service) CreatePack(ctx context.Context, ingredientID uuid.UUID, in PackInput) (Pack, error) {
 	p, err := s.authorize(ctx, owners)
 	if err != nil {
 		return Pack{}, err
 	}
 	in = in.normalize()
-	if err := in.validate(); err != nil {
+	if err := joinValidation(requireID(ingredientID, "ingredient_id", "Pilih bahannya."), in.validate()); err != nil {
 		return Pack{}, err
 	}
-	return s.repo.CreatePack(ctx, p.TenantID, in, s.clock.Now())
+	return s.repo.CreatePack(ctx, p.TenantID, ingredientID, in, s.clock.Now())
 }
 
 // UpdatePack replaces a pack's editable fields; its ingredient stays. Owners only.
@@ -282,6 +282,13 @@ func (s *Service) SetDefaultPack(ctx context.Context, id uuid.UUID) (Pack, error
 		return Pack{}, err
 	}
 	return s.repo.SetDefaultPack(ctx, p.TenantID, id, s.clock.Now())
+}
+
+// requireID checks that a parent record was chosen.
+func requireID(id uuid.UUID, field, msg string) error {
+	f := fields{}
+	f.check(id != uuid.Nil, field, msg)
+	return f.err()
 }
 
 // joinValidation merges the field errors of several checks into one.

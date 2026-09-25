@@ -16,7 +16,7 @@ type Repository interface {
 	UpdateProduct(ctx context.Context, tenantID, id uuid.UUID, in ProductInput, at time.Time) (Product, error)
 
 	ListVariants(ctx context.Context, tenantID, productID uuid.UUID) ([]Variant, error)
-	CreateVariant(ctx context.Context, tenantID uuid.UUID, in VariantInput, priceIDR int64, at time.Time) (Variant, error)
+	CreateVariant(ctx context.Context, tenantID, productID uuid.UUID, in VariantInput, priceIDR int64, at time.Time) (Variant, error)
 	UpdateVariant(ctx context.Context, tenantID, id uuid.UUID, in VariantInput, at time.Time) (Variant, error)
 	// ChangeVariantPrice sets the price and writes its audit entry in one
 	// transaction. Setting the current price again changes and records nothing.
@@ -35,7 +35,7 @@ type Repository interface {
 	UpdateSupplier(ctx context.Context, tenantID, id uuid.UUID, in SupplierInput, at time.Time) (Supplier, error)
 
 	ListPacks(ctx context.Context, tenantID, ingredientID uuid.UUID) ([]Pack, error)
-	CreatePack(ctx context.Context, tenantID uuid.UUID, in PackInput, at time.Time) (Pack, error)
+	CreatePack(ctx context.Context, tenantID, ingredientID uuid.UUID, in PackInput, at time.Time) (Pack, error)
 	UpdatePack(ctx context.Context, tenantID, id uuid.UUID, in PackInput, at time.Time) (Pack, error)
 	// SetDefaultPack makes the pack its ingredient's only default, in one transaction.
 	SetDefaultPack(ctx context.Context, tenantID, id uuid.UUID, at time.Time) (Pack, error)

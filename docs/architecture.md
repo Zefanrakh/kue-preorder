@@ -184,6 +184,26 @@ Tata letak:
 - `buf.gen.yaml` memakai managed mode untuk `go_package`. Plugin Go (`protoc-gen-go`, `protoc-gen-connect-go`) dijalankan lewat `go tool`, jadi versinya ikut `go.mod` dan selalu cocok dengan library runtime. Plugin TS (`buf.build/bufbuild/es`, protobuf-es v2) dikunci versinya di BSR; client memakai `@connectrpc/connect` v2.
 - Hasil generate (`api/gen/go`, `api/gen/ts`) di-commit.
 
+Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`) dan `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC). Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
+
+**Konvensi kontrak** (berlaku untuk service berikutnya juga):
+- Handler di `internal/<modul>/connect` hanya menerjemahkan proto ↔ domain. Aturan, normalisasi, dan otorisasi tetap di service.
+- ID berupa string UUID. ID kosong diteruskan sebagai `uuid.Nil` agar service menjawab dengan pesannya sendiri ("Pilih produknya."). ID yang bukan UUID langsung `InvalidArgument` untuk field itu, sebelum otorisasi. Yang bocor hanya fakta bahwa string itu bukan UUID, tidak ada data yang ikut bocor.
+- Uang `int64` rupiah, yang di TypeScript menjadi `bigint`. Nilai enum `UNSPECIFIED` berarti "pakai default" kalau default-nya ada (aturan sisa, cara pesan), dan kalau tidak ada, ditolak seperti input kosong.
+- Parameter resep dikirim sebagai string JSON (`params_json`). Isinya dijamin JSON, formatnya tidak (jsonb Postgres menata ulang spasi).
+- **Error:**
+
+  | Error domain | Kode Connect | Detail |
+  |---|---|---|
+  | `ValidationError` | `InvalidArgument` | `kuepreorder.validation.v1.FieldErrors`: nama field request (snake_case) → pesan bahasa Indonesia |
+  | `ValidationError` dengan `Conflict` (slug/SKU/nama sudah dipakai) | `AlreadyExists` | `FieldErrors` |
+  | `ErrNotFound` (termasuk record tenant lain) | `NotFound` | — |
+  | `ErrForbidden` | `PermissionDenied` | — |
+  | `identity.ErrUnauthenticated` | `Unauthenticated` | — |
+  | lainnya | `Internal` | Pesan generik; detailnya hanya di log ERROR (dan Sentry) |
+
+  Form di `web/` membaca detail lewat `ConnectError.findDetails(FieldErrorsSchema)` dan menandai setiap field yang disebut.
+
 ---
 
 ## 8. Auth (Supabase)
@@ -212,7 +232,7 @@ Tata letak:
 | Komponen, bahan, dan resep (termasuk titik ukur) | ✅ | ✅ | ❌ |
 | Melihat seluruh katalog di CMS | ✅ | ✅ | ❌ |
 
-Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `Forbidden`. Storefront publik (M1.6) hanya membaca produk dan varian yang aktif.
+Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik (M1.7) hanya membaca produk dan varian yang aktif.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
 
 **Setelan project Supabase:** Data API dimatikan (lihat §9), signing key aktif ECC P-256 (ES256). Menjelang go-live: pindah ke API key baru (`sb_publishable_…` untuk browser, `sb_secret_…` untuk server), lalu revoke secret HS256 lama. Kunci anon/service_role lama ikut mati saat itu.
@@ -308,7 +328,7 @@ Aturan skema (migrasi `00003_catalog.sql`):
 - Query baca untuk agregasi (`ComponentsOfVariants`, `IngredientsOfComponents`, `DefaultPacks`) selalu di-scope `tenant_id` dan berurutan deterministik. Varian yang dinonaktifkan tetap ikut, karena order yang masuk sebelumnya tetap harus diproduksi.
 
 Aturan menyimpan resep (M1.5):
-- **Baris resep hanya tersimpan setelah lolos `recipe.Build` + `recipe.Validate`.** Bisa diisi dari model langsung (`model_type` + `params`) atau dari titik ukur (`model_type` + titik; di-fit oleh engine, titik mentah ikut tersimpan di `measured_points`). `params` disimpan dalam bentuk kanonik `recipe.Params`.
+- **Baris resep hanya tersimpan setelah lolos `recipe.Build` + `recipe.Validate`.** Bisa diisi dari model langsung (`model_type` + `params`) atau dari titik ukur (`model_type` + titik; di-fit oleh engine, titik mentah ikut tersimpan di `measured_points`). Titik ukur paling banyak 100, termasuk yang disimpan hanya sebagai referensi di samping `params`. `params` disimpan dalam bentuk kanonik `recipe.Params`.
 - **`version` naik hanya pada perubahan nyata.** Perbandingan memakai `jsonb` dan `numeric`, jadi menyimpan resep yang sama dengan penulisan berbeda (urutan kunci, `100` vs `100.0`) tidak dihitung perubahan.
 - **Komposisi varian diganti utuh dalam satu transaksi** (`SetVariantComponents`); kalau satu komponen gagal, semua batal, termasuk penghapusan.
 - **Setiap perubahan resep menulis event `catalog.recipe_changed` ke `outbox` di transaksi yang sama**: aggregate `variant` untuk komposisi varian, `component` untuk baris resep (termasuk penghapusan). Simpan ulang tanpa perubahan tidak menulis event. Penulisan resep mengunci baris varian atau komponennya, jadi dua edit resep yang sama berjalan bergantian.
@@ -500,6 +520,7 @@ if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 
 Aturan fit:
 - Setiap titik ukur: `u` > 0, jumlah >= 0, finite. Selain itu `ErrFit` yang menyebut nomor titiknya.
+- Paling banyak 100 titik (`recipe.MaxPoints`), untuk fit maupun model `piecewise`. Dapur biasanya mengukur segelintir titik. Ratusan titik hampir pasti salah input, dan setiap batch mengevaluasinya.
 - `FitAffine`: kuadrat terkecil biasa. Kalau garis terbaiknya punya `a` < 0, fit diulang lewat titik nol (`a` = 0). Kalau hanya ada satu nilai `u` yang berbeda, juga lewat titik nol. Kemiringan negatif (jumlah turun saat `u` naik) ditolak.
 - `FitPower`: semua jumlah harus > 0 (nol tidak punya logaritma), minimal dua nilai `u` yang berbeda, dan `b` negatif ditolak.
 - `FitPiecewise`: titik diurutkan, jumlah untuk `u` yang sama dirata-rata, dan data yang turun ditolak dengan menyebut di `u` berapa.
@@ -513,7 +534,7 @@ Aturan fit:
 
 **Detail per model:**
 - `affine` dan `power`: `a`, `b` finite dan `>= 0`.
-- `piecewise`: minimal satu titik; `u` > 0 dan naik tegas; jumlah bahan tidak turun. Interpolasi linear dimulai dari titik implisit (0, 0); di atas titik terakhir, kemiringan segmen terakhir diteruskan (batch bisa lebih besar dari yang pernah diukur).
+- `piecewise`: 1 sampai 100 titik; `u` > 0 dan naik tegas; jumlah bahan tidak turun. Interpolasi linear dimulai dari titik implisit (0, 0); di atas titik terakhir, kemiringan segmen terakhir diteruskan (batch bisa lebih besar dari yang pernah diukur).
 - `formula`: sandbox `expr-lang/expr`. Hanya variabel `u`; fungsi yang tersedia hanya `abs`, `ceil`, `floor`, `round`, `max`, `min`, plus operator pangkat `**`/`^`. Fungsi waktu (`now()`, `date()`) dan fungsi koleksi dimatikan, jadi hasilnya deterministik. Rumus maksimal 500 karakter dan 200 node AST; memori saat berjalan dibatasi VM `expr`.
 - `params` dibaca ketat: field tak dikenal, field wajib yang hilang, atau data sisa ditolak (`ErrInvalidParams`).
 
@@ -870,6 +891,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 | Repository | Integration test (`-tags=integration`) dengan testcontainers Postgres 17 dan migrasi asli. Satu container per paket; migrasi sekali ke database template, lalu setiap test mendapat salinan sendiri (`internal/platform/db/dbtest`) | Query terbukti benar |
 | Skema | Setiap tabel milik tenant punya `tenant_id uuid not null` + FK ke `tenants`; setiap tabel mengaktifkan RLS; migrasi bisa naik-turun-naik | Invariant §9 dan §25 |
 | Webhook | Event yang sama dua kali → satu efek | Semua provider |
+| Handler RPC | Integration test lewat HTTP sungguhan: interceptor auth asli, token dari issuer lokal, Postgres asli, client hasil generate. Setiap RPC minimal satu round trip; pemetaan error termasuk detail `FieldErrors` yang terbaca client | Setiap RPC |
 | Kontrak | `buf lint`, `buf format`, `buf breaking` terhadap branch tujuan PR, hasil `buf generate` sudah ter-commit, client TS lolos `tsc` strict (`api/`, sampai `web/` ada) | Setiap PR |
 | Konkurensi | `go test -race`; recompute paralel batch yang sama | Setiap PR |
 

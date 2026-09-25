@@ -19,8 +19,11 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
+	catalogv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	identityv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/identitytest"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
@@ -64,11 +67,12 @@ type pingerFunc func(context.Context) error
 func (f pingerFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 type apiServer struct {
-	url    string
-	client identityv1connect.IdentityServiceClient
-	spans  *tracetest.SpanRecorder
-	logs   *syncBuffer
-	issuer *identitytest.TokenIssuer
+	url     string
+	client  identityv1connect.IdentityServiceClient
+	catalog catalogv1connect.CatalogAdminServiceClient
+	spans   *tracetest.SpanRecorder
+	logs    *syncBuffer
+	issuer  *identitytest.TokenIssuer
 }
 
 // newAPIServer serves newHandler, the production wiring, with an in-memory
@@ -90,12 +94,16 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 	if err != nil {
 		t.Fatalf("ResolveSingleTenant() error = %v", err)
 	}
+	identitySvc := identity.NewService(repo, tenants)
 	handler, err := newHandler(handlerDeps{
 		logger:         logger,
 		tracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)),
 		verifier:       identity.NewTokenVerifier(keys, identitytest.Issuer, clock.NewFake(now)),
-		identity:       identity.NewService(repo, tenants),
-		db:             db,
+		identity:       identitySvc,
+		// No catalog repository: these tests never get past authorization.
+		// internal/catalog/connect tests the catalog over a real database.
+		catalog: catalog.NewService(nil, identitySvc, clock.NewFake(now)),
+		db:      db,
 	})
 	if err != nil {
 		t.Fatalf("newHandler() error = %v", err)
@@ -103,11 +111,12 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return &apiServer{
-		url:    srv.URL,
-		client: identityv1connect.NewIdentityServiceClient(srv.Client(), srv.URL),
-		spans:  spans,
-		logs:   logs,
-		issuer: issuer,
+		url:     srv.URL,
+		client:  identityv1connect.NewIdentityServiceClient(srv.Client(), srv.URL),
+		catalog: catalogv1connect.NewCatalogAdminServiceClient(srv.Client(), srv.URL),
+		spans:   spans,
+		logs:    logs,
+		issuer:  issuer,
 	}
 }
 
@@ -227,4 +236,33 @@ func TestAPI_RecoversPanicsWithCorrelatedErrorLog(t *testing.T) {
 		}
 	}
 	t.Error("panic was not logged")
+}
+
+// The catalog is mounted behind the same interceptors: a signed-in user
+// without a staff role is refused, and a caller without a token too.
+func TestAPI_ServesTheCatalog(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	tests := []struct {
+		name  string
+		token string
+		want  connect.Code
+	}{
+		{"anonymous", "", connect.CodeUnauthenticated},
+		{"no staff role", s.issuer.Sign(t, identitytest.Claims(uuid.New(), now)), connect.CodePermissionDenied},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := connect.NewRequest(&catalogv1.ListProductsRequest{})
+			if tt.token != "" {
+				req.Header().Set("Authorization", "Bearer "+tt.token)
+			}
+			_, err := s.catalog.ListProducts(t.Context(), req)
+			if connect.CodeOf(err) != tt.want {
+				t.Errorf("ListProducts() code = %v, want %v", connect.CodeOf(err), tt.want)
+			}
+		})
+	}
+	if s.findSpan("kuepreorder.catalog.v1.CatalogAdminService/ListProducts") == nil {
+		t.Error("catalog request left no span")
+	}
 }

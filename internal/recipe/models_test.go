@@ -146,6 +146,15 @@ func TestNewPiecewise_RejectsNonFinitePoints(t *testing.T) {
 	}
 }
 
+func TestNewPiecewise_BoundsThePointCount(t *testing.T) {
+	if _, err := recipe.NewPiecewise(rising(recipe.MaxPoints)); err != nil {
+		t.Errorf("NewPiecewise(%d points) error = %v, want nil", recipe.MaxPoints, err)
+	}
+	if _, err := recipe.NewPiecewise(rising(recipe.MaxPoints + 1)); !errors.Is(err, recipe.ErrInvalidParams) {
+		t.Errorf("NewPiecewise(%d points) error = %v, want ErrInvalidParams", recipe.MaxPoints+1, err)
+	}
+}
+
 func TestPiecewise_PointsReturnsACopyWithoutTheOrigin(t *testing.T) {
 	m, err := recipe.NewPiecewise([]recipe.Point{{U: 1, Amount: 100}, {U: 2, Amount: 190}})
 	if err != nil {

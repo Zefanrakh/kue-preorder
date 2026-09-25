@@ -117,6 +117,9 @@ func TestFit_RejectsUnusablePoints(t *testing.T) {
 		wantMsg string
 	}{
 		{"affine, no points", fitAffine, nil, "no measured points"},
+		{"affine, too many points", fitAffine, rising(recipe.MaxPoints + 1), "at most 100"},
+		{"power, too many points", fitPower, rising(recipe.MaxPoints + 1), "at most 100"},
+		{"piecewise, too many points", fitPiecewise, rising(recipe.MaxPoints + 1), "at most 100"},
 		{"affine, zero units", fitAffine, []recipe.Point{{U: 0, Amount: 10}}, "point 1"},
 		{"affine, negative amount", fitAffine, []recipe.Point{{U: 1, Amount: -1}}, "point 1"},
 		{"affine, NaN", fitAffine, []recipe.Point{{U: math.NaN(), Amount: 1}}, "point 1"},
@@ -144,6 +147,15 @@ func TestFit_RejectsUnusablePoints(t *testing.T) {
 			}
 		})
 	}
+}
+
+// rising returns n points on the line 10u, one per unit.
+func rising(n int) []recipe.Point {
+	points := make([]recipe.Point, n)
+	for i := range points {
+		points[i] = recipe.Point{U: float64(i + 1), Amount: float64(10 * (i + 1))}
+	}
+	return points
 }
 
 func fitAffine(p []recipe.Point) error    { _, _, err := recipe.FitAffine(p); return err }

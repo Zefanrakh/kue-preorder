@@ -38,7 +38,7 @@ func TestProductInput(t *testing.T) {
 }
 
 func TestVariantInput(t *testing.T) {
-	valid := VariantInput{ProductID: uuid.New(), SKU: " donut-coklat ", Name: "Donut Coklat",
+	valid := VariantInput{SKU: " donut-coklat ", Name: "Donut Coklat",
 		Options: map[string]string{" rasa ": " coklat "}, ProductionMinutes: 90, MinNoticeHours: 24}.normalize()
 	if valid.SKU != "DONUT-COKLAT" || valid.Options["rasa"] != "coklat" {
 		t.Errorf("normalize() = %+v, want an uppercase SKU and trimmed options", valid)
@@ -52,7 +52,6 @@ func TestVariantInput(t *testing.T) {
 		edit  func(*VariantInput)
 		field string
 	}{
-		{"no product", func(v *VariantInput) { v.ProductID = uuid.Nil }, "product_id"},
 		{"SKU with a space", func(v *VariantInput) { v.SKU = "DONUT COKLAT" }, "sku"},
 		{"no name", func(v *VariantInput) { v.Name = "" }, "name"},
 		{"no production time", func(v *VariantInput) { v.ProductionMinutes = 0 }, "production_minutes"},
@@ -137,7 +136,7 @@ func TestSupplierInput_NormalizesIndonesianPhoneNumbers(t *testing.T) {
 }
 
 func TestPackInput(t *testing.T) {
-	valid := PackInput{IngredientID: uuid.New(), SupplierID: uuid.New(), Size: 1000, Unit: "sak 1 kg"}
+	valid := PackInput{SupplierID: uuid.New(), Size: 1000, Unit: "sak 1 kg"}
 	if err := valid.normalize().validate(); err != nil {
 		t.Fatalf("validate() = %v", err)
 	}

@@ -56,6 +56,10 @@ type Point struct {
 	U, Amount float64
 }
 
+// MaxPoints bounds the points of a piecewise model and of a fit. A kitchen
+// measures a handful; hundreds are a mistake, and every batch evaluates them.
+const MaxPoints = 100
+
 // PiecewiseModel interpolates linearly between measured points, starting from
 // (0, 0). Above the last point it continues the last segment's slope, because
 // a batch can be larger than anything measured.
@@ -63,11 +67,14 @@ type PiecewiseModel struct {
 	points []Point // with the implicit (0, 0) first
 }
 
-// NewPiecewise returns the model through points. There must be at least one;
+// NewPiecewise returns the model through points. There must be 1 to MaxPoints;
 // U must be > 0 and strictly increasing, Amount >= 0 and never decreasing.
 func NewPiecewise(points []Point) (PiecewiseModel, error) {
 	if len(points) == 0 {
 		return PiecewiseModel{}, fmt.Errorf("%w: piecewise needs at least one point", ErrInvalidParams)
+	}
+	if len(points) > MaxPoints {
+		return PiecewiseModel{}, fmt.Errorf("%w: piecewise takes at most %d points, got %d", ErrInvalidParams, MaxPoints, len(points))
 	}
 	prev := Point{}
 	for i, p := range points {
