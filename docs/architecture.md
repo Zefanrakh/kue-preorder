@@ -651,10 +651,15 @@ stateDiagram-v2
   out_for_delivery --> completed: webhook delivered
 ```
 
-**Aturan penjaga** (di fungsi domain `order.Transition`, diuji):
-- `confirmed` hanya kalau `payment_status` minimal `dp_paid`.
-- `in_production`, `out_for_delivery`, dan `completed` hanya kalau `payment_status = paid_in_full`. Tidak ada jalur untuk menyerahkan kue yang belum lunas.
-- Order masuk agregasi sejak `confirmed` (setelah DP), sesuai kebiasaan ibu belanja setelah ada pesanan yang pasti.
+**Aturan penjaga** (di fungsi domain `orders.Transition`, diuji):
+- `confirmed` hanya kalau `payment_status` minimal `dp_paid`. `expired` hanya kalau belum ada pembayaran sama sekali.
+- `in_production`, `ready`, `out_for_delivery`, dan `completed` hanya kalau `payment_status = paid_in_full`. `ready` ikut dijaga walaupun letaknya di tengah, supaya order yang di-refund saat produksi berhenti di tempat. Tidak ada jalur untuk menyerahkan kue yang belum lunas.
+- `cancelled` hanya dari `confirmed`, dan hanya kalau pembayarannya sudah ditutup (`forfeited` atau `refunded`). Pembatalan dan refund manualnya dicatat dalam satu transaksi.
+- `ready → completed` hanya untuk ambil sendiri. `ready → out_for_delivery → completed` hanya untuk delivery.
+- **M2 hanya melayani ambil sendiri** (diputuskan 2026-09-25). Pengantaran yang diatur toko dan pelanggan di luar sistem tetap tercatat sebagai ambil sendiri. Delivery lewat Biteship menyusul di M6.
+- Order masuk agregasi sejak `confirmed` (setelah DP), sesuai kebiasaan ibu belanja setelah ada pesanan yang pasti (`Status.CountsForProduction`: `confirmed` sampai `completed`).
+
+Test mencoba setiap kombinasi status asal × status tujuan × status pembayaran × cara pengambilan. Property test menjalankan urutan acak (uang masuk, hangus, refund, percobaan transisi) dan memastikan order tidak pernah masuk status serah terima tanpa lunas.
 
 ---
 
@@ -665,9 +670,12 @@ Tidak ada bayar-setelah-terima (COD atau tempo). Ini ditegakkan oleh sistem, buk
 **Besaran DP** dihitung dan dikunci saat checkout:
 
 ```
-dp_required = max( ceil(total × dp_min_percent),
-                   estimasi_biaya_bahan(order) )     // kalau dp_covers_ingredient_cost
+dp_required = min( total,
+                   max( ceil(total × dp_min_percent / 100),
+                        estimasi_biaya_bahan(order) ) )   // kalau dp_covers_ingredient_cost
 ```
+
+`dp_min_percent` bernilai 1–100: DP selalu ada. DP tidak pernah melebihi total, termasuk untuk kue yang dijual di bawah biaya bahannya. Semua hitungan memakai `int64` rupiah dan pembulatan ke atas dengan bilangan bulat (`payments.DPRequired`). Total order dibatasi `payments.MaxOrderTotalIDR` (2^40) agar tidak pernah mendekati overflow.
 
 Estimasi biaya bahan memakai biaya per unit pada `u = 1` (batas atas, karena efek skala hanya bisa menurunkan biaya). Artinya, kalau pelanggan menghilang, DP sudah menutup bahan yang terlanjur dibeli.
 
@@ -685,6 +693,10 @@ stateDiagram-v2
   dp_paid --> refunded: jadwal ulang ditolak pelanggan
   paid_in_full --> refunded: pembatalan dari pihak toko
 ```
+
+- `unpaid`, `dp_paid`, dan `paid_in_full` diturunkan dari ledger (`payments.Settle`) dan **tidak pernah mundur**. Entri refund tidak mengubah `paid_in_full` menjadi `dp_paid`; refund menutup pembayaran lewat `payments.Close`.
+- `forfeited` hanya dari `dp_paid`. `refunded` dari `dp_paid` atau `paid_in_full`.
+- **Uang yang masuk setelah pembayaran ditutup** (misalnya pelunasan terlambat setelah DP hangus) tidak membuka order lagi. Statusnya tetap, dan `ErrClosed` dikembalikan ke pemanggil. Pemanggil me-log ERROR (menjadi alert Sentry), karena orang yang harus memutuskan: uangnya dikembalikan atau ordernya dibuat ulang.
 
 **Alur:**
 1. Checkout → pelanggan memilih **bayar DP** atau **bayar penuh**. Syarat dan ketentuan DP (termasuk DP hangus) wajib dicentang; versi S&K disimpan di order.
@@ -942,10 +954,32 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Xendit, outbox | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
-| **M5 Frontend** | Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
+| **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
 | **M6 Jadwal ulang + Biteship** | Aksi massal, permintaan maaf, pilihan pelanggan, refund, pengiriman | Uji ujung ke ujung dengan kurir sungguhan |
 | **M7 Channels** | Integrasi Tokopedia | Order Tokopedia ikut batch yang sama |
 | **Nanti** | Resolusi tenant + billing → SaaS | Setelah divalidasi 2–3 design partner yang bayar |
+
+### 26.1 Prasyarat M5: desain dulu, baru kode frontend
+
+Sebelum menulis kode apa pun di `web/`, agent wajib berhenti dan mengingatkan pengguna
+bahwa langkah desain berikut harus selesai dan disetujui:
+
+1. **Design System toko** (tipe artifact *Design System* di Claude): warna, tipografi, spasi,
+   radius, komponen dasar, logo kalau ada.
+2. **Mockup Design** (tipe artifact *Design* di Claude, atau claude.ai/design) untuk tiga area:
+   - PWA ibu: cek sisa bahan, daftar belanja, daftar produksi, siap kirim (prioritas utama)
+   - Storefront: katalog varian, checkout dengan pilihan DP/lunas dan pin peta, tracking guest
+   - CMS: editor resep + grafik fit, jadwal ulang massal dengan pratinjau dampak
+3. **Tautan artifact** Design System dan mockup yang disetujui dicatat di bagian ini.
+
+Gambar raster (banner, ilustrasi) boleh dibuat dengan model gambar lain. Foto produk wajib
+foto kue asli, bukan buatan AI.
+
+Tautan desain yang disetujui:
+- Design System: _(belum ada)_
+- Mockup PWA ibu: _(belum ada)_
+- Mockup storefront: _(belum ada)_
+- Mockup CMS: _(belum ada)_
 
 ---
 
@@ -963,8 +997,11 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | Stok | Sisa dihitung, dengan cek manual untuk bahan mudah rusak dan pencatatan bahan dibuang (§12) |
 | Pembayaran | DP boleh, SOP ketat; tanpa COD / tempo; serah terima wajib lunas (§14) |
 | Cutoff | Berbeda per varian; produksi maks. 4 jam; jadwal ulang massal + permintaan maaf (§15, §16) |
-| Pengiriman | Biteship, draft order saat DP, konfirmasi di hari pengambilan (§17) |
+| Pengiriman | Biteship, draft order saat DP, konfirmasi di hari pengambilan (§17). Sampai M6 hanya ambil sendiri (§13) |
+| Refund | Manual: admin mentransfer lalu mencatatnya dengan bukti; tercatat di ledger dengan nama admin (sama seperti pelunasan manual, §14) |
+| Biaya transaksi Xendit | Dibebankan ke pelanggan, ditampilkan terpisah dari total order (detail di M2.4) |
 | Pembulatan bahan | Per komponen: `g`/`ml` ke terdekat, `pcs` ke atas (§10) |
+| Email transaksional | Resend (paket gratis) di balik port `Notifier`; WhatsApp tetap kanal utama (§27.1) |
 
 ### Default yang dipakai (bisa diubah di CMS)
 
@@ -975,11 +1012,41 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | Jawaban jadwal ulang | Otomatis setuju setelah 12 jam tanpa balasan |
 | Selisih ongkir | Ditanggung toko |
 | Cek stok | Hasil cek berlaku 24 jam |
+| Kapasitas harian ibu | Tidak dibatasi; bisa diaktifkan lewat `daily_capacity_minutes` |
 
 ### Masih terbuka
 
-1. Refund lewat apa: Xendit (disbursement) atau transfer manual dengan bukti?
-2. Kapasitas harian ibu: perlu dibatasi dari awal atau belum?
+Tidak ada. Refund dan kapasitas harian diputuskan 2026-09-25 (lihat tabel di atas).
+
+### 27.1 Pertimbangan: email transaksional
+
+**Peran email.** Kanal utama pelanggan adalah WhatsApp. Email hanya cadangan dan arsip:
+konfirmasi order, tagihan DP/pelunasan, permintaan maaf jadwal ulang. Xendit sudah mengirim
+email invoice sendiri. Perkiraan volume single-tenant: 3–6 email per order, ±300–600 email per
+bulan untuk 100 order.
+
+**Perbandingan (per September 2026):**
+
+| Layanan | Gratis | Paket awal | Kelebihan | Kekurangan |
+|---|---|---|---|---|
+| Resend | 3.000/bulan, maks. 100/hari, 3 domain | $20/bulan untuk 50.000 | API sederhana, SDK Go resmi, webhook bounce | Pemain baru; batas 100/hari di paket gratis |
+| Postmark | 100/bulan (hanya tes) | $15/bulan untuk 10.000 | Deliverability transaksional terkuat; stream terpisah | Tanpa paket gratis yang berguna |
+| Amazon SES | Tidak ada (hanya kredit awal AWS) | $0,10 per 1.000 | Termurah di volume besar | Setup rumit: sandbox, SNS untuk bounce |
+| Brevo | 300/hari | Paket bulanan | Paket gratis besar | Fokus ke email marketing |
+| SendGrid | Tidak ada (trial 60 hari sejak Mei 2025) | $19,95/bulan untuk 50.000 | Mapan | Paket gratis dihapus |
+
+**Keputusan.** Resend untuk fase single-tenant: gratis cukup, integrasi paling sederhana,
+webhook bounce tersedia.
+
+**Pemicu evaluasi ulang:**
+- Menjadi SaaS multi-tenant dengan volume puluhan ribu email per bulan → pertimbangkan Amazon SES.
+- Email sering masuk spam walaupun SPF/DKIM/DMARC benar → pertimbangkan Postmark.
+- Penggantian cukup dengan adapter `Notifier` baru; domain logic tidak berubah.
+
+**Aturan implementasi:**
+- Job email menangani error batas kiriman (429 / limit harian) dengan retry terjadwal, bukan gagal permanen.
+- Webhook bounce/complaint menandai email pelanggan tidak valid; notifikasi berikutnya hanya lewat WhatsApp.
+- Domain wajib SPF, DKIM, dan DMARC; kirim dari subdomain khusus (mis. `notif.<domain>`).
 
 ---
 
