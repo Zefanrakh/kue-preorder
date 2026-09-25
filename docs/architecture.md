@@ -195,7 +195,7 @@ Tata letak:
 5. Guest tidak login. Guest melacak pesanan lewat `guest_access_token` di URL, dengan rate limit.
 
 **Verifikasi token** (`internal/identity`):
-- Kunci publik diambil dari `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, di-refresh tiap jam. Token dengan `kid` baru (rotasi key) memicu refresh paling sering sekali per menit, tanpa membuat request menunggu. Gagal mengambil JWKS saat start tidak menghentikan `api`; token ditolak sampai key berhasil dimuat, dan kegagalannya di-log.
+- Kunci publik diambil dari `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, di-refresh tiap jam. Token dengan `kid` baru (rotasi key) memicu refresh paling sering sekali per menit; refresh itu diberi waktu hingga 5 detik, dan `kid` tak dikenal berikutnya di menit yang sama langsung ditolak alih-alih menunggu slot berikutnya. Gagal mengambil JWKS saat start tidak menghentikan `api`; token ditolak sampai key berhasil dimuat, dan kegagalannya di-log.
 - Hanya algoritma **ES256/RS256** yang diterima. HS256 (secret lama) dan `none` ditolak, sehingga token tidak bisa memilih algoritma yang lebih lemah.
 - Klaim yang diperiksa: `iss` = `<SUPABASE_URL>/auth/v1`, `aud` = `authenticated`, `exp` wajib, `iat` tidak di masa depan, toleransi selisih jam 30 detik, waktu dari `platform/clock`. `role` harus `authenticated`, bukan anonymous sign-in, dan `sub` harus UUID.
 

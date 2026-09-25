@@ -134,11 +134,40 @@ func TestVerify_AcceptsTokenFromRotatedKey(t *testing.T) {
 	iss := identitytest.NewTokenIssuer(t)
 	v := newVerifier(t, iss.JWKSURL, clock.NewFake(now))
 
+	// A real JWKS fetch takes a network round trip; the refresh must allow for it.
+	iss.SetLatency(50 * time.Millisecond)
 	iss.Rotate(t)
 	token := iss.Sign(t, identitytest.Claims(uuid.New(), now))
 
 	if _, err := v.Verify(t.Context(), token); err != nil {
 		t.Errorf("Verify() with the new key error = %v, want the unknown kid to trigger a JWKS refresh", err)
+	}
+}
+
+// Made-up kids must not hold requests: once the minute's refresh is used,
+// further unknown kids fail at once instead of waiting for the next slot.
+func TestVerify_UnknownKIDsDoNotBlockRequests(t *testing.T) {
+	iss := identitytest.NewTokenIssuer(t)
+	v := newVerifier(t, iss.JWKSURL, clock.NewFake(now))
+	claims := identitytest.Claims(uuid.New(), now)
+
+	if _, err := v.Verify(t.Context(), signWithForeignKey(t, claims)); !errors.Is(err, identity.ErrInvalidToken) {
+		t.Fatalf("first unknown kid: error = %v, want ErrInvalidToken", err)
+	}
+
+	second := signWithForeignKey(t, claims) // t.Fatal must stay on the test goroutine
+	done := make(chan error, 1)
+	go func() {
+		_, err := v.Verify(t.Context(), second)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, identity.ErrInvalidToken) {
+			t.Errorf("second unknown kid: error = %v, want ErrInvalidToken", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Verify blocked waiting for the JWKS refresh rate limit")
 	}
 }
 
