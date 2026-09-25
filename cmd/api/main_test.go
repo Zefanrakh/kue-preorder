@@ -70,6 +70,7 @@ type apiServer struct {
 	url     string
 	client  identityv1connect.IdentityServiceClient
 	catalog catalogv1connect.CatalogAdminServiceClient
+	shop    catalogv1connect.StorefrontServiceClient
 	spans   *tracetest.SpanRecorder
 	logs    *syncBuffer
 	issuer  *identitytest.TokenIssuer
@@ -100,10 +101,11 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		tracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)),
 		verifier:       identity.NewTokenVerifier(keys, identitytest.Issuer, clock.NewFake(now)),
 		identity:       identitySvc,
-		// No catalog repository: these tests never get past authorization.
-		// internal/catalog/connect tests the catalog over a real database.
-		catalog: catalog.NewService(nil, identitySvc, clock.NewFake(now)),
-		db:      db,
+		// No catalog repository: these tests never reach the database.
+		// internal/catalog/connect tests the catalog over a real one.
+		catalog:    catalog.NewService(nil, identitySvc, clock.NewFake(now)),
+		storefront: catalog.NewStorefront(nil, tenants),
+		db:         db,
 	})
 	if err != nil {
 		t.Fatalf("newHandler() error = %v", err)
@@ -114,6 +116,7 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		url:     srv.URL,
 		client:  identityv1connect.NewIdentityServiceClient(srv.Client(), srv.URL),
 		catalog: catalogv1connect.NewCatalogAdminServiceClient(srv.Client(), srv.URL),
+		shop:    catalogv1connect.NewStorefrontServiceClient(srv.Client(), srv.URL, connect.WithHTTPGet()),
 		spans:   spans,
 		logs:    logs,
 		issuer:  issuer,
@@ -264,5 +267,22 @@ func TestAPI_ServesTheCatalog(t *testing.T) {
 	}
 	if s.findSpan("kuepreorder.catalog.v1.CatalogAdminService/ListProducts") == nil {
 		t.Error("catalog request left no span")
+	}
+}
+
+// The storefront is mounted behind the same interceptors: open to anonymous
+// callers, but a broken session still fails rather than turning anonymous.
+func TestAPI_ServesTheStorefront(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	req := connect.NewRequest(&catalogv1.ListShopProductsRequest{})
+	req.Header().Set("Authorization", "Bearer not-a-jwt")
+
+	_, err := s.shop.ListShopProducts(t.Context(), req)
+
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Errorf("ListShopProducts() code = %v, want Unauthenticated", connect.CodeOf(err))
+	}
+	if s.findSpan("kuepreorder.catalog.v1.StorefrontService/ListShopProducts") == nil {
+		t.Error("storefront request left no span")
 	}
 }

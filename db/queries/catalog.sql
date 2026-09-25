@@ -35,6 +35,26 @@ where tenant_id = sqlc.arg(tenant_id)
   and ingredient_id = any(sqlc.arg(ingredient_ids)::uuid[])
 order by ingredient_id;
 
+-- The storefront (M1.7): what is on sale. One row per active variant of an
+-- active product, so a product without an active variant has no row and is
+-- not on sale. Product and variants come from one statement, one snapshot.
+
+-- name: ShopCatalog :many
+select p.id as product_id, p.name as product_name, p.slug, p.description, p.image_path,
+       v.id as variant_id, v.name as variant_name, v.options, v.price_idr, v.min_notice_hours
+from products p
+join product_variants v on v.tenant_id = p.tenant_id and v.product_id = p.id
+where p.tenant_id = sqlc.arg(tenant_id) and p.is_active and v.is_active
+order by p.name, p.id, v.price_idr, v.name, v.id;
+
+-- name: ShopProduct :many
+select p.id as product_id, p.name as product_name, p.slug, p.description, p.image_path,
+       v.id as variant_id, v.name as variant_name, v.options, v.price_idr, v.min_notice_hours
+from products p
+join product_variants v on v.tenant_id = p.tenant_id and v.product_id = p.id
+where p.tenant_id = sqlc.arg(tenant_id) and p.slug = sqlc.arg(slug) and p.is_active and v.is_active
+order by v.price_idr, v.name, v.id;
+
 -- CMS maintenance (M1.4). Every statement is scoped by tenant_id; an update
 -- of another tenant's row matches nothing and surfaces as not found.
 -- Timestamps come from platform/clock.

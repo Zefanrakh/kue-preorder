@@ -1,6 +1,8 @@
-// Package connect serves the catalog over ConnectRPC as
-// kuepreorder.catalog.v1.CatalogAdminService. Handlers only translate between
-// protobuf and the catalog's domain types; every rule lives in catalog.Service.
+// Package connect serves the catalog over ConnectRPC: the CMS as
+// kuepreorder.catalog.v1.CatalogAdminService and the public shop as
+// kuepreorder.catalog.v1.StorefrontService. Handlers only translate between
+// protobuf and the catalog's domain types; every rule lives in catalog.Service
+// and catalog.Storefront.
 package connect
 
 import (

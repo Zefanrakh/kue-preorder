@@ -100,12 +100,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 	}
 
 	identitySvc := identity.NewService(identityRepo, tenants)
+	catalogRepo := catalogpg.NewRepository(database)
 	handler, err := newHandler(handlerDeps{
 		logger:         logger,
 		tracerProvider: tel.TracerProvider(),
 		verifier:       identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{}),
 		identity:       identitySvc,
-		catalog:        catalog.NewService(catalogpg.NewRepository(database), identitySvc, clock.Real{}),
+		catalog:        catalog.NewService(catalogRepo, identitySvc, clock.Real{}),
+		storefront:     catalog.NewStorefront(catalogRepo, tenants),
 		db:             database,
 	})
 	if err != nil {
@@ -131,6 +133,7 @@ type handlerDeps struct {
 	verifier       identityrpc.Verifier
 	identity       *identity.Service
 	catalog        *catalog.Service
+	storefront     *catalog.Storefront
 	db             httpserver.Pinger
 }
 
@@ -159,6 +162,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle("GET /readyz", httpserver.Readyz(d.db, d.logger))
 	mux.Handle(identityv1connect.NewIdentityServiceHandler(identityrpc.NewHandler(d.identity, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(d.catalog, d.logger), connectOpts...))
+	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(d.storefront, d.logger), connectOpts...))
 
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, mux)), nil
 }

@@ -1083,6 +1083,121 @@ func (q *Queries) SetVariantPrice(ctx context.Context, arg SetVariantPriceParams
 	return i, err
 }
 
+const shopCatalog = `-- name: ShopCatalog :many
+
+select p.id as product_id, p.name as product_name, p.slug, p.description, p.image_path,
+       v.id as variant_id, v.name as variant_name, v.options, v.price_idr, v.min_notice_hours
+from products p
+join product_variants v on v.tenant_id = p.tenant_id and v.product_id = p.id
+where p.tenant_id = $1 and p.is_active and v.is_active
+order by p.name, p.id, v.price_idr, v.name, v.id
+`
+
+type ShopCatalogRow struct {
+	ProductID      uuid.UUID
+	ProductName    string
+	Slug           string
+	Description    string
+	ImagePath      *string
+	VariantID      uuid.UUID
+	VariantName    string
+	Options        []byte
+	PriceIdr       int64
+	MinNoticeHours int32
+}
+
+// The storefront (M1.7): what is on sale. One row per active variant of an
+// active product, so a product without an active variant has no row and is
+// not on sale. Product and variants come from one statement, one snapshot.
+func (q *Queries) ShopCatalog(ctx context.Context, tenantID uuid.UUID) ([]ShopCatalogRow, error) {
+	rows, err := q.db.Query(ctx, shopCatalog, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ShopCatalogRow{}
+	for rows.Next() {
+		var i ShopCatalogRow
+		if err := rows.Scan(
+			&i.ProductID,
+			&i.ProductName,
+			&i.Slug,
+			&i.Description,
+			&i.ImagePath,
+			&i.VariantID,
+			&i.VariantName,
+			&i.Options,
+			&i.PriceIdr,
+			&i.MinNoticeHours,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const shopProduct = `-- name: ShopProduct :many
+select p.id as product_id, p.name as product_name, p.slug, p.description, p.image_path,
+       v.id as variant_id, v.name as variant_name, v.options, v.price_idr, v.min_notice_hours
+from products p
+join product_variants v on v.tenant_id = p.tenant_id and v.product_id = p.id
+where p.tenant_id = $1 and p.slug = $2 and p.is_active and v.is_active
+order by v.price_idr, v.name, v.id
+`
+
+type ShopProductParams struct {
+	TenantID uuid.UUID
+	Slug     string
+}
+
+type ShopProductRow struct {
+	ProductID      uuid.UUID
+	ProductName    string
+	Slug           string
+	Description    string
+	ImagePath      *string
+	VariantID      uuid.UUID
+	VariantName    string
+	Options        []byte
+	PriceIdr       int64
+	MinNoticeHours int32
+}
+
+func (q *Queries) ShopProduct(ctx context.Context, arg ShopProductParams) ([]ShopProductRow, error) {
+	rows, err := q.db.Query(ctx, shopProduct, arg.TenantID, arg.Slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ShopProductRow{}
+	for rows.Next() {
+		var i ShopProductRow
+		if err := rows.Scan(
+			&i.ProductID,
+			&i.ProductName,
+			&i.Slug,
+			&i.Description,
+			&i.ImagePath,
+			&i.VariantID,
+			&i.VariantName,
+			&i.Options,
+			&i.PriceIdr,
+			&i.MinNoticeHours,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateComponent = `-- name: UpdateComponent :one
 update components
 set name = $1, unit_label = $2, updated_at = $3
