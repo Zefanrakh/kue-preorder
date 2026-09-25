@@ -15,9 +15,12 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -50,7 +53,7 @@ func Main(m *testing.M) {
 
 func run(m *testing.M) int {
 	ctx := context.Background()
-	ctr, err := postgres.Run(ctx, image, postgres.BasicWaitStrategies())
+	ctr, err := startPostgres(ctx)
 	defer func() {
 		if err := testcontainers.TerminateContainer(ctr); err != nil {
 			fmt.Fprintf(os.Stderr, "dbtest: remove postgres container: %v\n", err)
@@ -69,7 +72,7 @@ func run(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "dbtest: parse connection string: %v\n", err)
 		return 1
 	}
-	if err := exec(ctx, "create database "+pgx.Identifier{templateName}.Sanitize()); err != nil {
+	if err := execSQL(ctx, "create database "+pgx.Identifier{templateName}.Sanitize()); err != nil {
 		fmt.Fprintf(os.Stderr, "dbtest: create template database: %v\n", err)
 		return 1
 	}
@@ -78,6 +81,42 @@ func run(m *testing.M) int {
 		return 1
 	}
 	return m.Run()
+}
+
+// startAttempts bounds retries of the container start, a second line of
+// defence behind pinDockerHost.
+const startAttempts = 3
+
+func startPostgres(ctx context.Context) (*postgres.PostgresContainer, error) {
+	pinDockerHost(ctx)
+	for attempt := 1; ; attempt++ {
+		ctr, err := postgres.Run(ctx, image, postgres.BasicWaitStrategies())
+		if err == nil || attempt == startAttempts {
+			return ctr, err
+		}
+		_ = testcontainers.TerminateContainer(ctr)
+		fmt.Fprintf(os.Stderr, "dbtest: start postgres, attempt %d of %d: %v; retrying\n", attempt, startAttempts, err)
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
+}
+
+// pinDockerHost points testcontainers at the Docker CLI's current context on
+// Windows. Left to itself, testcontainers probes for Docker, and when several
+// test packages start containers at once that probe sometimes fails and falls
+// through to a "rootless Docker" strategy Windows does not support. Measured
+// on Docker Desktop: 1 of 3 full integration runs failed without a pinned
+// host, 0 of 3 with it. An explicit DOCKER_HOST is left alone.
+func pinDockerHost(ctx context.Context) {
+	if runtime.GOOS != "windows" || os.Getenv("DOCKER_HOST") != "" {
+		return
+	}
+	out, err := exec.CommandContext(ctx, "docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}").Output()
+	if err != nil {
+		return // no docker CLI: keep testcontainers' own detection
+	}
+	if host := strings.TrimSpace(string(out)); host != "" {
+		_ = os.Setenv("DOCKER_HOST", host)
+	}
 }
 
 // New returns a pool on a fresh database migrated to the latest version. The
@@ -120,22 +159,22 @@ func createDatabase(t *testing.T, template string) string {
 	ident := pgx.Identifier{name}.Sanitize()
 
 	createMu.Lock()
-	err := exec(t.Context(), "create database "+ident+" template "+pgx.Identifier{template}.Sanitize())
+	err := execSQL(t.Context(), "create database "+ident+" template "+pgx.Identifier{template}.Sanitize())
 	createMu.Unlock()
 	if err != nil {
 		t.Fatalf("dbtest: create database: %v", err)
 	}
 	t.Cleanup(func() {
 		// t.Context() is already cancelled when cleanups run.
-		if err := exec(context.WithoutCancel(t.Context()), "drop database if exists "+ident+" with (force)"); err != nil {
+		if err := execSQL(context.WithoutCancel(t.Context()), "drop database if exists "+ident+" with (force)"); err != nil {
 			t.Errorf("dbtest: drop database %s: %v", name, err)
 		}
 	})
 	return name
 }
 
-// exec runs one statement on the maintenance database.
-func exec(ctx context.Context, sql string) error {
+// execSQL runs one statement on the maintenance database.
+func execSQL(ctx context.Context, sql string) error {
 	conn, err := pgx.Connect(ctx, serverURL.String())
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
