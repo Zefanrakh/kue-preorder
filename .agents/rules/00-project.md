@@ -54,7 +54,7 @@ di commit yang sama.
 **Pembayaran dan order**
 - Tidak ada COD/tempo. `in_production`, `out_for_delivery`, `completed` wajib `paid_in_full`.
 - Order masuk agregasi sejak `confirmed` (DP terbayar).
-- Transisi status hanya lewat fungsi domain (`order.Transition`) yang menolak transisi ilegal.
+- Transisi status hanya lewat fungsi domain (`orders.Transition`) yang menolak transisi ilegal.
 - DP dan tenggat pelunasan dikunci saat checkout.
 
 **Integrasi**
