@@ -260,9 +260,11 @@ var uniqueFields = map[string][2]string{
 // foreignFields names the field whose referenced record is missing from the
 // tenant, which is how another tenant's id looks from here.
 var foreignFields = map[string][2]string{
-	"product_variants_tenant_id_product_id_fkey":        {"product_id", "Produk tidak ditemukan."},
-	"ingredient_suppliers_tenant_id_ingredient_id_fkey": {"ingredient_id", "Bahan tidak ditemukan."},
-	"ingredient_suppliers_tenant_id_supplier_id_fkey":   {"supplier_id", "Supplier tidak ditemukan."},
+	"product_variants_tenant_id_product_id_fkey":         {"product_id", "Produk tidak ditemukan."},
+	"ingredient_suppliers_tenant_id_ingredient_id_fkey":  {"ingredient_id", "Bahan tidak ditemukan."},
+	"ingredient_suppliers_tenant_id_supplier_id_fkey":    {"supplier_id", "Supplier tidak ditemukan."},
+	"variant_components_tenant_id_component_id_fkey":     {"components", "Komponen tidak ditemukan."},
+	"component_ingredients_tenant_id_ingredient_id_fkey": {"ingredient_id", "Bahan tidak ditemukan."},
 }
 
 // mapErr turns database errors into catalog errors: no row is ErrNotFound,
@@ -306,11 +308,7 @@ func mapRows[R, T any](rows []R, err error, to func(R) T) ([]T, error) {
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	out := make([]T, len(rows))
-	for i, row := range rows {
-		out[i] = to(row)
-	}
-	return out, nil
+	return mapSlice(rows, to), nil
 }
 
 // optional stores an empty string as NULL.

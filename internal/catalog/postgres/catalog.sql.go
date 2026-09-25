@@ -374,6 +374,43 @@ func (q *Queries) DefaultPacks(ctx context.Context, arg DefaultPacksParams) ([]D
 	return items, nil
 }
 
+const deleteRecipeLine = `-- name: DeleteRecipeLine :execrows
+delete from component_ingredients
+where tenant_id = $1 and component_id = $2
+  and ingredient_id = $3
+`
+
+type DeleteRecipeLineParams struct {
+	TenantID     uuid.UUID
+	ComponentID  uuid.UUID
+	IngredientID uuid.UUID
+}
+
+func (q *Queries) DeleteRecipeLine(ctx context.Context, arg DeleteRecipeLineParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRecipeLine, arg.TenantID, arg.ComponentID, arg.IngredientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteVariantComponentsExcept = `-- name: DeleteVariantComponentsExcept :exec
+delete from variant_components
+where tenant_id = $1 and variant_id = $2
+  and not (component_id = any($3::uuid[]))
+`
+
+type DeleteVariantComponentsExceptParams struct {
+	TenantID  uuid.UUID
+	VariantID uuid.UUID
+	Keep      []uuid.UUID
+}
+
+func (q *Queries) DeleteVariantComponentsExcept(ctx context.Context, arg DeleteVariantComponentsExceptParams) error {
+	_, err := q.db.Exec(ctx, deleteVariantComponentsExcept, arg.TenantID, arg.VariantID, arg.Keep)
+	return err
+}
+
 const getPack = `-- name: GetPack :one
 select id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at from ingredient_suppliers
 where tenant_id = $1 and id = $2
@@ -397,6 +434,37 @@ func (q *Queries) GetPack(ctx context.Context, arg GetPackParams) (IngredientSup
 		&i.PackUnit,
 		&i.PriceIdr,
 		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRecipeLine = `-- name: GetRecipeLine :one
+select id, tenant_id, component_id, ingredient_id, model_type, params, measured_points, waste_factor, version, created_at, updated_at from component_ingredients
+where tenant_id = $1 and component_id = $2
+  and ingredient_id = $3
+`
+
+type GetRecipeLineParams struct {
+	TenantID     uuid.UUID
+	ComponentID  uuid.UUID
+	IngredientID uuid.UUID
+}
+
+func (q *Queries) GetRecipeLine(ctx context.Context, arg GetRecipeLineParams) (ComponentIngredient, error) {
+	row := q.db.QueryRow(ctx, getRecipeLine, arg.TenantID, arg.ComponentID, arg.IngredientID)
+	var i ComponentIngredient
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ComponentID,
+		&i.IngredientID,
+		&i.ModelType,
+		&i.Params,
+		&i.MeasuredPoints,
+		&i.WasteFactor,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -491,6 +559,53 @@ func (q *Queries) IngredientsOfComponents(ctx context.Context, arg IngredientsOf
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertRecipeLine = `-- name: InsertRecipeLine :one
+insert into component_ingredients (tenant_id, component_id, ingredient_id, model_type, params,
+                                   measured_points, waste_factor, version, created_at, updated_at)
+values ($1, $2, $3, $4,
+        $5, $6, $7, 1, $8, $8)
+returning id, tenant_id, component_id, ingredient_id, model_type, params, measured_points, waste_factor, version, created_at, updated_at
+`
+
+type InsertRecipeLineParams struct {
+	TenantID       uuid.UUID
+	ComponentID    uuid.UUID
+	IngredientID   uuid.UUID
+	ModelType      string
+	Params         []byte
+	MeasuredPoints []byte
+	WasteFactor    float64
+	Now            time.Time
+}
+
+func (q *Queries) InsertRecipeLine(ctx context.Context, arg InsertRecipeLineParams) (ComponentIngredient, error) {
+	row := q.db.QueryRow(ctx, insertRecipeLine,
+		arg.TenantID,
+		arg.ComponentID,
+		arg.IngredientID,
+		arg.ModelType,
+		arg.Params,
+		arg.MeasuredPoints,
+		arg.WasteFactor,
+		arg.Now,
+	)
+	var i ComponentIngredient
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ComponentID,
+		&i.IngredientID,
+		&i.ModelType,
+		&i.Params,
+		&i.MeasuredPoints,
+		&i.WasteFactor,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listComponents = `-- name: ListComponents :many
@@ -646,6 +761,49 @@ func (q *Queries) ListProducts(ctx context.Context, tenantID uuid.UUID) ([]Produ
 	return items, nil
 }
 
+const listRecipeLines = `-- name: ListRecipeLines :many
+select id, tenant_id, component_id, ingredient_id, model_type, params, measured_points, waste_factor, version, created_at, updated_at from component_ingredients
+where tenant_id = $1 and component_id = $2
+order by ingredient_id
+`
+
+type ListRecipeLinesParams struct {
+	TenantID    uuid.UUID
+	ComponentID uuid.UUID
+}
+
+func (q *Queries) ListRecipeLines(ctx context.Context, arg ListRecipeLinesParams) ([]ComponentIngredient, error) {
+	rows, err := q.db.Query(ctx, listRecipeLines, arg.TenantID, arg.ComponentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ComponentIngredient{}
+	for rows.Next() {
+		var i ComponentIngredient
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ComponentID,
+			&i.IngredientID,
+			&i.ModelType,
+			&i.Params,
+			&i.MeasuredPoints,
+			&i.WasteFactor,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSuppliers = `-- name: ListSuppliers :many
 select id, tenant_id, name, whatsapp_phone, adapter_key, created_at, updated_at from suppliers
 where tenant_id = $1
@@ -670,6 +828,42 @@ func (q *Queries) ListSuppliers(ctx context.Context, tenantID uuid.UUID) ([]Supp
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVariantComponents = `-- name: ListVariantComponents :many
+select component_id, units_per_item from variant_components
+where tenant_id = $1 and variant_id = $2
+order by component_id
+`
+
+type ListVariantComponentsParams struct {
+	TenantID  uuid.UUID
+	VariantID uuid.UUID
+}
+
+type ListVariantComponentsRow struct {
+	ComponentID  uuid.UUID
+	UnitsPerItem float64
+}
+
+func (q *Queries) ListVariantComponents(ctx context.Context, arg ListVariantComponentsParams) ([]ListVariantComponentsRow, error) {
+	rows, err := q.db.Query(ctx, listVariantComponents, arg.TenantID, arg.VariantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVariantComponentsRow{}
+	for rows.Next() {
+		var i ListVariantComponentsRow
+		if err := rows.Scan(&i.ComponentID, &i.UnitsPerItem); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -724,6 +918,45 @@ func (q *Queries) ListVariants(ctx context.Context, arg ListVariantsParams) ([]P
 	return items, nil
 }
 
+const lockComponent = `-- name: LockComponent :one
+select id from components
+where tenant_id = $1 and id = $2
+for update
+`
+
+type LockComponentParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) LockComponent(ctx context.Context, arg LockComponentParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockComponent, arg.TenantID, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockVariant = `-- name: LockVariant :one
+
+select id from product_variants
+where tenant_id = $1 and id = $2
+for update
+`
+
+type LockVariantParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// Recipes (M1.5). Writers lock the parent row (variant or component) first,
+// so two edits of one recipe run one after the other.
+func (q *Queries) LockVariant(ctx context.Context, arg LockVariantParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockVariant, arg.TenantID, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockVariantPrice = `-- name: LockVariantPrice :one
 select price_idr from product_variants
 where tenant_id = $1 and id = $2
@@ -774,6 +1007,41 @@ func (q *Queries) MarkDefaultPack(ctx context.Context, arg MarkDefaultPackParams
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const recipeLineDiffers = `-- name: RecipeLineDiffers :one
+select (model_type, params, measured_points, waste_factor)
+       is distinct from ($1::text, $2::jsonb,
+                         $3::jsonb, $4::numeric)
+from component_ingredients
+where tenant_id = $5 and component_id = $6
+  and ingredient_id = $7
+`
+
+type RecipeLineDiffersParams struct {
+	ModelType      string
+	Params         []byte
+	MeasuredPoints []byte
+	WasteFactor    float64
+	TenantID       uuid.UUID
+	ComponentID    uuid.UUID
+	IngredientID   uuid.UUID
+}
+
+// Compares as jsonb and numeric, so formatting differences are not changes.
+func (q *Queries) RecipeLineDiffers(ctx context.Context, arg RecipeLineDiffersParams) (bool, error) {
+	row := q.db.QueryRow(ctx, recipeLineDiffers,
+		arg.ModelType,
+		arg.Params,
+		arg.MeasuredPoints,
+		arg.WasteFactor,
+		arg.TenantID,
+		arg.ComponentID,
+		arg.IngredientID,
+	)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const setVariantPrice = `-- name: SetVariantPrice :one
@@ -989,6 +1257,54 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 	return i, err
 }
 
+const updateRecipeLine = `-- name: UpdateRecipeLine :one
+update component_ingredients
+set model_type = $1, params = $2, measured_points = $3,
+    waste_factor = $4, version = version + 1, updated_at = $5
+where tenant_id = $6 and component_id = $7
+  and ingredient_id = $8
+returning id, tenant_id, component_id, ingredient_id, model_type, params, measured_points, waste_factor, version, created_at, updated_at
+`
+
+type UpdateRecipeLineParams struct {
+	ModelType      string
+	Params         []byte
+	MeasuredPoints []byte
+	WasteFactor    float64
+	Now            time.Time
+	TenantID       uuid.UUID
+	ComponentID    uuid.UUID
+	IngredientID   uuid.UUID
+}
+
+func (q *Queries) UpdateRecipeLine(ctx context.Context, arg UpdateRecipeLineParams) (ComponentIngredient, error) {
+	row := q.db.QueryRow(ctx, updateRecipeLine,
+		arg.ModelType,
+		arg.Params,
+		arg.MeasuredPoints,
+		arg.WasteFactor,
+		arg.Now,
+		arg.TenantID,
+		arg.ComponentID,
+		arg.IngredientID,
+	)
+	var i ComponentIngredient
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ComponentID,
+		&i.IngredientID,
+		&i.ModelType,
+		&i.Params,
+		&i.MeasuredPoints,
+		&i.WasteFactor,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateSupplier = `-- name: UpdateSupplier :one
 update suppliers
 set name = $1, whatsapp_phone = $2,
@@ -1079,4 +1395,81 @@ func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (P
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertVariantComponent = `-- name: UpsertVariantComponent :exec
+insert into variant_components (tenant_id, variant_id, component_id, units_per_item, created_at, updated_at)
+values ($1, $2, $3, $4, $5, $5)
+on conflict (variant_id, component_id) do update
+set units_per_item = excluded.units_per_item, updated_at = excluded.updated_at
+`
+
+type UpsertVariantComponentParams struct {
+	TenantID     uuid.UUID
+	VariantID    uuid.UUID
+	ComponentID  uuid.UUID
+	UnitsPerItem float64
+	Now          time.Time
+}
+
+func (q *Queries) UpsertVariantComponent(ctx context.Context, arg UpsertVariantComponentParams) error {
+	_, err := q.db.Exec(ctx, upsertVariantComponent,
+		arg.TenantID,
+		arg.VariantID,
+		arg.ComponentID,
+		arg.UnitsPerItem,
+		arg.Now,
+	)
+	return err
+}
+
+const variantsByIDs = `-- name: VariantsByIDs :many
+select id, product_id, name, price_idr, production_minutes, min_notice_hours, is_active
+from product_variants
+where tenant_id = $1 and id = any($2::uuid[])
+order by id
+`
+
+type VariantsByIDsParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+}
+
+type VariantsByIDsRow struct {
+	ID                uuid.UUID
+	ProductID         uuid.UUID
+	Name              string
+	PriceIdr          int64
+	ProductionMinutes int32
+	MinNoticeHours    int32
+	IsActive          bool
+}
+
+// For checkout (M2): what an order needs to price and schedule a variant.
+func (q *Queries) VariantsByIDs(ctx context.Context, arg VariantsByIDsParams) ([]VariantsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, variantsByIDs, arg.TenantID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []VariantsByIDsRow{}
+	for rows.Next() {
+		var i VariantsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Name,
+			&i.PriceIdr,
+			&i.ProductionMinutes,
+			&i.MinNoticeHours,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

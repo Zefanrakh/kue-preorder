@@ -185,3 +185,78 @@ update ingredient_suppliers
 set is_default = true, updated_at = sqlc.arg(now)
 where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id)
 returning *;
+
+-- Recipes (M1.5). Writers lock the parent row (variant or component) first,
+-- so two edits of one recipe run one after the other.
+
+-- name: LockVariant :one
+select id from product_variants
+where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id)
+for update;
+
+-- name: ListVariantComponents :many
+select component_id, units_per_item from variant_components
+where tenant_id = sqlc.arg(tenant_id) and variant_id = sqlc.arg(variant_id)
+order by component_id;
+
+-- name: DeleteVariantComponentsExcept :exec
+delete from variant_components
+where tenant_id = sqlc.arg(tenant_id) and variant_id = sqlc.arg(variant_id)
+  and not (component_id = any(sqlc.arg(keep)::uuid[]));
+
+-- name: UpsertVariantComponent :exec
+insert into variant_components (tenant_id, variant_id, component_id, units_per_item, created_at, updated_at)
+values (sqlc.arg(tenant_id), sqlc.arg(variant_id), sqlc.arg(component_id), sqlc.arg(units_per_item), sqlc.arg(now), sqlc.arg(now))
+on conflict (variant_id, component_id) do update
+set units_per_item = excluded.units_per_item, updated_at = excluded.updated_at;
+
+-- name: LockComponent :one
+select id from components
+where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id)
+for update;
+
+-- name: ListRecipeLines :many
+select * from component_ingredients
+where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
+order by ingredient_id;
+
+-- name: GetRecipeLine :one
+select * from component_ingredients
+where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
+  and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: RecipeLineDiffers :one
+-- Compares as jsonb and numeric, so formatting differences are not changes.
+select (model_type, params, measured_points, waste_factor)
+       is distinct from (sqlc.arg(model_type)::text, sqlc.arg(params)::jsonb,
+                         sqlc.arg(measured_points)::jsonb, sqlc.arg(waste_factor)::numeric)
+from component_ingredients
+where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
+  and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: InsertRecipeLine :one
+insert into component_ingredients (tenant_id, component_id, ingredient_id, model_type, params,
+                                   measured_points, waste_factor, version, created_at, updated_at)
+values (sqlc.arg(tenant_id), sqlc.arg(component_id), sqlc.arg(ingredient_id), sqlc.arg(model_type),
+        sqlc.arg(params), sqlc.arg(measured_points), sqlc.arg(waste_factor), 1, sqlc.arg(now), sqlc.arg(now))
+returning *;
+
+-- name: UpdateRecipeLine :one
+update component_ingredients
+set model_type = sqlc.arg(model_type), params = sqlc.arg(params), measured_points = sqlc.arg(measured_points),
+    waste_factor = sqlc.arg(waste_factor), version = version + 1, updated_at = sqlc.arg(now)
+where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
+  and ingredient_id = sqlc.arg(ingredient_id)
+returning *;
+
+-- name: DeleteRecipeLine :execrows
+delete from component_ingredients
+where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
+  and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: VariantsByIDs :many
+-- For checkout (M2): what an order needs to price and schedule a variant.
+select id, product_id, name, price_idr, production_minutes, min_notice_hours, is_active
+from product_variants
+where tenant_id = sqlc.arg(tenant_id) and id = any(sqlc.arg(ids)::uuid[])
+order by id;

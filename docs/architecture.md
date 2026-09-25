@@ -158,7 +158,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 | Modul | Tanggung jawab | Port yang diekspos |
 |---|---|---|
 | `identity` | Verifikasi JWT Supabase, data `customers`, resolusi `tenant_id` | `CustomerService`, `TenantResolver` |
-| `catalog` | Produk, varian, komponen, bahan, supplier, resep non-linear | `CatalogService` |
+| `catalog` | Produk, varian, komponen, bahan, supplier, resep non-linear | `Service` (CMS, dengan otorisasi), `Reader` (baca in-process untuk checkout dan agregasi, per tenant, tanpa peran) |
 | `recipe` | Hitung kebutuhan bahan per komponen dari model | `Model` (murni) |
 | `inventory` | Lot stok, ledger, cek stok harian, pencatatan bahan dibuang | `InventoryService` |
 | `orders` | Lifecycle order, jadwal ulang massal | `OrderService` |
@@ -306,6 +306,13 @@ Aturan skema (migrasi `00003_catalog.sql`):
 - **Paling banyak satu kemasan default per bahan** (indeks unik parsial `where is_default`): itulah kemasan yang dipakai pembulatan daftar belanja.
 - Setiap tabel katalog punya `created_at` dan `updated_at`.
 - Query baca untuk agregasi (`ComponentsOfVariants`, `IngredientsOfComponents`, `DefaultPacks`) selalu di-scope `tenant_id` dan berurutan deterministik. Varian yang dinonaktifkan tetap ikut, karena order yang masuk sebelumnya tetap harus diproduksi.
+
+Aturan menyimpan resep (M1.5):
+- **Baris resep hanya tersimpan setelah lolos `recipe.Build` + `recipe.Validate`.** Bisa diisi dari model langsung (`model_type` + `params`) atau dari titik ukur (`model_type` + titik; di-fit oleh engine, titik mentah ikut tersimpan di `measured_points`). `params` disimpan dalam bentuk kanonik `recipe.Params`.
+- **`version` naik hanya pada perubahan nyata.** Perbandingan memakai `jsonb` dan `numeric`, jadi menyimpan resep yang sama dengan penulisan berbeda (urutan kunci, `100` vs `100.0`) tidak dihitung perubahan.
+- **Komposisi varian diganti utuh dalam satu transaksi** (`SetVariantComponents`); kalau satu komponen gagal, semua batal, termasuk penghapusan.
+- **Setiap perubahan resep menulis event `catalog.recipe_changed` ke `outbox` di transaksi yang sama**: aggregate `variant` untuk komposisi varian, `component` untuk baris resep (termasuk penghapusan). Simpan ulang tanpa perubahan tidak menulis event. Penulisan resep mengunci baris varian atau komponennya, jadi dua edit resep yang sama berjalan bergantian.
+- `catalog.Reader` merakit baris resep menjadi `recipe.Model` lengkap dengan `waste_factor` dan aturan pembulatan satuannya. Baris yang tidak bisa dirakit menghasilkan `ErrBrokenRecipe` yang menyebut komponen dan bahannya (§11: sistem tidak menebak).
 
 ### 9.4 Stok (ledger)
 
@@ -811,7 +818,7 @@ type Adapter interface {
 
 | Job | Pemicu | Cara aman diulang |
 |---|---|---|
-| `recompute-batch` | order confirmed/berubah/batal, jadwal ulang, resep berubah, bahan dibuang | Hitung ulang deterministik |
+| `recompute-batch` | order confirmed/berubah/batal, jadwal ulang, resep berubah (event outbox `catalog.recipe_changed`), bahan dibuang | Hitung ulang deterministik |
 | `lock-batch` | cutoff belanja per batch | No-op kalau sudah terkunci |
 | `stock-check-reminder` | beberapa jam sebelum cutoff | Satu pengingat per batch |
 | `expire-lots` | harian | Tandai lot kedaluwarsa, idempoten |

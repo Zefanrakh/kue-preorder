@@ -19,6 +19,20 @@ type Component struct {
 	UpdatedAt time.Time
 }
 
+type ComponentIngredient struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	ComponentID    uuid.UUID
+	IngredientID   uuid.UUID
+	ModelType      string
+	Params         []byte
+	MeasuredPoints []byte
+	WasteFactor    float64
+	Version        int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type Ingredient struct {
 	ID             uuid.UUID
 	TenantID       uuid.UUID
