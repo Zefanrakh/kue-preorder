@@ -69,13 +69,13 @@ func (r *Repository) ListVariants(ctx context.Context, tenantID, productID uuid.
 }
 
 // CreateVariant implements catalog.Repository.
-func (r *Repository) CreateVariant(ctx context.Context, tenantID uuid.UUID, in catalog.VariantInput, priceIDR int64, at time.Time) (catalog.Variant, error) {
+func (r *Repository) CreateVariant(ctx context.Context, tenantID, productID uuid.UUID, in catalog.VariantInput, priceIDR int64, at time.Time) (catalog.Variant, error) {
 	options, err := json.Marshal(in.Options)
 	if err != nil {
 		return catalog.Variant{}, fmt.Errorf("encode variant options: %w", err)
 	}
 	row, err := r.q.CreateVariant(ctx, CreateVariantParams{
-		TenantID: tenantID, ProductID: in.ProductID, Sku: in.SKU, Name: in.Name, Options: options,
+		TenantID: tenantID, ProductID: productID, Sku: in.SKU, Name: in.Name, Options: options,
 		PriceIdr: priceIDR, ProductionMinutes: in.ProductionMinutes, MinNoticeHours: in.MinNoticeHours,
 		IsActive: in.Active, Now: at,
 	})
@@ -208,9 +208,9 @@ func (r *Repository) ListPacks(ctx context.Context, tenantID, ingredientID uuid.
 }
 
 // CreatePack implements catalog.Repository.
-func (r *Repository) CreatePack(ctx context.Context, tenantID uuid.UUID, in catalog.PackInput, at time.Time) (catalog.Pack, error) {
+func (r *Repository) CreatePack(ctx context.Context, tenantID, ingredientID uuid.UUID, in catalog.PackInput, at time.Time) (catalog.Pack, error) {
 	row, err := r.q.CreatePack(ctx, CreatePackParams{
-		TenantID: tenantID, IngredientID: in.IngredientID, SupplierID: in.SupplierID, SupplierSku: optional(in.SupplierSKU),
+		TenantID: tenantID, IngredientID: ingredientID, SupplierID: in.SupplierID, SupplierSku: optional(in.SupplierSKU),
 		PackSize: in.Size, PackUnit: in.Unit, PriceIdr: in.PriceIDR, Now: at,
 	})
 	return mapRow(row, err, toPack)

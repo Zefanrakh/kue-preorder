@@ -77,6 +77,7 @@ func (in RecipeLineInput) resolve(componentID, ingredientID uuid.UUID) (RecipeLi
 		waste = 1
 	}
 	f.check(isFinite(waste) && waste >= 1, "waste_factor", "Faktor susut minimal 1, misalnya 1,05 untuk susut 5%.")
+	f.check(len(in.Points) <= recipe.MaxPoints, "points", "Paling banyak 100 titik ukur.")
 	for _, p := range in.Points {
 		f.check(isFinite(p.U) && isFinite(p.Amount) && p.U > 0 && p.Amount >= 0, "points", "Setiap titik ukur butuh jumlah unit > 0 dan jumlah bahan >= 0.")
 	}
@@ -88,11 +89,11 @@ func (in RecipeLineInput) resolve(componentID, ingredientID uuid.UUID) (RecipeLi
 		if err == nil {
 			err = recipe.Validate(m)
 		}
-		f.check(err == nil, "params", engineMessage(err))
+		f.check(err == nil, "params", ExplainRecipeError(err))
 		model = m
 	case len(in.Points) > 0:
 		m, err := fit(in.ModelType, in.Points)
-		f.check(err == nil, "points", engineMessage(err))
+		f.check(err == nil, "points", ExplainRecipeError(err))
 		model = m
 	default:
 		f.check(false, "params", "Isi parameter resep atau titik ukur.")
@@ -128,9 +129,9 @@ func fit(t recipe.ModelType, points []recipe.Point) (recipe.Model, error) {
 
 var errNotFittable = errors.New("only affine, power, and piecewise models can be fitted")
 
-// engineMessage explains a recipe engine error to the person editing, with
-// the engine's own detail after it.
-func engineMessage(err error) string {
+// ExplainRecipeError explains a recipe engine error to the person editing,
+// in Indonesian, with the engine's own detail after it.
+func ExplainRecipeError(err error) string {
 	var msg string
 	switch {
 	case err == nil:

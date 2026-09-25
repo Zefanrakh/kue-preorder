@@ -1,0 +1,499 @@
+syntax = "proto3";
+
+package kuepreorder.catalog.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// CatalogAdminService is the catalog for the CMS: what the shop sells, what
+// it is made of, and the recipes between them (docs/architecture.md §9.3,
+// §10). Every call needs a Supabase access token of a staff member. Owners
+// manage products, variants, prices, suppliers, and packs; owners and the
+// kitchen manage components, ingredients, and recipes; all staff read (§8).
+//
+// Errors: InvalidArgument and AlreadyExists carry a
+// kuepreorder.validation.v1.FieldErrors detail naming the fields to fix.
+// NotFound covers records of other tenants too. PermissionDenied means the
+// caller's role may not do this; Unauthenticated means no valid token.
+// Money is int64 rupiah. IDs are UUID strings.
+service CatalogAdminService {
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
+  rpc UpdateProduct(UpdateProductRequest) returns (UpdateProductResponse);
+
+  rpc ListVariants(ListVariantsRequest) returns (ListVariantsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreateVariant(CreateVariantRequest) returns (CreateVariantResponse);
+  // UpdateVariant changes everything but the product and the price.
+  rpc UpdateVariant(UpdateVariantRequest) returns (UpdateVariantResponse);
+  // ChangeVariantPrice is the only way to change a price. It needs a reason
+  // and is audited: who, when, from what, to what, and why (§22).
+  rpc ChangeVariantPrice(ChangeVariantPriceRequest) returns (ChangeVariantPriceResponse);
+
+  rpc ListComponents(ListComponentsRequest) returns (ListComponentsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreateComponent(CreateComponentRequest) returns (CreateComponentResponse);
+  rpc UpdateComponent(UpdateComponentRequest) returns (UpdateComponentResponse);
+
+  rpc ListIngredients(ListIngredientsRequest) returns (ListIngredientsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreateIngredient(CreateIngredientRequest) returns (CreateIngredientResponse);
+  rpc UpdateIngredient(UpdateIngredientRequest) returns (UpdateIngredientResponse);
+
+  rpc ListSuppliers(ListSuppliersRequest) returns (ListSuppliersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreateSupplier(CreateSupplierRequest) returns (CreateSupplierResponse);
+  rpc UpdateSupplier(UpdateSupplierRequest) returns (UpdateSupplierResponse);
+
+  // ListPacks lists how an ingredient is sold, the default pack first.
+  rpc ListPacks(ListPacksRequest) returns (ListPacksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc CreatePack(CreatePackRequest) returns (CreatePackResponse);
+  rpc UpdatePack(UpdatePackRequest) returns (UpdatePackResponse);
+  // SetDefaultPack makes a pack the one the shopping list rounds to.
+  rpc SetDefaultPack(SetDefaultPackRequest) returns (SetDefaultPackResponse);
+
+  rpc ListVariantComponents(ListVariantComponentsRequest) returns (ListVariantComponentsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // SetVariantComponents replaces all components of a variant at once.
+  rpc SetVariantComponents(SetVariantComponentsRequest) returns (SetVariantComponentsResponse);
+
+  rpc ListRecipeLines(ListRecipeLinesRequest) returns (ListRecipeLinesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // SetRecipeLine creates or replaces how much of an ingredient a component
+  // needs, from params or from measured points. The recipe engine checks it
+  // first; a bad formula is InvalidArgument on params_json or points.
+  rpc SetRecipeLine(SetRecipeLineRequest) returns (SetRecipeLineResponse);
+  rpc RemoveRecipeLine(RemoveRecipeLineRequest) returns (RemoveRecipeLineResponse);
+  // FitPreview fits every fittable model to measured points for a chart,
+  // without saving anything.
+  rpc FitPreview(FitPreviewRequest) returns (FitPreviewResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  // Supabase Storage path of the photo; empty when there is none.
+  string image_path = 5;
+  bool active = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message Variant {
+  string id = 1;
+  string product_id = 2;
+  string sku = 3;
+  string name = 4;
+  // For example {"rasa": "coklat"} or {"ukuran": "20x20"}.
+  map<string, string> options = 5;
+  int64 price_idr = 6;
+  // 1 to 240.
+  int32 production_minutes = 7;
+  // Order to pickup, shopping time included (§15).
+  int32 min_notice_hours = 8;
+  bool active = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message Component {
+  string id = 1;
+  string name = 2;
+  // "porsi", "loyang", "pcs".
+  string unit_label = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+// BaseUnit is the unit an ingredient is weighed or counted in. Amounts of
+// pieces round up; grams and millilitres round to the nearest (§10).
+enum BaseUnit {
+  BASE_UNIT_UNSPECIFIED = 0;
+  BASE_UNIT_GRAM = 1;
+  BASE_UNIT_MILLILITRE = 2;
+  BASE_UNIT_PIECE = 3;
+}
+
+// LeftoverPolicy says whether leftovers count as stock (§12).
+enum LeftoverPolicy {
+  // On create and update: auto, or confirm for a perishable ingredient.
+  LEFTOVER_POLICY_UNSPECIFIED = 0;
+  LEFTOVER_POLICY_AUTO = 1;
+  LEFTOVER_POLICY_CONFIRM = 2;
+  LEFTOVER_POLICY_NEVER = 3;
+}
+
+message Ingredient {
+  string id = 1;
+  string name = 2;
+  BaseUnit base_unit = 3;
+  bool perishable = 4;
+  // Days a received lot stays usable; unset when unknown.
+  optional int32 shelf_life_days = 5;
+  LeftoverPolicy leftover_policy = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// ProcurementAdapter says how purchase orders reach a supplier (§19).
+enum ProcurementAdapter {
+  // On create and update: manual.
+  PROCUREMENT_ADAPTER_UNSPECIFIED = 0;
+  PROCUREMENT_ADAPTER_MANUAL = 1;
+  PROCUREMENT_ADAPTER_WHATSAPP = 2;
+}
+
+message Supplier {
+  string id = 1;
+  string name = 2;
+  // E.164, such as +628123456789; empty when unknown. Requests may use the
+  // Indonesian forms 0812-3456-789 or 62 812 3456 789.
+  string whatsapp_phone = 3;
+  ProcurementAdapter adapter = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message Pack {
+  string id = 1;
+  string ingredient_id = 2;
+  string supplier_id = 3;
+  string supplier_sku = 4;
+  // In the ingredient's base unit: 1000 for a 1 kg bag of flour in grams.
+  double size = 5;
+  // Display label, such as "sak 1 kg".
+  string unit = 6;
+  // Per pack; unset when unknown.
+  optional int64 price_idr = 7;
+  bool is_default = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message VariantComponent {
+  string component_id = 1;
+  // Units of the component in one item of the variant; > 0.
+  double units_per_item = 2;
+}
+
+// ModelType is how an ingredient's amount scales with a component's units (§10).
+enum ModelType {
+  MODEL_TYPE_UNSPECIFIED = 0;
+  // a + b*u
+  MODEL_TYPE_AFFINE = 1;
+  // a * u^b
+  MODEL_TYPE_POWER = 2;
+  // Linear between measured points, from (0, 0).
+  MODEL_TYPE_PIECEWISE = 3;
+  // A free expression of u.
+  MODEL_TYPE_FORMULA = 4;
+}
+
+message MeasuredPoint {
+  // Units of the component, > 0.
+  double units = 1;
+  // Amount of the ingredient used, in its base unit, >= 0.
+  double amount = 2;
+}
+
+message RecipeLine {
+  string component_id = 1;
+  string ingredient_id = 2;
+  ModelType model_type = 3;
+  // The model's parameters as JSON: {"a":10,"b":90}, {"a":100,"b":0.926},
+  // {"points":[[1,100],[2,190]]}, or {"expr":"10 + 90*u"}.
+  string params_json = 4;
+  // The measurements the model came from, if any.
+  repeated MeasuredPoint points = 5;
+  // >= 1; 1.05 means 5% is lost.
+  double waste_factor = 6;
+  // Grows by one on every real change.
+  int32 version = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message FitResult {
+  ModelType model_type = 1;
+  // The fitted parameters; empty when error is set.
+  string params_json = 2;
+  // Why this model does not fit the points, in Indonesian; empty on success.
+  string error = 3;
+  // Coefficient of determination of the amounts; 1 is a perfect fit.
+  double r2 = 4;
+  // Fitted minus measured amount, one per point, in request order.
+  repeated double residuals = 5;
+  double max_abs_error = 6;
+  double max_rel_error = 7;
+}
+
+message ListProductsRequest {}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+}
+
+message CreateProductRequest {
+  string name = 1;
+  // Kebab-case, such as "kue-lapis".
+  string slug = 2;
+  string description = 3;
+  string image_path = 4;
+  bool active = 5;
+}
+
+message CreateProductResponse {
+  Product product = 1;
+}
+
+message UpdateProductRequest {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string image_path = 5;
+  bool active = 6;
+}
+
+message UpdateProductResponse {
+  Product product = 1;
+}
+
+message ListVariantsRequest {
+  string product_id = 1;
+}
+
+message ListVariantsResponse {
+  repeated Variant variants = 1;
+}
+
+message CreateVariantRequest {
+  string product_id = 1;
+  string sku = 2;
+  string name = 3;
+  map<string, string> options = 4;
+  int64 price_idr = 5;
+  int32 production_minutes = 6;
+  int32 min_notice_hours = 7;
+  bool active = 8;
+}
+
+message CreateVariantResponse {
+  Variant variant = 1;
+}
+
+message UpdateVariantRequest {
+  string id = 1;
+  string sku = 2;
+  string name = 3;
+  map<string, string> options = 4;
+  int32 production_minutes = 5;
+  int32 min_notice_hours = 6;
+  bool active = 7;
+}
+
+message UpdateVariantResponse {
+  Variant variant = 1;
+}
+
+message ChangeVariantPriceRequest {
+  string id = 1;
+  int64 price_idr = 2;
+  // Required: why the price changes, kept in the audit log.
+  string reason = 3;
+}
+
+message ChangeVariantPriceResponse {
+  Variant variant = 1;
+}
+
+message ListComponentsRequest {}
+
+message ListComponentsResponse {
+  repeated Component components = 1;
+}
+
+message CreateComponentRequest {
+  string name = 1;
+  string unit_label = 2;
+}
+
+message CreateComponentResponse {
+  Component component = 1;
+}
+
+message UpdateComponentRequest {
+  string id = 1;
+  string name = 2;
+  string unit_label = 3;
+}
+
+message UpdateComponentResponse {
+  Component component = 1;
+}
+
+message ListIngredientsRequest {}
+
+message ListIngredientsResponse {
+  repeated Ingredient ingredients = 1;
+}
+
+message CreateIngredientRequest {
+  string name = 1;
+  BaseUnit base_unit = 2;
+  bool perishable = 3;
+  optional int32 shelf_life_days = 4;
+  LeftoverPolicy leftover_policy = 5;
+}
+
+message CreateIngredientResponse {
+  Ingredient ingredient = 1;
+}
+
+message UpdateIngredientRequest {
+  string id = 1;
+  string name = 2;
+  BaseUnit base_unit = 3;
+  bool perishable = 4;
+  optional int32 shelf_life_days = 5;
+  LeftoverPolicy leftover_policy = 6;
+}
+
+message UpdateIngredientResponse {
+  Ingredient ingredient = 1;
+}
+
+message ListSuppliersRequest {}
+
+message ListSuppliersResponse {
+  repeated Supplier suppliers = 1;
+}
+
+message CreateSupplierRequest {
+  string name = 1;
+  string whatsapp_phone = 2;
+  ProcurementAdapter adapter = 3;
+}
+
+message CreateSupplierResponse {
+  Supplier supplier = 1;
+}
+
+message UpdateSupplierRequest {
+  string id = 1;
+  string name = 2;
+  string whatsapp_phone = 3;
+  ProcurementAdapter adapter = 4;
+}
+
+message UpdateSupplierResponse {
+  Supplier supplier = 1;
+}
+
+message ListPacksRequest {
+  string ingredient_id = 1;
+}
+
+message ListPacksResponse {
+  repeated Pack packs = 1;
+}
+
+message CreatePackRequest {
+  string ingredient_id = 1;
+  string supplier_id = 2;
+  string supplier_sku = 3;
+  double size = 4;
+  string unit = 5;
+  optional int64 price_idr = 6;
+}
+
+message CreatePackResponse {
+  Pack pack = 1;
+}
+
+message UpdatePackRequest {
+  string id = 1;
+  string supplier_id = 2;
+  string supplier_sku = 3;
+  double size = 4;
+  string unit = 5;
+  optional int64 price_idr = 6;
+}
+
+message UpdatePackResponse {
+  Pack pack = 1;
+}
+
+message SetDefaultPackRequest {
+  string id = 1;
+}
+
+message SetDefaultPackResponse {
+  Pack pack = 1;
+}
+
+message ListVariantComponentsRequest {
+  string variant_id = 1;
+}
+
+message ListVariantComponentsResponse {
+  repeated VariantComponent components = 1;
+}
+
+message SetVariantComponentsRequest {
+  string variant_id = 1;
+  // The complete new list; components left out are removed.
+  repeated VariantComponent components = 2;
+}
+
+message SetVariantComponentsResponse {
+  repeated VariantComponent components = 1;
+}
+
+message ListRecipeLinesRequest {
+  string component_id = 1;
+}
+
+message ListRecipeLinesResponse {
+  repeated RecipeLine lines = 1;
+}
+
+message SetRecipeLineRequest {
+  string component_id = 1;
+  string ingredient_id = 2;
+  ModelType model_type = 3;
+  // The model's parameters as JSON. Leave empty to fit the model (affine,
+  // power, or piecewise) to points instead.
+  string params_json = 4;
+  // Measured points: fitted when params_json is empty, kept for reference
+  // otherwise.
+  repeated MeasuredPoint points = 5;
+  // 0 means 1: nothing lost.
+  double waste_factor = 6;
+}
+
+message SetRecipeLineResponse {
+  RecipeLine line = 1;
+}
+
+message RemoveRecipeLineRequest {
+  string component_id = 1;
+  string ingredient_id = 2;
+}
+
+message RemoveRecipeLineResponse {}
+
+message FitPreviewRequest {
+  repeated MeasuredPoint points = 1;
+}
+
+message FitPreviewResponse {
+  // One per fittable model: affine, power, piecewise.
+  repeated FitResult results = 1;
+}

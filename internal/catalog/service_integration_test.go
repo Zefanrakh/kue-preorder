@@ -82,8 +82,8 @@ func seedShop(t *testing.T, s *catalog.Service) shop {
 	)
 	out.product, err = s.CreateProduct(ctx, catalog.ProductInput{Name: "Donut", Slug: "donut", Active: true})
 	noErr(t, err)
-	out.variant, err = s.CreateVariant(ctx, catalog.VariantInput{
-		ProductID: out.product.ID, SKU: "donut-coklat", Name: "Donut Coklat",
+	out.variant, err = s.CreateVariant(ctx, out.product.ID, catalog.VariantInput{
+		SKU: "donut-coklat", Name: "Donut Coklat",
 		Options: map[string]string{"rasa": "coklat"}, ProductionMinutes: 90, MinNoticeHours: 24, Active: true,
 	}, 8000)
 	noErr(t, err)
@@ -91,7 +91,7 @@ func seedShop(t *testing.T, s *catalog.Service) shop {
 	noErr(t, err)
 	out.supplier, err = s.CreateSupplier(ctx, catalog.SupplierInput{Name: "Toko Bahan Kue", WhatsAppPhone: "0812-3456-789"})
 	noErr(t, err)
-	out.bag, err = s.CreatePack(ctx, catalog.PackInput{IngredientID: out.flour.ID, SupplierID: out.supplier.ID, Size: 1000, Unit: "sak 1 kg", PriceIDR: ptr[int64](15000)})
+	out.bag, err = s.CreatePack(ctx, out.flour.ID, catalog.PackInput{SupplierID: out.supplier.ID, Size: 1000, Unit: "sak 1 kg", PriceIDR: ptr[int64](15000)})
 	noErr(t, err)
 	return out
 }
@@ -114,8 +114,8 @@ func TestService_Authorization(t *testing.T) {
 	s := seedShop(t, boss)
 	dough, err := boss.CreateComponent(t.Context(), catalog.ComponentInput{Name: "Adonan donut", UnitLabel: "porsi"})
 	noErr(t, err)
-	variantInput := catalog.VariantInput{ProductID: s.product.ID, SKU: "DONUT-COKLAT", Name: "Donut Coklat", ProductionMinutes: 90, MinNoticeHours: 24}
-	packInput := catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Size: 1000, Unit: "sak 1 kg"}
+	variantInput := catalog.VariantInput{SKU: "DONUT-COKLAT", Name: "Donut Coklat", ProductionMinutes: 90, MinNoticeHours: 24}
+	packInput := catalog.PackInput{SupplierID: s.supplier.ID, Size: 1000, Unit: "sak 1 kg"}
 
 	// Every Service method, with who may call it (§8).
 	ops := []struct {
@@ -133,7 +133,7 @@ func TestService_Authorization(t *testing.T) {
 		{"create variant", true, func(c *catalog.Service) error {
 			in := variantInput
 			in.SKU = "DONUT-KEJU"
-			_, err := c.CreateVariant(t.Context(), in, 1000)
+			_, err := c.CreateVariant(t.Context(), s.product.ID, in, 1000)
 			return err
 		}},
 		{"update variant", true, func(c *catalog.Service) error {
@@ -153,7 +153,7 @@ func TestService_Authorization(t *testing.T) {
 		{"create pack", true, func(c *catalog.Service) error {
 			in := packInput
 			in.Size = 25000
-			_, err := c.CreatePack(t.Context(), in)
+			_, err := c.CreatePack(t.Context(), s.flour.ID, in)
 			return err
 		}},
 		{"update pack", true, func(c *catalog.Service) error { _, err := c.UpdatePack(t.Context(), s.bag.ID, packInput); return err }},
@@ -241,7 +241,7 @@ func TestService_UpdateVariantKeepsThePrice(t *testing.T) {
 	s := seedShop(t, svc)
 
 	got, err := svc.UpdateVariant(t.Context(), s.variant.ID, catalog.VariantInput{
-		ProductID: s.product.ID, SKU: "DONUT-COKLAT", Name: "Donut Coklat Lumer", ProductionMinutes: 120, MinNoticeHours: 36,
+		SKU: "DONUT-COKLAT", Name: "Donut Coklat Lumer", ProductionMinutes: 120, MinNoticeHours: 36,
 	})
 	noErr(t, err)
 
@@ -266,7 +266,7 @@ func TestService_Conflicts(t *testing.T) {
 			return err
 		}(), "slug"},
 		{"SKU in use, any case", func() error {
-			_, err := svc.CreateVariant(ctx, catalog.VariantInput{ProductID: s.product.ID, SKU: "Donut-Coklat", Name: "X", ProductionMinutes: 1}, 1)
+			_, err := svc.CreateVariant(ctx, s.product.ID, catalog.VariantInput{SKU: "Donut-Coklat", Name: "X", ProductionMinutes: 1}, 1)
 			return err
 		}(), "sku"},
 		{"ingredient name in use, any case", func() error {
@@ -274,7 +274,7 @@ func TestService_Conflicts(t *testing.T) {
 			return err
 		}(), "name"},
 		{"same pack twice", func() error {
-			_, err := svc.CreatePack(ctx, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Size: 1000, Unit: "sak lagi"})
+			_, err := svc.CreatePack(ctx, s.flour.ID, catalog.PackInput{SupplierID: s.supplier.ID, Size: 1000, Unit: "sak lagi"})
 			return err
 		}(), "size"},
 	}
@@ -301,11 +301,11 @@ func TestService_OtherTenantsRecordsAreInvisible(t *testing.T) {
 	if _, err := other.ChangeVariantPrice(ctx, mine.variant.ID, 1, "sabotage"); !errors.Is(err, catalog.ErrNotFound) {
 		t.Errorf("change another tenant's price: error = %v, want ErrNotFound", err)
 	}
-	_, err := other.CreateVariant(ctx, catalog.VariantInput{ProductID: mine.product.ID, SKU: "X", Name: "X", ProductionMinutes: 1}, 1)
+	_, err := other.CreateVariant(ctx, mine.product.ID, catalog.VariantInput{SKU: "X", Name: "X", ProductionMinutes: 1}, 1)
 	if fields, _ := validationFields(t, err); fields["product_id"] == "" {
 		t.Errorf("variant of another tenant's product: fields = %v, want product_id", fields)
 	}
-	_, err = other.CreatePack(ctx, catalog.PackInput{IngredientID: theirs.flour.ID, SupplierID: mine.supplier.ID, Size: 500, Unit: "x"})
+	_, err = other.CreatePack(ctx, theirs.flour.ID, catalog.PackInput{SupplierID: mine.supplier.ID, Size: 500, Unit: "x"})
 	if fields, _ := validationFields(t, err); fields["supplier_id"] == "" {
 		t.Errorf("pack from another tenant's supplier: fields = %v, want supplier_id", fields)
 	}
@@ -411,7 +411,7 @@ func TestService_SetDefaultPackMovesTheDefault(t *testing.T) {
 	svc := owner(dbtest.DefaultTenantID).service(d)
 	s := seedShop(t, svc)
 	ctx := t.Context()
-	sack, err := svc.CreatePack(ctx, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Size: 25000, Unit: "karung 25 kg"})
+	sack, err := svc.CreatePack(ctx, s.flour.ID, catalog.PackInput{SupplierID: s.supplier.ID, Size: 25000, Unit: "karung 25 kg"})
 	noErr(t, err)
 
 	_, err = svc.SetDefaultPack(ctx, s.bag.ID)
@@ -467,7 +467,7 @@ func TestService_UpdatesRoundTrip(t *testing.T) {
 		t.Errorf("ListSuppliers() = %+v", suppliers)
 	}
 
-	bag, err := svc.UpdatePack(ctx, s.bag.ID, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, SupplierSKU: "TPG-1", Size: 500, Unit: "bungkus 500 g"})
+	bag, err := svc.UpdatePack(ctx, s.bag.ID, catalog.PackInput{SupplierID: s.supplier.ID, SupplierSKU: "TPG-1", Size: 500, Unit: "bungkus 500 g"})
 	noErr(t, err)
 	if bag.Size != 500 || bag.SupplierSKU != "TPG-1" || bag.PriceIDR != nil || bag.IngredientID != s.flour.ID {
 		t.Errorf("UpdatePack() = %+v, want the new size, SKU, no price, same ingredient", bag)
@@ -480,7 +480,7 @@ func TestService_UpdatesRoundTrip(t *testing.T) {
 			return err
 		}(),
 		"variant": func() error {
-			_, err := svc.UpdateVariant(ctx, missing, catalog.VariantInput{ProductID: s.product.ID, SKU: "X", Name: "X", ProductionMinutes: 1})
+			_, err := svc.UpdateVariant(ctx, missing, catalog.VariantInput{SKU: "X", Name: "X", ProductionMinutes: 1})
 			return err
 		}(),
 		"component": func() error {
@@ -489,7 +489,7 @@ func TestService_UpdatesRoundTrip(t *testing.T) {
 		}(),
 		"supplier": func() error { _, err := svc.UpdateSupplier(ctx, missing, catalog.SupplierInput{Name: "x"}); return err }(),
 		"pack": func() error {
-			_, err := svc.UpdatePack(ctx, missing, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Size: 1, Unit: "x"})
+			_, err := svc.UpdatePack(ctx, missing, catalog.PackInput{SupplierID: s.supplier.ID, Size: 1, Unit: "x"})
 			return err
 		}(),
 	} {
@@ -514,11 +514,11 @@ func TestService_RejectsInvalidInputBeforeStoring(t *testing.T) {
 			return err
 		},
 		"create variant": func() error {
-			_, err := svc.CreateVariant(ctx, catalog.VariantInput{ProductID: s.product.ID, SKU: "X"}, -5)
+			_, err := svc.CreateVariant(ctx, s.product.ID, catalog.VariantInput{SKU: "X"}, -5)
 			return err
 		},
 		"update variant": func() error {
-			_, err := svc.UpdateVariant(ctx, s.variant.ID, catalog.VariantInput{ProductID: s.product.ID, SKU: "X", Name: "X"})
+			_, err := svc.UpdateVariant(ctx, s.variant.ID, catalog.VariantInput{SKU: "X", Name: "X"})
 			return err
 		},
 		"create component": func() error { _, err := svc.CreateComponent(ctx, catalog.ComponentInput{Name: "x"}); return err },
@@ -543,11 +543,19 @@ func TestService_RejectsInvalidInputBeforeStoring(t *testing.T) {
 			return err
 		},
 		"create pack": func() error {
-			_, err := svc.CreatePack(ctx, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Unit: "x"})
+			_, err := svc.CreatePack(ctx, s.flour.ID, catalog.PackInput{SupplierID: s.supplier.ID, Unit: "x"})
 			return err
 		},
 		"update pack": func() error {
-			_, err := svc.UpdatePack(ctx, s.bag.ID, catalog.PackInput{IngredientID: s.flour.ID, SupplierID: s.supplier.ID, Size: 1})
+			_, err := svc.UpdatePack(ctx, s.bag.ID, catalog.PackInput{SupplierID: s.supplier.ID, Size: 1})
+			return err
+		},
+		"variant without a product": func() error {
+			_, err := svc.CreateVariant(ctx, uuid.Nil, catalog.VariantInput{SKU: "X", Name: "X", ProductionMinutes: 1}, 1)
+			return err
+		},
+		"pack without an ingredient": func() error {
+			_, err := svc.CreatePack(ctx, uuid.Nil, catalog.PackInput{SupplierID: s.supplier.ID, Size: 1, Unit: "x"})
 			return err
 		},
 	}
@@ -561,7 +569,7 @@ func TestService_RejectsInvalidInputBeforeStoring(t *testing.T) {
 	}
 
 	// CreateVariant reports every problem at once: the input and the price.
-	_, err := svc.CreateVariant(ctx, catalog.VariantInput{ProductID: s.product.ID, SKU: "X"}, -5)
+	_, err := svc.CreateVariant(ctx, s.product.ID, catalog.VariantInput{SKU: "X"}, -5)
 	if fields, _ := validationFields(t, err); fields["name"] == "" || fields["price_idr"] == "" {
 		t.Errorf("fields = %v, want both name and price_idr", fields)
 	}

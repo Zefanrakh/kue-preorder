@@ -178,6 +178,7 @@ func TestRecipes_RejectsBadRecipes(t *testing.T) {
 		{"a point at zero units", catalog.RecipeLineInput{ModelType: recipe.Affine, Points: []recipe.Point{{U: 0, Amount: 5}}}, "points", "> 0"},
 		{"falling measurements", catalog.RecipeLineInput{ModelType: recipe.Piecewise, Points: []recipe.Point{{U: 1, Amount: 100}, {U: 2, Amount: 50}}}, "points", "tidak bisa dipakai"},
 		{"fitting a formula", catalog.RecipeLineInput{ModelType: recipe.Formula, Points: []recipe.Point{{U: 1, Amount: 100}}}, "points", "affine, power, dan piecewise"},
+		{"too many reference points", catalog.RecipeLineInput{ModelType: recipe.Affine, Params: json.RawMessage(`{"a":1,"b":1}`), Points: make([]recipe.Point, recipe.MaxPoints+1)}, "points", "Paling banyak 100"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -382,7 +383,7 @@ func TestReader_DonutShop(t *testing.T) {
 	svc := owner(tenant).service(d)
 	k := seedKitchen(t, svc)
 	ctx := t.Context()
-	cheese, err := svc.CreateVariant(ctx, catalog.VariantInput{ProductID: k.product.ID, SKU: "DONUT-KEJU", Name: "Donut Keju", ProductionMinutes: 90, MinNoticeHours: 24}, 8500)
+	cheese, err := svc.CreateVariant(ctx, k.product.ID, catalog.VariantInput{SKU: "DONUT-KEJU", Name: "Donut Keju", ProductionMinutes: 90, MinNoticeHours: 24}, 8500)
 	noErr(t, err)
 	for _, v := range []uuid.UUID{k.variant.ID, cheese.ID} {
 		_, err := svc.SetVariantComponents(ctx, v, []catalog.VariantComponent{{ComponentID: k.dough.ID, UnitsPerItem: 1}, {ComponentID: k.topping.ID, UnitsPerItem: 1}})
