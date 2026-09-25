@@ -34,8 +34,16 @@ type TokenIssuer struct {
 	// JWKSURL serves the public keys of every key the issuer has used.
 	JWKSURL string
 
-	mu   sync.Mutex
-	keys []signingKey // the last one signs
+	mu      sync.Mutex
+	keys    []signingKey // the last one signs
+	latency time.Duration
+}
+
+// SetLatency delays every JWKS response by d, like a real network round trip.
+func (i *TokenIssuer) SetLatency(d time.Duration) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.latency = d
 }
 
 type signingKey struct {
@@ -108,8 +116,9 @@ func Claims(user uuid.UUID, now time.Time) jwt.MapClaims {
 
 func (i *TokenIssuer) serveJWKS(w http.ResponseWriter, _ *http.Request) {
 	i.mu.Lock()
-	keys := slices.Clone(i.keys)
+	keys, latency := slices.Clone(i.keys), i.latency
 	i.mu.Unlock()
+	time.Sleep(latency)
 
 	var set jwkset.JWKSMarshal
 	for _, k := range keys {

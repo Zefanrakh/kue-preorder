@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -38,6 +39,11 @@ type Config struct {
 	// JWKSURL serves the public keys of Supabase Auth. It defaults to the
 	// project's well-known JWKS endpoint.
 	JWKSURL string
+	// OTLPEndpoint turns tracing on when set. The OpenTelemetry SDK reads the
+	// rest of its OTEL_* variables (headers, service name, sampler) itself.
+	OTLPEndpoint string
+	// SentryDSN turns error reporting to Sentry on when set.
+	SentryDSN string
 }
 
 // HTTPAddr is the address the API server listens on.
@@ -110,6 +116,22 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 
+	if raw := strings.TrimSpace(getenv("OTEL_EXPORTER_OTLP_ENDPOINT")); raw != "" {
+		if err := checkURL(raw, cfg.AppEnv); err != nil {
+			errs = append(errs, fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT=%q: %w", raw, err))
+		} else {
+			cfg.OTLPEndpoint = raw
+		}
+	}
+	if raw := strings.TrimSpace(getenv("SENTRY_DSN")); raw != "" {
+		// The DSN embeds a key; keep it out of error messages.
+		if err := checkSentryDSN(raw, cfg.AppEnv); err != nil {
+			errs = append(errs, fmt.Errorf("SENTRY_DSN: %w", err))
+		} else {
+			cfg.SentryDSN = raw
+		}
+	}
+
 	if len(missing) > 0 {
 		errs = append([]error{fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))}, errs...)
 	}
@@ -119,8 +141,9 @@ func Load(getenv func(string) string) (Config, error) {
 	return cfg, nil
 }
 
-// checkURL accepts an absolute https URL, or http in development for a local
-// Supabase stack.
+// checkURL accepts an absolute https URL. Plain http is allowed in development
+// (a local Supabase stack) and to a loopback address in any environment (an
+// OpenTelemetry collector running next to the process).
 func checkURL(raw string, env Env) error {
 	u, err := url.Parse(raw)
 	switch {
@@ -128,9 +151,30 @@ func checkURL(raw string, env Env) error {
 		return errors.New("must be an absolute URL")
 	case u.Scheme == "https":
 		return nil
-	case u.Scheme == "http" && env == EnvDevelopment:
+	case u.Scheme == "http" && (env == EnvDevelopment || isLoopback(u.Hostname())):
 		return nil
 	default:
 		return errors.New("must use https")
 	}
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// checkSentryDSN checks the shape https://<public key>@<host>/<project id>.
+// Its errors never echo the DSN.
+func checkSentryDSN(raw string, env Env) error {
+	if err := checkURL(raw, env); err != nil {
+		return err
+	}
+	u, _ := url.Parse(raw)
+	if u.User == nil || u.User.Username() == "" || strings.Trim(u.Path, "/") == "" {
+		return errors.New("must look like https://<public key>@<host>/<project id>")
+	}
+	return nil
 }

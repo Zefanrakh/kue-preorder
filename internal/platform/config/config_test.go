@@ -125,6 +125,71 @@ func TestLoad_SupabaseURLs(t *testing.T) {
 	}
 }
 
+func TestLoad_ObservabilityIsOptional(t *testing.T) {
+	cfg, err := config.Load(env(valid(nil)))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OTLPEndpoint != "" || cfg.SentryDSN != "" {
+		t.Errorf("OTLPEndpoint = %q, SentryDSN = %q; want both empty (off)", cfg.OTLPEndpoint, cfg.SentryDSN)
+	}
+}
+
+func TestLoad_ObservabilitySettings(t *testing.T) {
+	tests := []struct {
+		name     string
+		vars     map[string]string
+		wantOTLP string
+	}{
+		{"https collector", valid(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "https://otlp.example.com"}), "https://otlp.example.com"},
+		{"local collector over http in production", valid(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318"}), "http://localhost:4318"},
+		{"loopback IP over http", valid(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318"}), "http://127.0.0.1:4318"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(env(tt.vars))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.OTLPEndpoint != tt.wantOTLP {
+				t.Errorf("OTLPEndpoint = %q, want %q", cfg.OTLPEndpoint, tt.wantOTLP)
+			}
+		})
+	}
+
+	dsn := "https://publickey123@o1.ingest.sentry.io/42"
+	cfg, err := config.Load(env(valid(map[string]string{"SENTRY_DSN": dsn})))
+	if err != nil || cfg.SentryDSN != dsn {
+		t.Errorf("Load(SENTRY_DSN) = %q, %v; want %q", cfg.SentryDSN, err, dsn)
+	}
+}
+
+func TestLoad_RejectsBadObservabilitySettings(t *testing.T) {
+	tests := []struct {
+		name    string
+		vars    map[string]string
+		wantMsg string
+	}{
+		{"remote collector over http in production", valid(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otlp.example.com"}), "OTEL_EXPORTER_OTLP_ENDPOINT"},
+		{"sentry DSN without key", valid(map[string]string{"SENTRY_DSN": "https://o1.ingest.sentry.io/42"}), "SENTRY_DSN"},
+		{"sentry DSN without project", valid(map[string]string{"SENTRY_DSN": "https://secretkey9@o1.ingest.sentry.io/"}), "SENTRY_DSN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(env(tt.vars))
+			if err == nil {
+				t.Fatal("Load() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("error = %q, want it to mention %s", err, tt.wantMsg)
+			}
+			if strings.Contains(err.Error(), "secretkey9") {
+				t.Errorf("error leaks the Sentry key: %q", err)
+			}
+		})
+	}
+}
+
 func TestLoad_MissingRequiredVarsListsAll(t *testing.T) {
 	_, err := config.Load(env(map[string]string{"DATABASE_URL": "   "}))
 	if err == nil {

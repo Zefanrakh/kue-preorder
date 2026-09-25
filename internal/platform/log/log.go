@@ -9,10 +9,16 @@ import (
 	"context"
 	"io"
 	"log/slog"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
-// CorrelationIDKey is the log field that holds the correlation id.
-const CorrelationIDKey = "correlation_id"
+// Log fields that tie a record to its request and trace.
+const (
+	CorrelationIDKey = "correlation_id"
+	TraceIDKey       = "trace_id"
+	SpanIDKey        = "span_id"
+)
 
 type correlationIDKey struct{}
 
@@ -32,7 +38,8 @@ func New(w io.Writer, level slog.Level) *slog.Logger {
 	return slog.New(contextHandler{slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})})
 }
 
-// contextHandler adds the correlation id from the context to every record.
+// contextHandler adds the correlation id and the active trace span from the
+// context to every record, so a log line leads to its request and its trace.
 type contextHandler struct {
 	slog.Handler
 }
@@ -40,6 +47,9 @@ type contextHandler struct {
 func (h contextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if id := CorrelationID(ctx); id != "" {
 		r.AddAttrs(slog.String(CorrelationIDKey, id))
+	}
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		r.AddAttrs(slog.String(TraceIDKey, sc.TraceID().String()), slog.String(SpanIDKey, sc.SpanID().String()))
 	}
 	return h.Handler.Handle(ctx, r)
 }
