@@ -203,6 +203,16 @@ Tata letak:
 - Interceptor Connect hanya **mengautentikasi**. Tanpa header `Authorization`, request lanjut sebagai anonim. Header yang ada tapi tidak valid langsung `Unauthenticated`, supaya client dengan sesi rusak tidak diam-diam menjadi anonim. Token tidak pernah di-log.
 - Service tiap modul **mengotorisasi** lewat `identity.Service.Principal(ctx)` (user, tenant, peran, `customer_id`).
 - Mode single-tenant: `api` menolak start kalau jumlah tenant bukan tepat satu.
+
+**Siapa boleh apa** (ditegakkan di service tiap modul; diputuskan 2026-09-25):
+
+| Aksi | `owner` | `kitchen` (ibu) | pelanggan / anonim |
+|---|---|---|---|
+| Produk, varian, **harga**, supplier, kemasan | ✅ | ❌ (hanya lihat) | ❌ |
+| Komponen, bahan, dan resep (termasuk titik ukur) | ✅ | ✅ | ❌ |
+| Melihat seluruh katalog di CMS | ✅ | ✅ | ❌ |
+
+Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `Forbidden`. Storefront publik (M1.6) hanya membaca produk dan varian yang aktif.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
 
 **Setelan project Supabase:** Data API dimatikan (lihat §9), signing key aktif ECC P-256 (ES256). Menjelang go-live: pindah ke API key baru (`sb_publishable_…` untuk browser, `sb_secret_…` untuk server), lalu revoke secret HS256 lama. Kunci anon/service_role lama ikut mati saat itu.
@@ -223,6 +233,9 @@ outbox ( id, tenant_id, aggregate text, event_type text, payload jsonb,
          created_at timestamptz, published_at timestamptz null )
 tenants ( id, name, created_at )
 staff_roles ( id, tenant_id, auth_user_id uuid, role text )   -- 'owner' | 'kitchen'
+audit_log ( id, tenant_id, actor_id uuid, action text, entity text, entity_id uuid,
+            before jsonb, after jsonb, reason text not null, created_at timestamptz )
+            -- append-only: trigger menolak UPDATE dan DELETE
 ```
 
 ### 9.2 Identitas
@@ -831,6 +844,9 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
 - **Waktu:** simpan `timestamptz` (UTC), tampilkan dalam WIB. `production_date` bertipe `date` dan ditafsirkan dalam WIB.
 - **Audit:** aksi admin yang mengubah uang, stok, atau jadwal selalu mencatat siapa, kapan, dan alasannya.
+  - Tabel `audit_log` bersifat **append-only**: trigger database menolak `UPDATE` dan `DELETE`, jadi entri tidak bisa diubah atau dihapus oleh aplikasi.
+  - `platform/audit.Record` wajib dipanggil **di dalam transaksi yang sama** dengan perubahannya, sehingga perubahan dan entrinya tersimpan atau batal bersama. Alasan wajib diisi; `action` berformat titik huruf kecil (`catalog.variant.price_changed`).
+  - Yang sudah diaudit: **perubahan harga varian** (harga yang dibayar pelanggan), dengan harga lama, harga baru, dan alasan. Harga di luar `ChangeVariantPrice` tidak bisa diubah. Menyimpan harga yang sama tidak dicatat. Harga kemasan dari supplier tidak diaudit karena hanya perkiraan biaya belanja. Stok (M3) dan jadwal (M6) menyusul memakai helper yang sama.
 
 ---
 

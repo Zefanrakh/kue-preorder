@@ -7,9 +7,27 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const clearDefaultPack = `-- name: ClearDefaultPack :exec
+update ingredient_suppliers
+set is_default = false, updated_at = $1
+where tenant_id = $2 and ingredient_id = $3 and is_default
+`
+
+type ClearDefaultPackParams struct {
+	Now          time.Time
+	TenantID     uuid.UUID
+	IngredientID uuid.UUID
+}
+
+func (q *Queries) ClearDefaultPack(ctx context.Context, arg ClearDefaultPackParams) error {
+	_, err := q.db.Exec(ctx, clearDefaultPack, arg.Now, arg.TenantID, arg.IngredientID)
+	return err
+}
 
 const componentsOfVariants = `-- name: ComponentsOfVariants :many
 select variant_id, component_id, units_per_item
@@ -52,6 +70,258 @@ func (q *Queries) ComponentsOfVariants(ctx context.Context, arg ComponentsOfVari
 		return nil, err
 	}
 	return items, nil
+}
+
+const createComponent = `-- name: CreateComponent :one
+insert into components (tenant_id, name, unit_label, created_at, updated_at)
+values ($1, $2, $3, $4, $4)
+returning id, tenant_id, name, unit_label, created_at, updated_at
+`
+
+type CreateComponentParams struct {
+	TenantID  uuid.UUID
+	Name      string
+	UnitLabel string
+	Now       time.Time
+}
+
+func (q *Queries) CreateComponent(ctx context.Context, arg CreateComponentParams) (Component, error) {
+	row := q.db.QueryRow(ctx, createComponent,
+		arg.TenantID,
+		arg.Name,
+		arg.UnitLabel,
+		arg.Now,
+	)
+	var i Component
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.UnitLabel,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createIngredient = `-- name: CreateIngredient :one
+insert into ingredients (tenant_id, name, base_unit, is_perishable, shelf_life_days, leftover_policy, created_at, updated_at)
+values ($1, $2, $3, $4,
+        $5, $6, $7, $7)
+returning id, tenant_id, name, base_unit, is_perishable, shelf_life_days, leftover_policy, created_at, updated_at
+`
+
+type CreateIngredientParams struct {
+	TenantID       uuid.UUID
+	Name           string
+	BaseUnit       string
+	IsPerishable   bool
+	ShelfLifeDays  *int32
+	LeftoverPolicy string
+	Now            time.Time
+}
+
+func (q *Queries) CreateIngredient(ctx context.Context, arg CreateIngredientParams) (Ingredient, error) {
+	row := q.db.QueryRow(ctx, createIngredient,
+		arg.TenantID,
+		arg.Name,
+		arg.BaseUnit,
+		arg.IsPerishable,
+		arg.ShelfLifeDays,
+		arg.LeftoverPolicy,
+		arg.Now,
+	)
+	var i Ingredient
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.BaseUnit,
+		&i.IsPerishable,
+		&i.ShelfLifeDays,
+		&i.LeftoverPolicy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createPack = `-- name: CreatePack :one
+insert into ingredient_suppliers (tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size,
+                                  pack_unit, price_idr, is_default, created_at, updated_at)
+values ($1, $2, $3, $4,
+        $5, $6, $7, false, $8, $8)
+returning id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at
+`
+
+type CreatePackParams struct {
+	TenantID     uuid.UUID
+	IngredientID uuid.UUID
+	SupplierID   uuid.UUID
+	SupplierSku  *string
+	PackSize     float64
+	PackUnit     string
+	PriceIdr     *int64
+	Now          time.Time
+}
+
+func (q *Queries) CreatePack(ctx context.Context, arg CreatePackParams) (IngredientSupplier, error) {
+	row := q.db.QueryRow(ctx, createPack,
+		arg.TenantID,
+		arg.IngredientID,
+		arg.SupplierID,
+		arg.SupplierSku,
+		arg.PackSize,
+		arg.PackUnit,
+		arg.PriceIdr,
+		arg.Now,
+	)
+	var i IngredientSupplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.IngredientID,
+		&i.SupplierID,
+		&i.SupplierSku,
+		&i.PackSize,
+		&i.PackUnit,
+		&i.PriceIdr,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createProduct = `-- name: CreateProduct :one
+insert into products (tenant_id, name, slug, description, image_path, is_active, created_at, updated_at)
+values ($1, $2, $3, $4,
+        $5, $6, $7, $7)
+returning id, tenant_id, name, slug, description, image_path, is_active, created_at, updated_at
+`
+
+type CreateProductParams struct {
+	TenantID    uuid.UUID
+	Name        string
+	Slug        string
+	Description string
+	ImagePath   *string
+	IsActive    bool
+	Now         time.Time
+}
+
+func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, createProduct,
+		arg.TenantID,
+		arg.Name,
+		arg.Slug,
+		arg.Description,
+		arg.ImagePath,
+		arg.IsActive,
+		arg.Now,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Slug,
+		&i.Description,
+		&i.ImagePath,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createSupplier = `-- name: CreateSupplier :one
+insert into suppliers (tenant_id, name, whatsapp_phone, adapter_key, created_at, updated_at)
+values ($1, $2, $3, $4,
+        $5, $5)
+returning id, tenant_id, name, whatsapp_phone, adapter_key, created_at, updated_at
+`
+
+type CreateSupplierParams struct {
+	TenantID      uuid.UUID
+	Name          string
+	WhatsappPhone *string
+	AdapterKey    string
+	Now           time.Time
+}
+
+func (q *Queries) CreateSupplier(ctx context.Context, arg CreateSupplierParams) (Supplier, error) {
+	row := q.db.QueryRow(ctx, createSupplier,
+		arg.TenantID,
+		arg.Name,
+		arg.WhatsappPhone,
+		arg.AdapterKey,
+		arg.Now,
+	)
+	var i Supplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.WhatsappPhone,
+		&i.AdapterKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createVariant = `-- name: CreateVariant :one
+insert into product_variants (tenant_id, product_id, sku, name, options, price_idr,
+                              production_minutes, min_notice_hours, is_active, created_at, updated_at)
+values ($1, $2, $3, $4, $5,
+        $6, $7, $8,
+        $9, $10, $10)
+returning id, tenant_id, product_id, sku, name, options, price_idr, production_minutes, min_notice_hours, is_active, created_at, updated_at
+`
+
+type CreateVariantParams struct {
+	TenantID          uuid.UUID
+	ProductID         uuid.UUID
+	Sku               string
+	Name              string
+	Options           []byte
+	PriceIdr          int64
+	ProductionMinutes int32
+	MinNoticeHours    int32
+	IsActive          bool
+	Now               time.Time
+}
+
+func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (ProductVariant, error) {
+	row := q.db.QueryRow(ctx, createVariant,
+		arg.TenantID,
+		arg.ProductID,
+		arg.Sku,
+		arg.Name,
+		arg.Options,
+		arg.PriceIdr,
+		arg.ProductionMinutes,
+		arg.MinNoticeHours,
+		arg.IsActive,
+		arg.Now,
+	)
+	var i ProductVariant
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ProductID,
+		&i.Sku,
+		&i.Name,
+		&i.Options,
+		&i.PriceIdr,
+		&i.ProductionMinutes,
+		&i.MinNoticeHours,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const defaultPacks = `-- name: DefaultPacks :many
@@ -102,6 +372,65 @@ func (q *Queries) DefaultPacks(ctx context.Context, arg DefaultPacksParams) ([]D
 		return nil, err
 	}
 	return items, nil
+}
+
+const getPack = `-- name: GetPack :one
+select id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at from ingredient_suppliers
+where tenant_id = $1 and id = $2
+`
+
+type GetPackParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) GetPack(ctx context.Context, arg GetPackParams) (IngredientSupplier, error) {
+	row := q.db.QueryRow(ctx, getPack, arg.TenantID, arg.ID)
+	var i IngredientSupplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.IngredientID,
+		&i.SupplierID,
+		&i.SupplierSku,
+		&i.PackSize,
+		&i.PackUnit,
+		&i.PriceIdr,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVariant = `-- name: GetVariant :one
+select id, tenant_id, product_id, sku, name, options, price_idr, production_minutes, min_notice_hours, is_active, created_at, updated_at from product_variants
+where tenant_id = $1 and id = $2
+`
+
+type GetVariantParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) GetVariant(ctx context.Context, arg GetVariantParams) (ProductVariant, error) {
+	row := q.db.QueryRow(ctx, getVariant, arg.TenantID, arg.ID)
+	var i ProductVariant
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ProductID,
+		&i.Sku,
+		&i.Name,
+		&i.Options,
+		&i.PriceIdr,
+		&i.ProductionMinutes,
+		&i.MinNoticeHours,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const ingredientsOfComponents = `-- name: IngredientsOfComponents :many
@@ -162,4 +491,592 @@ func (q *Queries) IngredientsOfComponents(ctx context.Context, arg IngredientsOf
 		return nil, err
 	}
 	return items, nil
+}
+
+const listComponents = `-- name: ListComponents :many
+select id, tenant_id, name, unit_label, created_at, updated_at from components
+where tenant_id = $1
+order by name, id
+`
+
+func (q *Queries) ListComponents(ctx context.Context, tenantID uuid.UUID) ([]Component, error) {
+	rows, err := q.db.Query(ctx, listComponents, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Component{}
+	for rows.Next() {
+		var i Component
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.UnitLabel,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngredients = `-- name: ListIngredients :many
+select id, tenant_id, name, base_unit, is_perishable, shelf_life_days, leftover_policy, created_at, updated_at from ingredients
+where tenant_id = $1
+order by name, id
+`
+
+func (q *Queries) ListIngredients(ctx context.Context, tenantID uuid.UUID) ([]Ingredient, error) {
+	rows, err := q.db.Query(ctx, listIngredients, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ingredient{}
+	for rows.Next() {
+		var i Ingredient
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.BaseUnit,
+			&i.IsPerishable,
+			&i.ShelfLifeDays,
+			&i.LeftoverPolicy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPacks = `-- name: ListPacks :many
+select id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at from ingredient_suppliers
+where tenant_id = $1 and ingredient_id = $2
+order by is_default desc, pack_size, id
+`
+
+type ListPacksParams struct {
+	TenantID     uuid.UUID
+	IngredientID uuid.UUID
+}
+
+// The default pack first, then by size.
+func (q *Queries) ListPacks(ctx context.Context, arg ListPacksParams) ([]IngredientSupplier, error) {
+	rows, err := q.db.Query(ctx, listPacks, arg.TenantID, arg.IngredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngredientSupplier{}
+	for rows.Next() {
+		var i IngredientSupplier
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.IngredientID,
+			&i.SupplierID,
+			&i.SupplierSku,
+			&i.PackSize,
+			&i.PackUnit,
+			&i.PriceIdr,
+			&i.IsDefault,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProducts = `-- name: ListProducts :many
+
+select id, tenant_id, name, slug, description, image_path, is_active, created_at, updated_at from products
+where tenant_id = $1
+order by name, id
+`
+
+// CMS maintenance (M1.4). Every statement is scoped by tenant_id; an update
+// of another tenant's row matches nothing and surfaces as not found.
+// Timestamps come from platform/clock.
+func (q *Queries) ListProducts(ctx context.Context, tenantID uuid.UUID) ([]Product, error) {
+	rows, err := q.db.Query(ctx, listProducts, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Product{}
+	for rows.Next() {
+		var i Product
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.Slug,
+			&i.Description,
+			&i.ImagePath,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSuppliers = `-- name: ListSuppliers :many
+select id, tenant_id, name, whatsapp_phone, adapter_key, created_at, updated_at from suppliers
+where tenant_id = $1
+order by name, id
+`
+
+func (q *Queries) ListSuppliers(ctx context.Context, tenantID uuid.UUID) ([]Supplier, error) {
+	rows, err := q.db.Query(ctx, listSuppliers, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Supplier{}
+	for rows.Next() {
+		var i Supplier
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Name,
+			&i.WhatsappPhone,
+			&i.AdapterKey,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVariants = `-- name: ListVariants :many
+select id, tenant_id, product_id, sku, name, options, price_idr, production_minutes, min_notice_hours, is_active, created_at, updated_at from product_variants
+where tenant_id = $1 and product_id = $2
+order by name, id
+`
+
+type ListVariantsParams struct {
+	TenantID  uuid.UUID
+	ProductID uuid.UUID
+}
+
+func (q *Queries) ListVariants(ctx context.Context, arg ListVariantsParams) ([]ProductVariant, error) {
+	rows, err := q.db.Query(ctx, listVariants, arg.TenantID, arg.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProductVariant{}
+	for rows.Next() {
+		var i ProductVariant
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ProductID,
+			&i.Sku,
+			&i.Name,
+			&i.Options,
+			&i.PriceIdr,
+			&i.ProductionMinutes,
+			&i.MinNoticeHours,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockVariantPrice = `-- name: LockVariantPrice :one
+select price_idr from product_variants
+where tenant_id = $1 and id = $2
+for update
+`
+
+type LockVariantPriceParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// Run inside the price-change transaction: the row stays locked until the
+// new price and its audit entry commit together.
+func (q *Queries) LockVariantPrice(ctx context.Context, arg LockVariantPriceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, lockVariantPrice, arg.TenantID, arg.ID)
+	var price_idr int64
+	err := row.Scan(&price_idr)
+	return price_idr, err
+}
+
+const markDefaultPack = `-- name: MarkDefaultPack :one
+update ingredient_suppliers
+set is_default = true, updated_at = $1
+where tenant_id = $2 and id = $3
+returning id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at
+`
+
+type MarkDefaultPackParams struct {
+	Now      time.Time
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) MarkDefaultPack(ctx context.Context, arg MarkDefaultPackParams) (IngredientSupplier, error) {
+	row := q.db.QueryRow(ctx, markDefaultPack, arg.Now, arg.TenantID, arg.ID)
+	var i IngredientSupplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.IngredientID,
+		&i.SupplierID,
+		&i.SupplierSku,
+		&i.PackSize,
+		&i.PackUnit,
+		&i.PriceIdr,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setVariantPrice = `-- name: SetVariantPrice :one
+update product_variants
+set price_idr = $1, updated_at = $2
+where tenant_id = $3 and id = $4
+returning id, tenant_id, product_id, sku, name, options, price_idr, production_minutes, min_notice_hours, is_active, created_at, updated_at
+`
+
+type SetVariantPriceParams struct {
+	PriceIdr int64
+	Now      time.Time
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) SetVariantPrice(ctx context.Context, arg SetVariantPriceParams) (ProductVariant, error) {
+	row := q.db.QueryRow(ctx, setVariantPrice,
+		arg.PriceIdr,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i ProductVariant
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ProductID,
+		&i.Sku,
+		&i.Name,
+		&i.Options,
+		&i.PriceIdr,
+		&i.ProductionMinutes,
+		&i.MinNoticeHours,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateComponent = `-- name: UpdateComponent :one
+update components
+set name = $1, unit_label = $2, updated_at = $3
+where tenant_id = $4 and id = $5
+returning id, tenant_id, name, unit_label, created_at, updated_at
+`
+
+type UpdateComponentParams struct {
+	Name      string
+	UnitLabel string
+	Now       time.Time
+	TenantID  uuid.UUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) UpdateComponent(ctx context.Context, arg UpdateComponentParams) (Component, error) {
+	row := q.db.QueryRow(ctx, updateComponent,
+		arg.Name,
+		arg.UnitLabel,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i Component
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.UnitLabel,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateIngredient = `-- name: UpdateIngredient :one
+update ingredients
+set name = $1, base_unit = $2, is_perishable = $3,
+    shelf_life_days = $4, leftover_policy = $5,
+    updated_at = $6
+where tenant_id = $7 and id = $8
+returning id, tenant_id, name, base_unit, is_perishable, shelf_life_days, leftover_policy, created_at, updated_at
+`
+
+type UpdateIngredientParams struct {
+	Name           string
+	BaseUnit       string
+	IsPerishable   bool
+	ShelfLifeDays  *int32
+	LeftoverPolicy string
+	Now            time.Time
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+}
+
+func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (Ingredient, error) {
+	row := q.db.QueryRow(ctx, updateIngredient,
+		arg.Name,
+		arg.BaseUnit,
+		arg.IsPerishable,
+		arg.ShelfLifeDays,
+		arg.LeftoverPolicy,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i Ingredient
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.BaseUnit,
+		&i.IsPerishable,
+		&i.ShelfLifeDays,
+		&i.LeftoverPolicy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updatePack = `-- name: UpdatePack :one
+update ingredient_suppliers
+set supplier_id = $1, supplier_sku = $2, pack_size = $3,
+    pack_unit = $4, price_idr = $5, updated_at = $6
+where tenant_id = $7 and id = $8
+returning id, tenant_id, ingredient_id, supplier_id, supplier_sku, pack_size, pack_unit, price_idr, is_default, created_at, updated_at
+`
+
+type UpdatePackParams struct {
+	SupplierID  uuid.UUID
+	SupplierSku *string
+	PackSize    float64
+	PackUnit    string
+	PriceIdr    *int64
+	Now         time.Time
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+}
+
+// A pack never moves to another ingredient.
+func (q *Queries) UpdatePack(ctx context.Context, arg UpdatePackParams) (IngredientSupplier, error) {
+	row := q.db.QueryRow(ctx, updatePack,
+		arg.SupplierID,
+		arg.SupplierSku,
+		arg.PackSize,
+		arg.PackUnit,
+		arg.PriceIdr,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i IngredientSupplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.IngredientID,
+		&i.SupplierID,
+		&i.SupplierSku,
+		&i.PackSize,
+		&i.PackUnit,
+		&i.PriceIdr,
+		&i.IsDefault,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+update products
+set name = $1, slug = $2, description = $3,
+    image_path = $4, is_active = $5, updated_at = $6
+where tenant_id = $7 and id = $8
+returning id, tenant_id, name, slug, description, image_path, is_active, created_at, updated_at
+`
+
+type UpdateProductParams struct {
+	Name        string
+	Slug        string
+	Description string
+	ImagePath   *string
+	IsActive    bool
+	Now         time.Time
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
+		arg.Name,
+		arg.Slug,
+		arg.Description,
+		arg.ImagePath,
+		arg.IsActive,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Slug,
+		&i.Description,
+		&i.ImagePath,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateSupplier = `-- name: UpdateSupplier :one
+update suppliers
+set name = $1, whatsapp_phone = $2,
+    adapter_key = $3, updated_at = $4
+where tenant_id = $5 and id = $6
+returning id, tenant_id, name, whatsapp_phone, adapter_key, created_at, updated_at
+`
+
+type UpdateSupplierParams struct {
+	Name          string
+	WhatsappPhone *string
+	AdapterKey    string
+	Now           time.Time
+	TenantID      uuid.UUID
+	ID            uuid.UUID
+}
+
+func (q *Queries) UpdateSupplier(ctx context.Context, arg UpdateSupplierParams) (Supplier, error) {
+	row := q.db.QueryRow(ctx, updateSupplier,
+		arg.Name,
+		arg.WhatsappPhone,
+		arg.AdapterKey,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i Supplier
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.WhatsappPhone,
+		&i.AdapterKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateVariant = `-- name: UpdateVariant :one
+update product_variants
+set sku = $1, name = $2, options = $3,
+    production_minutes = $4, min_notice_hours = $5,
+    is_active = $6, updated_at = $7
+where tenant_id = $8 and id = $9
+returning id, tenant_id, product_id, sku, name, options, price_idr, production_minutes, min_notice_hours, is_active, created_at, updated_at
+`
+
+type UpdateVariantParams struct {
+	Sku               string
+	Name              string
+	Options           []byte
+	ProductionMinutes int32
+	MinNoticeHours    int32
+	IsActive          bool
+	Now               time.Time
+	TenantID          uuid.UUID
+	ID                uuid.UUID
+}
+
+// The price is not here: it changes only through SetVariantPrice, which is
+// audited. A variant never moves to another product.
+func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (ProductVariant, error) {
+	row := q.db.QueryRow(ctx, updateVariant,
+		arg.Sku,
+		arg.Name,
+		arg.Options,
+		arg.ProductionMinutes,
+		arg.MinNoticeHours,
+		arg.IsActive,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	var i ProductVariant
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.ProductID,
+		&i.Sku,
+		&i.Name,
+		&i.Options,
+		&i.PriceIdr,
+		&i.ProductionMinutes,
+		&i.MinNoticeHours,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
