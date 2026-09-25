@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package kuepreorder.catalog.v1;
+
+// StorefrontService is the public shop: what is on sale, for anyone, signed
+// in or not (docs/architecture.md §8). A product shows when it is active and
+// has at least one active variant; only its active variants show. Both calls
+// are safe to send as HTTP GET and to cache.
+//
+// Prices are int64 rupiah for display; checkout recomputes every total on
+// the server. A present but invalid access token is still Unauthenticated.
+service StorefrontService {
+  // ListShopProducts returns every product on sale, by name.
+  rpc ListShopProducts(ListShopProductsRequest) returns (ListShopProductsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // GetShopProduct returns the product on sale at a slug, matched
+  // case-insensitively; NotFound otherwise.
+  rpc GetShopProduct(GetShopProductRequest) returns (GetShopProductResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// ShopProduct is a product as customers see it.
+message ShopProduct {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  // Supabase Storage path of the photo; empty when there is none.
+  string image_path = 5;
+  // Cheapest first; never empty.
+  repeated ShopVariant variants = 6;
+}
+
+// ShopVariant is a variant as customers see it.
+message ShopVariant {
+  string id = 1;
+  string name = 2;
+  // For example {"rasa": "coklat"} or {"ukuran": "20x20"}.
+  map<string, string> options = 3;
+  int64 price_idr = 4;
+  // Hours from ordering to the earliest pickup, shopping time included (§15).
+  int32 min_notice_hours = 5;
+}
+
+message ListShopProductsRequest {}
+
+message ListShopProductsResponse {
+  repeated ShopProduct products = 1;
+}
+
+message GetShopProductRequest {
+  // Kebab-case, such as "kue-lapis".
+  string slug = 1;
+}
+
+message GetShopProductResponse {
+  ShopProduct product = 1;
+}

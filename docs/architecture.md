@@ -158,7 +158,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 | Modul | Tanggung jawab | Port yang diekspos |
 |---|---|---|
 | `identity` | Verifikasi JWT Supabase, data `customers`, resolusi `tenant_id` | `CustomerService`, `TenantResolver` |
-| `catalog` | Produk, varian, komponen, bahan, supplier, resep non-linear | `Service` (CMS, dengan otorisasi), `Reader` (baca in-process untuk checkout dan agregasi, per tenant, tanpa peran) |
+| `catalog` | Produk, varian, komponen, bahan, supplier, resep non-linear | `Service` (CMS, dengan otorisasi), `Storefront` (toko publik: hanya yang dijual, tanpa login), `Reader` (baca in-process untuk checkout dan agregasi, per tenant, tanpa peran) |
 | `recipe` | Hitung kebutuhan bahan per komponen dari model | `Model` (murni) |
 | `inventory` | Lot stok, ledger, cek stok harian, pencatatan bahan dibuang | `InventoryService` |
 | `orders` | Lifecycle order, jadwal ulang massal | `OrderService` |
@@ -184,11 +184,13 @@ Tata letak:
 - `buf.gen.yaml` memakai managed mode untuk `go_package`. Plugin Go (`protoc-gen-go`, `protoc-gen-connect-go`) dijalankan lewat `go tool`, jadi versinya ikut `go.mod` dan selalu cocok dengan library runtime. Plugin TS (`buf.build/bufbuild/es`, protobuf-es v2) dikunci versinya di BSR; client memakai `@connectrpc/connect` v2.
 - Hasil generate (`api/gen/go`, `api/gen/ts`) di-commit.
 
-Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`) dan `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC). Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
+Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC), dan `kuepreorder.catalog.v1.StorefrontService` (toko publik: `ListShopProducts`, `GetShopProduct`). Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
 
 **Konvensi kontrak** (berlaku untuk service berikutnya juga):
 - Handler di `internal/<modul>/connect` hanya menerjemahkan proto ↔ domain. Aturan, normalisasi, dan otorisasi tetap di service.
 - ID berupa string UUID. ID kosong diteruskan sebagai `uuid.Nil` agar service menjawab dengan pesannya sendiri ("Pilih produknya."). ID yang bukan UUID langsung `InvalidArgument` untuk field itu, sebelum otorisasi. Yang bocor hanya fakta bahwa string itu bukan UUID, tidak ada data yang ikut bocor.
+- RPC baca ditandai `NO_SIDE_EFFECTS`, jadi client boleh memanggilnya lewat HTTP GET (`useHttpGet` di connect-web) dan hasilnya bisa di-cache. Storefront memakainya.
+- Pesan untuk pelanggan terpisah dari pesan CMS (`ShopProduct` dan `ShopVariant` vs `Product` dan `Variant`), supaya field internal seperti SKU, menit produksi, dan resep tidak pernah ikut keluar ke publik hanya karena ditambahkan ke CMS.
 - Uang `int64` rupiah, yang di TypeScript menjadi `bigint`. Nilai enum `UNSPECIFIED` berarti "pakai default" kalau default-nya ada (aturan sisa, cara pesan), dan kalau tidak ada, ditolak seperti input kosong.
 - Parameter resep dikirim sebagai string JSON (`params_json`). Isinya dijamin JSON, formatnya tidak (jsonb Postgres menata ulang spasi).
 - **Error:**
@@ -231,8 +233,9 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`) dan
 | Produk, varian, **harga**, supplier, kemasan | ✅ | ❌ (hanya lihat) | ❌ |
 | Komponen, bahan, dan resep (termasuk titik ukur) | ✅ | ✅ | ❌ |
 | Melihat seluruh katalog di CMS | ✅ | ✅ | ❌ |
+| Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
 
-Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik (M1.7) hanya membaca produk dan varian yang aktif.
+Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik tidak memeriksa peran dan hanya menampilkan yang dijual: produk aktif yang punya minimal satu varian aktif, beserta varian aktifnya saja (termurah dulu). Tenant diambil dari `TenantResolver`, bukan dari orangnya. Slug dicocokkan tanpa membedakan huruf besar-kecil. Token yang ada tapi rusak tetap `Unauthenticated`.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
 
 **Setelan project Supabase:** Data API dimatikan (lihat §9), signing key aktif ECC P-256 (ES256). Menjelang go-live: pindah ke API key baru (`sb_publishable_…` untuk browser, `sb_secret_…` untuk server), lalu revoke secret HS256 lama. Kunci anon/service_role lama ikut mati saat itu.
@@ -325,6 +328,7 @@ Aturan skema (migrasi `00003_catalog.sql`):
 - **`pack_size` dalam satuan dasar bahan** (1000 untuk sak tepung 1 kg dalam gram, 10 untuk tray telur), jadi pembulatan ke kemasan tidak pernah mencampur satuan. `pack_unit` hanya label tampilan ("sak 1 kg", "tray"). `price_idr` di `ingredient_suppliers` adalah harga per kemasan.
 - **Paling banyak satu kemasan default per bahan** (indeks unik parsial `where is_default`): itulah kemasan yang dipakai pembulatan daftar belanja.
 - Setiap tabel katalog punya `created_at` dan `updated_at`.
+- Storefront (`ShopCatalog`, `ShopProduct`) membaca produk dan variannya dengan satu `join`, jadi keduanya berasal dari snapshot yang sama. Tidak mungkin tampil produk yang variannya baru saja dimatikan di antara dua query.
 - Query baca untuk agregasi (`ComponentsOfVariants`, `IngredientsOfComponents`, `DefaultPacks`) selalu di-scope `tenant_id` dan berurutan deterministik. Varian yang dinonaktifkan tetap ikut, karena order yang masuk sebelumnya tetap harus diproduksi.
 
 Aturan menyimpan resep (M1.5):
@@ -870,6 +874,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
   - Saat shutdown, span dan event yang tertahan dikirim dulu (batas 5 detik).
 - **Config dan secret:** dari environment variable atau secret manager. Divalidasi saat start; kalau kurang, aplikasi berhenti dengan pesan jelas.
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
+  - **Rate limit menyusul di M2** (diputuskan 2026-09-25), bersama checkout dan pelacakan pesanan guest, yang paling rawan disalahgunakan. Limit per IP butuh IP klien yang benar, dan IP itu datang dari header proxy yang berbeda per platform deploy (§24, belum dipilih). Menebak header malah berbahaya: `X-Forwarded-For` yang dipercaya begitu saja gampang dipalsukan, dan kalau diabaikan, semua traffic terlihat dari satu IP proxy. Sampai M2, satu-satunya endpoint publik adalah storefront. Isinya baca saja, bisa di-cache lewat GET, dan akan di-render server Next.js.
 - **Waktu:** simpan `timestamptz` (UTC), tampilkan dalam WIB. `production_date` bertipe `date` dan ditafsirkan dalam WIB.
 - **Audit:** aksi admin yang mengubah uang, stok, atau jadwal selalu mencatat siapa, kapan, dan alasannya.
   - Tabel `audit_log` bersifat **append-only**: trigger database menolak `UPDATE` dan `DELETE`, jadi entri tidak bisa diubah atau dihapus oleh aplikasi.

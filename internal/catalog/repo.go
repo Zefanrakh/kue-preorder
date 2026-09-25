@@ -49,6 +49,11 @@ type Repository interface {
 	SetRecipeLine(ctx context.Context, tenantID uuid.UUID, w RecipeLineWrite, at time.Time) (RecipeLine, error)
 	RemoveRecipeLine(ctx context.Context, tenantID, componentID, ingredientID uuid.UUID, at time.Time) error
 
+	// The storefront: products on sale with their active variants. ShopProduct
+	// is ErrNotFound unless the product at slug is on sale.
+	ShopCatalog(ctx context.Context, tenantID uuid.UUID) ([]ShopProduct, error)
+	ShopProduct(ctx context.Context, tenantID uuid.UUID, slug string) (ShopProduct, error)
+
 	// Reads for other modules, through Reader.
 	ComponentUses(ctx context.Context, tenantID uuid.UUID, variantIDs []uuid.UUID) ([]ComponentUse, error)
 	StoredRecipeLines(ctx context.Context, tenantID uuid.UUID, componentIDs []uuid.UUID) ([]StoredRecipeLine, error)

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,10 +41,13 @@ type server struct {
 	http   *http.Client
 	issuer *identitytest.TokenIssuer
 	roles  *identitytest.Repository
+
+	mu      sync.Mutex
+	methods []string // HTTP methods of the requests served, in order
 }
 
-// newServer serves the catalog as cmd/api does, with the real auth
-// interceptor, over HTTP, backed by a fresh database. Roles live in memory.
+// newServer serves the CMS and the storefront as cmd/api does, with the real
+// auth interceptor, over HTTP, backed by a fresh database. Roles live in memory.
 func newServer(t *testing.T) *server {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
@@ -58,14 +62,32 @@ func newServer(t *testing.T) *server {
 		t.Fatalf("ResolveSingleTenant() error = %v", err)
 	}
 	verifier := identity.NewTokenVerifier(keys, identitytest.Issuer, clock.NewFake(now))
-	svc := catalog.NewService(postgres.NewRepository(dbtest.New(t)), identity.NewService(roles, tenants), clock.NewFake(now))
+	repo := postgres.NewRepository(dbtest.New(t))
+	svc := catalog.NewService(repo, identity.NewService(roles, tenants), clock.NewFake(now))
+	auth := connect.WithInterceptors(identityrpc.NewAuthInterceptor(verifier, logger))
 
 	mux := http.NewServeMux()
-	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(svc, logger),
-		connect.WithInterceptors(identityrpc.NewAuthInterceptor(verifier, logger))))
-	srv := httptest.NewServer(mux)
+	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(svc, logger), auth))
+	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(catalog.NewStorefront(repo, tenants), logger), auth))
+	s := &server{issuer: issuer, roles: roles}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.methods = append(s.methods, r.Method)
+		s.mu.Unlock()
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
-	return &server{url: srv.URL, http: srv.Client(), issuer: issuer, roles: roles}
+	s.url, s.http = srv.URL, srv.Client()
+	return s
+}
+
+func (s *server) lastMethod() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.methods) == 0 {
+		return ""
+	}
+	return s.methods[len(s.methods)-1]
 }
 
 // as returns a client signed in as a new user holding roles; with no roles,
@@ -80,15 +102,24 @@ func (s *server) as(t *testing.T, roles ...identity.Role) catalogv1connect.Catal
 }
 
 func (s *server) withAuthorization(value string) catalogv1connect.CatalogAdminServiceClient {
-	header := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+	return catalogv1connect.NewCatalogAdminServiceClient(s.http, s.url, authorization(value))
+}
+
+// shop returns a storefront client that sends GET requests, as a caching
+// frontend would, with the Authorization header value, if any.
+func (s *server) shop(value string) catalogv1connect.StorefrontServiceClient {
+	return catalogv1connect.NewStorefrontServiceClient(s.http, s.url, connect.WithHTTPGet(), authorization(value))
+}
+
+func authorization(value string) connect.ClientOption {
+	return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if value != "" {
 				req.Header().Set("Authorization", value)
 			}
 			return next(ctx, req)
 		}
-	})
-	return catalogv1connect.NewCatalogAdminServiceClient(s.http, s.url, connect.WithInterceptors(header))
+	}))
 }
 
 func call[Req, Res any](t *testing.T, rpc func(context.Context, *connect.Request[Req]) (*connect.Response[Res], error), msg *Req) *Res {
