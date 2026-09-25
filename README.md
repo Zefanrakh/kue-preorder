@@ -6,7 +6,7 @@ Platform preorder kue dengan perhitungan bahan otomatis dari pesanan.
 - Aturan untuk AI agent (Antigravity dan Claude Code): [`.agents/rules/`](.agents/rules/) dan [`CLAUDE.md`](CLAUDE.md)
 - Alur kerja agent: [`.agents/workflows/`](.agents/workflows/)
 
-Status: M0 (fondasi) sedang berjalan. M0.1 (skeleton + `platform` + `/healthz`), M0.2 (migrasi awal + sqlc + integration test), M0.3 (kontrak buf + ConnectRPC + verifikasi JWT Supabase), dan M0.4 (CI) selesai. Berikutnya M0.5 (observability).
+Status: **M0 (fondasi) selesai**: skeleton + `platform`, migrasi awal + sqlc, kontrak buf + ConnectRPC + verifikasi JWT Supabase, CI, dan observability (OpenTelemetry + Sentry). Berikutnya M1 (engine: `catalog` + `recipe`).
 
 ## Kebutuhan
 
@@ -52,6 +52,13 @@ go run ./cmd/worker
 ```
 
 `/healthz` hanya mengecek proses hidup. `/readyz` juga mengecek database dan menjawab 503 selama database belum bisa dihubungi. `api` menolak start kalau migrasi belum dijalankan (tenant default belum ada).
+
+## Observability
+
+Tracing dan Sentry mati selama env-nya kosong, jadi tidak perlu akun untuk development.
+
+- **Tracing:** isi `OTEL_EXPORTER_OTLP_ENDPOINT` (dan `OTEL_EXPORTER_OTLP_HEADERS` untuk autentikasi) ke backend OTLP mana pun, misalnya Grafana Cloud atau Honeycomb. Setiap RPC dan query DB menjadi span; log di dalam span membawa `trace_id`.
+- **Sentry:** isi `SENTRY_DSN`. Setiap log **ERROR** menjadi event Sentry, termasuk panic yang tertangkap. Karena itu, pakai level ERROR hanya untuk hal yang perlu ditindaklanjuti.
 
 ## Kontrak API
 

@@ -5,9 +5,12 @@ package db_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db/dbtest"
@@ -34,6 +37,44 @@ func TestPing_ReachesDatabase(t *testing.T) {
 
 	if err := d.Ping(t.Context()); err != nil {
 		t.Errorf("Ping() error = %v", err)
+	}
+}
+
+func TestOpen_TracesQueriesWithoutParameterValues(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	d, err := db.Open(t.Context(), dbtest.NewEmptyURL(t), db.WithTracerProvider(tp))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(d.Close)
+	// otelpgx only traces queries inside a recording span, as in production,
+	// where every query runs under an RPC (or job) span.
+	ctx, rpc := tp.Tracer("test").Start(t.Context(), "IdentityService/WhoAmI")
+
+	if _, err := d.Pool().Exec(ctx, "select $1::text", "sari@example.com"); err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	rpc.End()
+
+	var query sdktrace.ReadOnlySpan
+	for _, s := range recorder.Ended() {
+		for _, a := range s.Attributes() {
+			if a.Key == "db.query.text" && strings.Contains(a.Value.AsString(), "select $1::text") {
+				query = s
+			}
+		}
+	}
+	if query == nil {
+		t.Fatalf("no span with the query text among %d spans", len(recorder.Ended()))
+	}
+	if query.Parent().SpanID() != rpc.SpanContext().SpanID() {
+		t.Error("query span is not a child of the RPC span")
+	}
+	for _, a := range query.Attributes() {
+		if strings.Contains(a.Value.String(), "sari@example.com") {
+			t.Errorf("span attribute %s records a parameter value", a.Key)
+		}
 	}
 }
 

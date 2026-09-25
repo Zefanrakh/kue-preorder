@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DB wraps the connection pool shared by all modules.
@@ -16,13 +18,29 @@ type DB struct {
 	pool *pgxpool.Pool
 }
 
+// Option configures Open.
+type Option func(*pgxpool.Config)
+
+// WithTracerProvider records a span for every query, batch, and connection
+// acquire that runs inside a traced request or job; queries outside any span
+// (startup) are not traced. The SQL text is recorded (it only holds $n
+// placeholders); the parameter values are not.
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return func(cfg *pgxpool.Config) {
+		cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTracerProvider(tp))
+	}
+}
+
 // Open creates the connection pool. Connections are made lazily, so Open
 // succeeds while the database is down; /readyz reports reachability.
-func Open(ctx context.Context, url string) (*DB, error) {
+func Open(ctx context.Context, url string, opts ...Option) (*DB, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		// The parse error can echo the URL, password included; keep it out of logs.
 		return nil, errors.New("parse DATABASE_URL: invalid connection string")
+	}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

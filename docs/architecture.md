@@ -132,7 +132,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
   /channels            # port Adapter + web + tokopedia
   /notifications       # template + kirim email/WA
   /identity            # verifikasi JWT, customers, resolusi tenant
-  /platform            # db, jobs, outbox, idempotency, config, log, otel, clock
+  /platform            # db, jobs, outbox, idempotency, config, log, telemetry, clock
 /api
   /proto               # file .proto (buf), sumber kontrak
   /gen/go /gen/ts      # hasil codegen
@@ -169,7 +169,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 | `procurement` | Kirim PO ke supplier, lacak status | `Adapter` (manual / whatsapp) |
 | `channels` | Normalisasi order dari channel luar | `Adapter` (web / tokopedia) |
 | `notifications` | Template dan pengiriman email/WA | `Notifier` |
-| `platform` | db, jobs, outbox, idempotency, clock, config, log, otel | — |
+| `platform` | db, jobs, outbox, idempotency, clock, config, log, telemetry (OpenTelemetry + Sentry) | — |
 
 ---
 
@@ -787,7 +787,13 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 ## 22. Hal lintas-modul
 
 - **Error:** dibungkus dengan konteks (`fmt.Errorf("recompute batch %s: %w", date, err)`), sentinel error di domain, tidak ada `panic` di jalur normal.
-- **Observability:** `slog` JSON; span OpenTelemetry di webhook, job, dan agregasi; Sentry; `/healthz` dan `/readyz`. Setiap request dan job membawa correlation id.
+- **Observability:** `slog` JSON; span OpenTelemetry di webhook, job, dan agregasi; Sentry; `/healthz` dan `/readyz`. Setiap request dan job membawa correlation id. Detail (`internal/platform/telemetry`):
+  - Tracing dan Sentry **mati kalau env-nya kosong**; tanpa akun apa pun aplikasi tetap jalan.
+  - **Tracing:** OTLP/HTTP ke `OTEL_EXPORTER_OTLP_ENDPOINT`. Resource membawa `service.name` (`api`/`worker`), `service.version` (commit git), dan `deployment.environment.name` (`APP_ENV`). Span otomatis: setiap RPC Connect (`otelconnect`, dipasang *sebelum* interceptor auth agar penolakan token ikut tercatat) dan setiap query DB yang berjalan di dalam request atau job yang di-trace (`otelpgx`, sebagai anak span RPC/job; teks SQL dicatat, nilai parameter tidak; query saat startup tidak di-trace). `/healthz` dan `/readyz` tidak di-trace. Propagasi W3C `traceparent` selalu aktif. Webhook (`otelhttp`) dan job River menyusul di M2.
+  - **Log ↔ trace:** setiap baris log di dalam span membawa `trace_id` dan `span_id`, di samping `correlation_id`.
+  - **Sentry:** setiap log level **ERROR** menjadi event (tag `correlation_id`, `trace_id`, lokasi kode; dikelompokkan per pesan + lokasi kode). Jadi "alert ke Sentry" cukup dengan `logger.ErrorContext(...)`; gangguan yang lumrah (token kedaluwarsa, collector tak terjangkau) di-log di bawah ERROR agar tidak membanjiri Sentry. Semua pengumpulan data otomatis Sentry dimatikan (user, cookie, header, body, query).
+  - **Panic:** middleware `Recover` mengubah panic HTTP menjadi 500 dan `ConnectRecover` mengubah panic RPC menjadi `Internal`; keduanya me-log ERROR dengan stack. Kegagalan fatal saat start juga di-log ERROR sebelum proses keluar.
+  - Saat shutdown, span dan event yang tertahan dikirim dulu (batas 5 detik).
 - **Config dan secret:** dari environment variable atau secret manager. Divalidasi saat start; kalau kurang, aplikasi berhenti dengan pesan jelas.
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
 - **Waktu:** simpan `timestamptz` (UTC), tampilkan dalam WIB. `production_date` bertipe `date` dan ditafsirkan dalam WIB.
@@ -911,7 +917,9 @@ WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=
 WHATSAPP_APP_SECRET=             # verifikasi signature webhook
 RESEND_API_KEY=
-SENTRY_DSN=
-OTEL_EXPORTER_OTLP_ENDPOINT=
+SENTRY_DSN=                      # opsional; kosong = Sentry mati
+OTEL_EXPORTER_OTLP_ENDPOINT=     # opsional; kosong = tracing mati. https, atau http ke loopback
+OTEL_EXPORTER_OTLP_HEADERS=      # opsional; autentikasi ke backend trace, mis. Authorization=Basic ...
+OTEL_SERVICE_NAME=               # opsional; default api / worker
 TZ=Asia/Jakarta
 ```
