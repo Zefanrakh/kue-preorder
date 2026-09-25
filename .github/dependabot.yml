@@ -1,0 +1,55 @@
+# Weekly, grouped updates: at most one PR per ecosystem per week.
+#
+# Cooldown: a new release is only proposed once it is 7 days old (14 for a
+# major version). Hijacked-maintainer releases are usually caught and pulled
+# within hours or days, so the wait keeps them out of our PRs. Security
+# updates are not delayed by the cooldown.
+#
+# Never enable auto-merge for these PRs; see README "Dependency dan supply chain".
+#
+# Not covered here: the pinned tool versions in ci.yml (golangci-lint, sqlc,
+# buf, actionlint, govulncheck) and the protoc-gen-es plugin in buf.gen.yaml;
+# bump those by hand together with README.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Jakarta
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      go:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Jakarta
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Jakarta
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      actions:
+        patterns: ["*"]

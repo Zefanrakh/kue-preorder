@@ -808,7 +808,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 | Repository | Integration test (`-tags=integration`) dengan testcontainers Postgres 17 dan migrasi asli. Satu container per paket; migrasi sekali ke database template, lalu setiap test mendapat salinan sendiri (`internal/platform/db/dbtest`) | Query terbukti benar |
 | Skema | Setiap tabel milik tenant punya `tenant_id uuid not null` + FK ke `tenants`; setiap tabel mengaktifkan RLS; migrasi bisa naik-turun-naik | Invariant §9 dan §25 |
 | Webhook | Event yang sama dua kali → satu efek | Semua provider |
-| Kontrak | `buf breaking` + client TS kompilasi | Setiap PR |
+| Kontrak | `buf lint`, `buf format`, `buf breaking` terhadap branch tujuan PR, hasil `buf generate` sudah ter-commit, client TS lolos `tsc` strict (`api/`, sampai `web/` ada) | Setiap PR |
 | Konkurensi | `go test -race`; recompute paralel batch yang sama | Setiap PR |
 
 **Golden test:** kasus lapis legit, donut 6 (coklat dan keju), roti daging 2 + roti blueberry cheesecake 3, dengan daftar belanja yang diharapkan disimpan sebagai file.
@@ -818,6 +818,17 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 ## 24. Migrasi, deploy, dan backup
 
 - Migrasi forward-only lewat goose. File di `db/migrations` ditanam ke binary (`embed`) dan dijalankan lewat `platform/db.Migrate`, sehingga test dan deploy memakai file yang persis sama. CI memastikan hasil `sqlc generate` sudah ter-commit. Seed awal: satu tenant default (id tetap `00000000-0000-0000-0000-000000000001`), lalu channel `web` dan kebijakan pembayaran default menyusul di migrasi yang membuat tabelnya (M2).
+- **CI** (`.github/workflows/ci.yml`) berjalan di setiap PR dan push ke `main`, dengan tiga job paralel:
+  - `go`: `go mod tidy -diff`, `go vet`, `govulncheck`, golangci-lint, `go test -race -tags=integration` (Postgres 17 lewat testcontainers).
+  - `codegen`: `sqlc diff`, `buf lint`/`format`/`breaking`, hasil `buf generate` tanpa perbedaan, actionlint.
+  - `ts`: `npm ci --ignore-scripts`, `npm audit signatures`, `tsc` strict atas client TS hasil generate.
+
+  Merge ke `main` hanya lewat PR dengan ketiga job hijau. Repo private di GitHub Free tidak menyediakan proteksi branch, jadi aturan ini dijaga dengan disiplin sampai repo pindah ke paket yang mendukungnya (lalu aktifkan ruleset: PR wajib, status check wajib, blok force push).
+- **Supply chain:**
+  - Action dikunci ke commit SHA; token CI hanya-baca, tanpa secret, kredensial checkout tidak disimpan.
+  - Dependabot memperbarui Go, npm, dan Actions tiap minggu secara berkelompok, dengan **cooldown 7 hari** (14 untuk versi mayor) agar rilis dari akun maintainer yang dibajak sempat ketahuan dan ditarik. PR Dependabot tidak pernah di-auto-merge.
+  - `api/.npmrc` mematikan lifecycle scripts npm (`ignore-scripts=true`) di laptop dan CI.
+  - Versi tool di `ci.yml` dan plugin `protoc-gen-es` diperbarui manual.
 - Dua binary (`api`, `worker`) dari satu image Docker, di Fly.io / Railway / Render / Cloud Run region Singapura.
 - Next.js di Vercel.
 - Migrasi dijalankan sebagai langkah terpisah sebelum deploy aplikasi.

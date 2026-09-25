@@ -1,0 +1,109 @@
+# Quality gate for every pull request and every push to main
+# (docs/architecture.md §23, §24). Actions are pinned to commit SHAs; the
+# comment names the release. Dependabot keeps them current.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    name: Go (tidy, vet, lint, test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go.mod is tidy
+        run: go mod tidy -diff
+      - name: go vet
+        run: go vet -tags=integration ./...
+      # Known vulnerabilities in code paths we actually call, dependencies and
+      # the Go standard library included.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+      # Integration tests start Postgres 17 through testcontainers; the runner has Docker.
+      - name: Test (race detector, integration)
+        run: go test -race -tags=integration -count=1 ./...
+
+  codegen:
+    name: Codegen (sqlc, buf, workflows)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # buf breaking compares against the base branch
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: sqlc-dev/setup-sqlc@bac53b7fb28c039a6c7f5736fd1e89744021bdd6 # v5.0.0
+        with:
+          sqlc-version: 1.31.1
+      - name: sqlc output is committed
+        run: sqlc diff
+      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
+        with:
+          version: 1.73.0
+          setup_only: true
+      - name: buf lint
+        run: buf lint
+      - name: buf format
+        run: buf format --diff --exit-code
+      - name: buf breaking
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: buf breaking --against ".git#ref=origin/${BASE_REF}"
+      - name: buf output is committed
+        run: |
+          buf generate
+          if [ -n "$(git status --porcelain -- api/gen)" ]; then
+            git status --short -- api/gen
+            echo "::error::api/gen is out of date. Run 'buf generate' and commit the result."
+            exit 1
+          fi
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+  ts:
+    name: TypeScript client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      # api/.npmrc already sets ignore-scripts; the flag keeps CI safe even if
+      # that file changes. Lifecycle scripts are how npm worms run on install.
+      - run: npm ci --ignore-scripts
+      - name: Registry signatures and provenance
+        run: npm audit signatures
+      - name: tsc (strict) over the generated client
+        run: npm run typecheck
