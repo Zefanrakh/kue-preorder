@@ -39,4 +39,19 @@ type Repository interface {
 	UpdatePack(ctx context.Context, tenantID, id uuid.UUID, in PackInput, at time.Time) (Pack, error)
 	// SetDefaultPack makes the pack its ingredient's only default, in one transaction.
 	SetDefaultPack(ctx context.Context, tenantID, id uuid.UUID, at time.Time) (Pack, error)
+
+	// Recipe writes lock the variant or component, and on a real change write
+	// a catalog.recipe_changed outbox event in the same transaction. Writing
+	// what is already stored changes nothing and emits nothing.
+	ListVariantComponents(ctx context.Context, tenantID, variantID uuid.UUID) ([]VariantComponent, error)
+	SetVariantComponents(ctx context.Context, tenantID, variantID uuid.UUID, uses []VariantComponent, at time.Time) ([]VariantComponent, error)
+	ListRecipeLines(ctx context.Context, tenantID, componentID uuid.UUID) ([]RecipeLine, error)
+	SetRecipeLine(ctx context.Context, tenantID uuid.UUID, w RecipeLineWrite, at time.Time) (RecipeLine, error)
+	RemoveRecipeLine(ctx context.Context, tenantID, componentID, ingredientID uuid.UUID, at time.Time) error
+
+	// Reads for other modules, through Reader.
+	ComponentUses(ctx context.Context, tenantID uuid.UUID, variantIDs []uuid.UUID) ([]ComponentUse, error)
+	StoredRecipeLines(ctx context.Context, tenantID uuid.UUID, componentIDs []uuid.UUID) ([]StoredRecipeLine, error)
+	DefaultPacks(ctx context.Context, tenantID uuid.UUID, ingredientIDs []uuid.UUID) ([]DefaultPack, error)
+	VariantSummaries(ctx context.Context, tenantID uuid.UUID, ids []uuid.UUID) ([]VariantSummary, error)
 }
