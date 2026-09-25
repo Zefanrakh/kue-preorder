@@ -466,7 +466,15 @@ if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 }
 ```
 
-`fit.go` menyediakan `FitAffine`, `FitPower` (least squares di ruang log-log), dan `FitPiecewise`. Hasil fit disimpan ke `params`; titik ukur mentah disimpan ke `measured_points`.
+`fit.go` menyediakan `FitAffine`, `FitPower` (least squares di ruang log-log), dan `FitPiecewise`. Hasil fit disimpan ke `params` (lewat `recipe.Params`, kebalikan dari `Build`); titik ukur mentah disimpan ke `measured_points`.
+
+Aturan fit:
+- Setiap titik ukur: `u` > 0, jumlah >= 0, finite. Selain itu `ErrFit` yang menyebut nomor titiknya.
+- `FitAffine`: kuadrat terkecil biasa. Kalau garis terbaiknya punya `a` < 0, fit diulang lewat titik nol (`a` = 0). Kalau hanya ada satu nilai `u` yang berbeda, juga lewat titik nol. Kemiringan negatif (jumlah turun saat `u` naik) ditolak.
+- `FitPower`: semua jumlah harus > 0 (nol tidak punya logaritma), minimal dua nilai `u` yang berbeda, dan `b` negatif ditolak.
+- `FitPiecewise`: titik diurutkan, jumlah untuk `u` yang sama dirata-rata, dan data yang turun ditolak dengan menyebut di `u` berapa.
+- **Fit tidak pernah mengembalikan model yang akan ditolak `Validate`.** Contoh yang ditemukan property test: lonjakan 500× antara 12,5 dan 13 unit menghasilkan `b` ≈ 158, yang meluap sebelum u = 100; hasilnya `ErrFit` ("model tidak layak pakai, periksa titik ukur").
+- `FitAll` menjalankan ketiganya untuk dibandingkan di CMS. Setiap hasil membawa model atau alasan gagal, plus laporan kecocokan: R², selisih per titik (untuk grafik), dan selisih terbesar absolut maupun relatif.
 
 **Kontrak bersama semua model** (ditegakkan di satu tempat, `evaluate`, bukan per model):
 - `u` harus finite dan `>= 0` (boleh pecahan); selain itu `ErrInvalidUnits`.
