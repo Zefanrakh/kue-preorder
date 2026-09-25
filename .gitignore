@@ -4,6 +4,8 @@
 *.test
 *.out
 coverage.*
+# Local reproduction files written by the rapid property-testing library
+**/testdata/rapid/
 
 # Env
 .env

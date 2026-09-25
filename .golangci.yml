@@ -21,12 +21,18 @@ linters:
     # generically (foreign postgres/ packages, aggregation) live in internal/archtest.
     depguard:
       rules:
+        # recipe is a pure engine: the standard library, itself, the formula
+        # evaluator, and (in tests) the property-testing library. Nothing else,
+        # no other internal package and no database or HTTP client.
         recipe-is-pure:
+          list-mode: strict
           files:
             - "**/internal/recipe/**"
-          deny:
-            - pkg: github.com/Zefanrakh/kue-preorder/internal
-              desc: recipe is a pure engine and must not import other internal packages
+          allow:
+            - $gostd
+            - github.com/Zefanrakh/kue-preorder/internal/recipe
+            - github.com/expr-lang/expr
+            - pgregory.net/rapid
     forbidigo:
       analyze-types: true
       forbid:
