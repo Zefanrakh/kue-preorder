@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/base64"
 	"log/slog"
 	"maps"
 	"strings"
@@ -8,6 +9,9 @@ import (
 
 	"github.com/Zefanrakh/kue-preorder/internal/platform/config"
 )
+
+// testToken stands in for a WhatsApp access token.
+var testToken = strings.Repeat("t", 24)
 
 func env(vars map[string]string) func(string) string {
 	return func(key string) string { return vars[key] }
@@ -20,6 +24,11 @@ func valid(overrides map[string]string) map[string]string {
 		"DATABASE_URL":     "postgres://db",
 		"SUPABASE_URL":     "https://abc.supabase.co",
 		"CLIENT_IP_HEADER": "CF-Connecting-IP",
+		// Made up for tests: a hook secret of 32 known bytes and a token.
+		"SUPABASE_SEND_SMS_HOOK_SECRET": "v1,whsec_" + base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		"WHATSAPP_API_TOKEN":            testToken,
+		"WHATSAPP_PHONE_NUMBER_ID":      "1234567890",
+		"WHATSAPP_OTP_TEMPLATE":         "kode_masuk",
 	}
 	maps.Copy(vars, overrides)
 	return vars
@@ -262,5 +271,50 @@ func TestLoad_ClientIPHeader(t *testing.T) {
 
 	if _, err := config.Load(env(valid(map[string]string{"CLIENT_IP_HEADER": "X Forwarded"}))); err == nil {
 		t.Error("Load(header name with a space) succeeded, want an error")
+	}
+}
+
+func TestLoad_SignInCodes(t *testing.T) {
+	cfg, err := config.Load(env(valid(nil)))
+	if err != nil || cfg.SendSMSHookSecret == "" || !cfg.HasWhatsApp() || cfg.WhatsAppPhoneNumberID != "1234567890" || cfg.WhatsAppOTPTemplate != "kode_masuk" {
+		t.Fatalf("Load() = %+v, %v", cfg, err)
+	}
+
+	// Development may run without both: codes go to the log.
+	dev := valid(map[string]string{"APP_ENV": "development"})
+	for _, k := range []string{"SUPABASE_SEND_SMS_HOOK_SECRET", "WHATSAPP_API_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_OTP_TEMPLATE"} {
+		delete(dev, k)
+	}
+	if cfg, err := config.Load(env(dev)); err != nil || cfg.HasWhatsApp() || cfg.SendSMSHookSecret != "" {
+		t.Errorf("Load(development) = %+v, %v; want neither, no error", cfg, err)
+	}
+
+	tests := map[string]struct {
+		vars map[string]string
+		want string
+	}{
+		"production without the hook secret": {func() map[string]string { v := valid(nil); delete(v, "SUPABASE_SEND_SMS_HOOK_SECRET"); return v }(), "SUPABASE_SEND_SMS_HOOK_SECRET"},
+		"production without WhatsApp": {func() map[string]string {
+			v := valid(nil)
+			for _, k := range []string{"WHATSAPP_API_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_OTP_TEMPLATE"} {
+				delete(v, k)
+			}
+			return v
+		}(), "WHATSAPP_API_TOKEN"},
+		"half of WhatsApp":           {func() map[string]string { v := valid(nil); delete(v, "WHATSAPP_OTP_TEMPLATE"); return v }(), "set all three or none"},
+		"secret in the wrong shape":  {valid(map[string]string{"SUPABASE_SEND_SMS_HOOK_SECRET": "hunter2"}), "SUPABASE_SEND_SMS_HOOK_SECRET"},
+		"phone number instead of id": {valid(map[string]string{"WHATSAPP_PHONE_NUMBER_ID": "+62812345"}), "WHATSAPP_PHONE_NUMBER_ID"},
+		"template with spaces":       {valid(map[string]string{"WHATSAPP_OTP_TEMPLATE": "Kode Masuk"}), "WHATSAPP_OTP_TEMPLATE"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := config.Load(env(tt.vars))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Load() error = %v, want it to mention %s", err, tt.want)
+			}
+			if err != nil && (strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), testToken)) {
+				t.Errorf("error leaks a secret: %v", err)
+			}
+		})
 	}
 }

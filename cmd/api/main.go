@@ -25,6 +25,7 @@ import (
 	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identityrpc "github.com/Zefanrakh/kue-preorder/internal/identity/connect"
+	"github.com/Zefanrakh/kue-preorder/internal/identity/otp"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	ordersrpc "github.com/Zefanrakh/kue-preorder/internal/orders/connect"
@@ -38,6 +39,8 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/ratelimit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/telemetry"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/webhook"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/whatsapp"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 	schedulingrpc "github.com/Zefanrakh/kue-preorder/internal/scheduling/connect"
 	schedulingpg "github.com/Zefanrakh/kue-preorder/internal/scheduling/postgres"
@@ -119,6 +122,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 	deps.verifier = identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{})
 	deps.limiter = ratelimit.New(clock.Real{}, rateLimits)
 	deps.clientIPHeader = cfg.ClientIPHeader
+	if deps.sendSMSHook, err = sendSMSHook(cfg, database, logger); err != nil {
+		return err
+	}
 	handler, err := newHandler(deps)
 	if err != nil {
 		return err
@@ -160,6 +166,31 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 	}
 }
 
+// sendSMSHook serves Supabase Auth's Send SMS hook when its secret is set
+// (§8). Codes go over WhatsApp; without WhatsApp, development logs them and
+// every other environment refuses to start.
+func sendSMSHook(cfg config.Config, database *db.DB, logger *slog.Logger) (http.Handler, error) {
+	var sender otp.Sender
+	switch {
+	case cfg.HasWhatsApp():
+		wa := whatsapp.New(whatsapp.Config{Token: cfg.WhatsAppToken, PhoneNumberID: cfg.WhatsAppPhoneNumberID}, nil)
+		sender = otp.WhatsAppSender{Client: wa, Template: cfg.WhatsAppOTPTemplate}
+	case cfg.AppEnv == config.EnvDevelopment:
+		sender = otp.LogSender{Logger: logger}
+	default:
+		return nil, fmt.Errorf("APP_ENV=%s sends sign-in codes over WhatsApp: set WHATSAPP_API_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_OTP_TEMPLATE", cfg.AppEnv)
+	}
+	if cfg.SendSMSHookSecret == "" {
+		return nil, nil
+	}
+	verifier, err := webhook.NewStandardVerifier(cfg.SendSMSHookSecret)
+	if err != nil {
+		return nil, err
+	}
+	perPhone := ratelimit.New(clock.Real{}, map[string]ratelimit.Rule{otp.Provider: otp.PerPhone})
+	return otp.NewHook(verifier, webhook.NewEvents(database), sender, perPhone, clock.Real{}, logger), nil
+}
+
 // paymentProvider picks who makes invoices. Only development may pretend;
 // Xendit arrives in M2.6, and until then nothing else may take orders.
 func paymentProvider(cfg config.Config) (payments.Provider, error) {
@@ -181,6 +212,7 @@ type handlerDeps struct {
 	checkout       *orders.Checkout
 	limiter        *ratelimit.Limiter
 	clientIPHeader string
+	sendSMSHook    http.Handler // nil: not served
 	db             httpserver.Pinger
 }
 
@@ -226,6 +258,10 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", httpserver.Healthz())
 	mux.Handle("GET /readyz", httpserver.Readyz(d.db, d.logger))
+	if d.sendSMSHook != nil {
+		// Supabase Auth hands over sign-in codes here, signed (§8, §18).
+		mux.Handle("POST /hooks/supabase/send-sms", d.sendSMSHook)
+	}
 	mux.Handle(identityv1connect.NewIdentityServiceHandler(identityrpc.NewHandler(d.identity, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(d.catalog, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(d.storefront, d.logger), connectOpts...))

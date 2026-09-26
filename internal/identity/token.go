@@ -76,16 +76,16 @@ func (v *TokenVerifier) Verify(ctx context.Context, token string) (AuthUser, err
 	if err != nil {
 		return AuthUser{}, fmt.Errorf("%w: subject is not a user id", ErrInvalidToken)
 	}
-	return AuthUser{ID: id, Email: claims.Email, Phone: normalizePhone(claims.Phone)}, nil
+	return AuthUser{ID: id, Email: claims.Email, Phone: NormalizePhone(claims.Phone)}, nil
 }
 
 // e164 is a phone number in E.164: a plus and 7 to 15 digits.
 var e164 = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
 
-// normalizePhone turns Supabase's phone claim, digits without the plus
+// NormalizePhone turns Supabase's phone claim, digits without the plus
 // (6281234567890), into E.164. A malformed number counts as no number: the
 // user simply cannot order until they sign in with WhatsApp.
-func normalizePhone(claim string) string {
+func NormalizePhone(claim string) string {
 	p := strings.TrimSpace(claim)
 	if p == "" {
 		return ""

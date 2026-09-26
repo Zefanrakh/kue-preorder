@@ -15,10 +15,16 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Zefanrakh/kue-preorder/internal/platform/webhook"
 )
 
-// headerName matches an HTTP header name (RFC 9110 token).
-var headerName = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+.^_|~-]+$`)
+var (
+	// headerName matches an HTTP header name (RFC 9110 token).
+	headerName   = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+.^_|~-]+$`)
+	digits       = regexp.MustCompile(`^[0-9]+$`)
+	templateName = regexp.MustCompile(`^[a-z0-9_]{1,512}$`)
+)
 
 // Env is the deployment environment.
 type Env string
@@ -54,7 +60,19 @@ type Config struct {
 	// Required in production, where the connection's address is the proxy.
 	// Empty elsewhere: the connection's address is used.
 	ClientIPHeader string
+	// SendSMSHookSecret verifies Supabase Auth's Send SMS hook, which hands
+	// over sign-in codes (§8): "v1,whsec_<base64>". Required in production;
+	// without it the hook is not served.
+	SendSMSHookSecret string
+	// WhatsApp sends sign-in codes and, later, notifications. All three or
+	// none; required in production. Without them, development logs the codes.
+	WhatsAppToken         string
+	WhatsAppPhoneNumberID string
+	WhatsAppOTPTemplate   string
 }
+
+// HasWhatsApp reports whether WhatsApp is configured.
+func (c Config) HasWhatsApp() bool { return c.WhatsAppToken != "" }
 
 // HTTPAddr is the address the API server listens on.
 func (c Config) HTTPAddr() string {
@@ -150,6 +168,38 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	} else if cfg.AppEnv == EnvProduction {
 		missing = append(missing, "CLIENT_IP_HEADER")
+	}
+
+	if raw := strings.TrimSpace(getenv("SUPABASE_SEND_SMS_HOOK_SECRET")); raw != "" {
+		// The secret stays out of error messages.
+		if _, err := webhook.NewStandardVerifier(raw); err != nil {
+			errs = append(errs, fmt.Errorf("SUPABASE_SEND_SMS_HOOK_SECRET: %w", err))
+		} else {
+			cfg.SendSMSHookSecret = raw
+		}
+	} else if cfg.AppEnv == EnvProduction {
+		missing = append(missing, "SUPABASE_SEND_SMS_HOOK_SECRET")
+	}
+
+	wa := map[string]string{}
+	for _, key := range []string{"WHATSAPP_API_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_OTP_TEMPLATE"} {
+		if v := strings.TrimSpace(getenv(key)); v != "" {
+			wa[key] = v
+		}
+	}
+	switch {
+	case len(wa) == 3:
+		if !digits.MatchString(wa["WHATSAPP_PHONE_NUMBER_ID"]) {
+			errs = append(errs, fmt.Errorf("WHATSAPP_PHONE_NUMBER_ID=%q: must be the number's id, digits only", wa["WHATSAPP_PHONE_NUMBER_ID"]))
+		}
+		if !templateName.MatchString(wa["WHATSAPP_OTP_TEMPLATE"]) {
+			errs = append(errs, fmt.Errorf("WHATSAPP_OTP_TEMPLATE=%q: must be a template name, lowercase letters, digits, and underscores", wa["WHATSAPP_OTP_TEMPLATE"]))
+		}
+		cfg.WhatsAppToken, cfg.WhatsAppPhoneNumberID, cfg.WhatsAppOTPTemplate = wa["WHATSAPP_API_TOKEN"], wa["WHATSAPP_PHONE_NUMBER_ID"], wa["WHATSAPP_OTP_TEMPLATE"]
+	case len(wa) > 0:
+		errs = append(errs, errors.New("WHATSAPP_API_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_OTP_TEMPLATE go together: set all three or none"))
+	case cfg.AppEnv == EnvProduction:
+		missing = append(missing, "WHATSAPP_API_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_OTP_TEMPLATE")
 	}
 
 	if len(missing) > 0 {
