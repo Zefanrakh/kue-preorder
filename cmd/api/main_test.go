@@ -31,11 +31,13 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/identitytest"
+	"github.com/Zefanrakh/kue-preorder/internal/identity/otp"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/httpserver"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/ratelimit"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/webhook"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 )
 
@@ -119,7 +121,8 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		limiter: ratelimit.New(clock.NewFake(now), map[string]ratelimit.Rule{
 			ordersv1connect.CheckoutServiceQuoteOrderProcedure: {Every: time.Hour, Burst: 2},
 		}),
-		db: db,
+		sendSMSHook: otp.NewHook(testHookVerifier(t), nil, nil, nil, clock.NewFake(now), logger),
+		db:          db,
 	})
 	if err != nil {
 		t.Fatalf("newHandler() error = %v", err)
@@ -374,4 +377,32 @@ func TestAPI_CacheHeaders(t *testing.T) {
 	if got := header.Get("Cache-Control"); got != "no-store" {
 		t.Errorf("quote Cache-Control = %q, want no-store", got)
 	}
+}
+
+// The Send SMS hook sits outside Connect and refuses what Supabase did not
+// sign, before touching anything else.
+func TestAPI_ServesTheSendSMSHook(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, s.url+"/hooks/supabase/send-sms",
+		strings.NewReader(`{"user":{"phone":"6281234567890"},"sms":{"otp":"123456"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unsigned delivery = %d, want 401", res.StatusCode)
+	}
+}
+
+func testHookVerifier(t *testing.T) *webhook.StandardVerifier {
+	t.Helper()
+	v, err := webhook.NewStandardVerifier("v1,whsec_MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
 }

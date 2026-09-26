@@ -224,6 +224,45 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 4. Peran (pelanggan / admin / ibu) disimpan di tabel `staff_roles` milik aplikasi, bukan di klaim JWT, supaya bisa dicabut seketika.
 5. **Pelanggan masuk dengan OTP WhatsApp, tanpa password** (diputuskan 2026-09-26). Supabase Auth memakai login nomor HP; kodenya dikirim `api` lewat WhatsApp melalui **Send SMS Hook** Supabase (tersedia di paket Free dan Pro; dibangun di M2.5). Tidak ada checkout tanpa nomor terverifikasi, jadi satu nomor adalah satu orang dan notifikasi tidak salah alamat. Pelanggan melihat pesanannya setelah masuk; tidak ada lagi `guest_access_token`. Melihat katalog dan meminta penawaran (`QuoteOrder`) tetap tanpa login. Setiap OTP berbayar, jadi permintaan OTP dibatasi per nomor dan per IP, dan diberi Turnstile setelah Cloudflare terpasang (§22).
 
+**Pengiriman kode OTP** (`identity/otp`, sejak M2.5; memakai hook HTTP, diputuskan 2026-09-26):
+- Supabase membuat kodenya, lalu memanggil `POST /hooks/supabase/send-sms` di `api` dengan tanda tangan Standard Webhooks (`platform/webhook`). Hook versi Postgres tidak dipakai, karena kodenya harus tersimpan di tabel dan kegagalan kirim tidak terlihat pelanggan.
+- Urutannya:
+  1. Verifikasi tanda tangan, dengan toleransi waktu 5 menit.
+  2. Periksa nomor HP dan kode 6 digit.
+  3. Periksa batas per nomor.
+  4. Catat `webhook-id` di `webhook_events`, supaya percobaan ulang Supabase tidak mengirim dua kali.
+  5. Kirim template WhatsApp.
+  6. Tandai selesai.
+
+  Kalau pengiriman gagal, catatannya dilepas lagi supaya percobaan ulang bisa mengirim. **Kodenya tidak pernah disimpan** dan tidak pernah masuk log. Nomor HP di log disamarkan (`+62812****890`).
+- **Batas**: 5 kode per jam per nomor (§27), ditambah jeda 60 detik dari Supabase. Supabase juga punya batas kiriman per jam untuk seluruh project, yang perlu dinaikkan sebelum go-live.
+- **Kegagalan kirim**:
+
+  | Penyebab | Status HTTP | Pesan ke pelanggan | Log |
+  |---|---|---|---|
+  | Nomor tidak punya WhatsApp | `400` | "Nomor ini tidak bisa menerima pesan WhatsApp" | INFO |
+  | WhatsApp sedang gangguan | `503` (Supabase mencoba ulang) | "Coba lagi sebentar" | WARN |
+  | Masalah di pihak kita, misalnya token kedaluwarsa | `500` | Pesan umum | ERROR, jadi alert |
+
+  Jawaban hook selalu berbentuk `{"error": {"http_code", "message"}}`, dan pesannya langsung ditampilkan Supabase kepada pelanggan.
+- **Template**: kategori Authentication, bahasa Indonesia, tombol "Salin kode". Teks utamanya ditetapkan Meta. Tambahan yang dipakai: kalimat keamanan ("jangan bagikan kode ini") dan masa berlaku ("kedaluwarsa dalam 5 menit"). Kode berlaku **5 menit**, diatur di Supabase.
+- **Development**: tanpa `WHATSAPP_*`, kode ditulis ke log (`otp.LogSender`). Environment lain menolak start tanpa WhatsApp. Nomor test Supabase dengan kode tetap juga bisa dipakai untuk mencoba login tanpa mengirim apa pun.
+
+**Mengaktifkan login OTP** (pekerjaan pemilik, setelah `api` di-deploy dengan HTTPS):
+1. **Meta**:
+   - Selesaikan verifikasi bisnis dan daftarkan nomor WhatsApp toko.
+   - Buat template kategori **Authentication**, bahasa **Indonesian**, tombol **Copy code**, dengan kalimat keamanan dan masa berlaku 5 menit.
+   - Buat *system user* dengan token permanen.
+   - Isi `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (ID nomor, bukan nomornya), dan `WHATSAPP_OTP_TEMPLATE` (nama template) di environment server.
+2. **Supabase**:
+   - Di Authentication → Sign In / Providers, nyalakan **Phone** dengan OTP 6 digit yang berlaku 300 detik.
+   - Di Authentication → Hooks, tambahkan **Send SMS** tipe HTTPS ke `https://api.<domain>/hooks/supabase/send-sms`.
+   - Simpan secret yang ditampilkan ke `SUPABASE_SEND_SMS_HOOK_SECRET`.
+   - Naikkan batas kiriman per jam di Rate Limits.
+3. **Cek sebelum go-live**:
+   - Coba satu nomor sungguhan dan satu nomor test.
+   - Pastikan `DefaultBaseURL` di `platform/whatsapp` (versi Graph API) belum dipensiunkan Meta.
+
 **Verifikasi token** (`internal/identity`):
 - Kunci publik diambil dari `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, di-refresh tiap jam. Token dengan `kid` baru (rotasi key) memicu refresh paling sering sekali per menit; refresh itu diberi waktu hingga 5 detik, dan `kid` tak dikenal berikutnya di menit yang sama langsung ditolak alih-alih menunggu slot berikutnya. Gagal mengambil JWKS saat start tidak menghentikan `api`; token ditolak sampai key berhasil dimuat, dan kegagalannya di-log.
 - Hanya algoritma **ES256/RS256** yang diterima. HS256 (secret lama) dan `none` ditolak, sehingga token tidak bisa memilih algoritma yang lebih lemah.
@@ -865,6 +904,8 @@ Langkah 2–4 dalam satu transaksi. Untuk provider tanpa signature (Biteship), t
 
 Tambahan: job rekonsiliasi harian mencocokkan status invoice Xendit dan status pengiriman Biteship dengan data lokal, untuk menangkap webhook yang hilang.
 
+Bagian bersama ada di `platform/webhook`: `StandardVerifier` untuk tanda tangan Standard Webhooks (Supabase Auth, dan nanti Resend) serta `Events` untuk `webhook_events` (`Claim`, `Done`, `Release`). Kalau efek sebuah webhook berada di luar database, misalnya mengirim pesan, catatannya diklaim dulu. Kalau efek itu gagal, catatannya dilepas lagi (`Release`), supaya percobaan ulang provider bisa mengulanginya tanpa efek ganda.
+
 ---
 
 ## 19. Procurement (port + adapter)
@@ -947,7 +988,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
   - Saat shutdown, span dan event yang tertahan dikirim dulu (batas 5 detik).
 - **Config dan secret:** dari environment variable atau secret manager. Divalidasi saat start; kalau kurang, aplikasi berhenti dengan pesan jelas.
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
-  - **Rate limit** (`platform/ratelimit`, sejak M2.3): token bucket per procedure per alamat klien, di memori server. Setiap instance menghitung sendiri, dan itu cukup untuk satu toko. Batasnya longgar karena banyak pengguna seluler Indonesia berbagi satu IP (CGNAT). Saat ini `QuoteOrder` dibatasi rata-rata 1 per detik dengan burst 30, `PlaceOrder` rata-rata 1 per 6 menit dengan burst 10 (cukup untuk satu keluarga yang memesan untuk acara), dan `GetMyOrder` 1 per detik dengan burst 30 karena bisa memanggil provider pembayaran. Batas OTP menyusul di M2.5. Batas dicek sebelum auth, jadi banjir request tidak memakan biaya verifikasi token. Yang melewati batas mendapat `ResourceExhausted`.
+  - **Rate limit** (`platform/ratelimit`, sejak M2.3): token bucket per procedure per alamat klien, di memori server. Setiap instance menghitung sendiri, dan itu cukup untuk satu toko. Batasnya longgar karena banyak pengguna seluler Indonesia berbagi satu IP (CGNAT). Saat ini `QuoteOrder` dibatasi rata-rata 1 per detik dengan burst 30, `PlaceOrder` rata-rata 1 per 6 menit dengan burst 10 (cukup untuk satu keluarga yang memesan untuk acara), dan `GetMyOrder` 1 per detik dengan burst 30 karena bisa memanggil provider pembayaran. Kode OTP dibatasi 5 per jam per nomor di hook-nya sendiri (§8). Batas dicek sebelum auth, jadi banjir request tidak memakan biaya verifikasi token. Yang melewati batas mendapat `ResourceExhausted`.
   - **Alamat klien** (`httpserver.ClientIP`) diambil dari header proxy yang disebut `CLIENT_IP_HEADER`, misalnya `CF-Connecting-IP`; untuk `X-Forwarded-For`, entri terakhir. Setelan ini wajib di production, karena tanpa itu semua pelanggan terlihat sebagai IP proxy. Request yang tidak membawa header itu dihitung per alamat koneksinya, sehingga header yang dipalsukan tanpa melewati proxy tidak berguna. Alamat IPv6 dihitung per /64.
   - **Cache** (`httpserver.CacheControl`): semua respons `no-store`, kecuali respons 200 dari GET katalog publik (`ListShopProducts`, `GetShopProduct`), yang boleh disimpan CDN 60 detik. Error tidak pernah di-cache. Data order, pelanggan, dan CMS tidak boleh di-cache.
   - **Cloudflare menyusul setelah domain dibeli** (diputuskan 2026-09-26). Domain yang sama dipakai untuk website, API (`api.`), dan email Resend (`notif.`). Cloudflare menjadi lapisan luar: DDoS, bot, cache katalog, dan Turnstile di permintaan OTP. Rate limit Go tetap menjadi lapisan dalam untuk batas yang presisi, misalnya OTP per nomor HP. Saat itu `CLIENT_IP_HEADER=CF-Connecting-IP`, dan server asal harus menolak request yang tidak lewat Cloudflare (misalnya dengan Authenticated Origin Pulls atau header rahasia), karena tanpa itu header IP bisa dipalsukan.
@@ -1093,6 +1134,8 @@ Diputuskan 2026-09-26:
 | Order menunggu DP per pelanggan | Paling banyak 2 sekaligus (§14) |
 | Catatan order | Satu catatan bebas per order, maksimal 500 karakter, misalnya tulisan di kue |
 | Kode order | 6 karakter acak tanpa huruf yang mirip angka, misalnya `K7M3QX`; tidak membocorkan jumlah order |
+| Penyerahan kode OTP | Hook HTTP Supabase ke `api`; kode tidak pernah disimpan (§8) |
+| Kode OTP | Berlaku 5 menit; maksimal 5 kode per jam per nomor; template dengan kalimat keamanan dan masa berlaku |
 
 ### Masih terbuka
 
@@ -1151,8 +1194,10 @@ XENDIT_SECRET_KEY=
 XENDIT_WEBHOOK_TOKEN=
 BITESHIP_API_KEY=
 BITESHIP_WEBHOOK_PATH_TOKEN=     # token rahasia di URL webhook
-WHATSAPP_API_TOKEN=
-WHATSAPP_PHONE_NUMBER_ID=
+SUPABASE_SEND_SMS_HOOK_SECRET=   # wajib di production: "v1,whsec_..." dari Supabase Auth → Hooks (§8)
+WHATSAPP_API_TOKEN=              # wajib di production, bersama dua di bawah; token permanen system user Meta
+WHATSAPP_PHONE_NUMBER_ID=        # ID nomor pengirim (angka), bukan nomor HP-nya
+WHATSAPP_OTP_TEMPLATE=           # nama template Authentication untuk kode masuk
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=
 WHATSAPP_APP_SECRET=             # verifikasi signature webhook
 RESEND_API_KEY=
