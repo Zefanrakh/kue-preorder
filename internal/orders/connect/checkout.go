@@ -52,12 +52,9 @@ func (h *CheckoutHandler) QuoteOrder(ctx context.Context, req *connect.Request[o
 }
 
 func quoteToProto(q orders.Quote) *ordersv1.QuoteOrderResponse {
-	out := &ordersv1.QuoteOrderResponse{SubtotalIdr: q.SubtotalIDR, TaxIdr: q.TaxIDR, TotalIdr: q.TotalIDR, DpRequiredIdr: q.DPRequiredIDR}
-	for _, it := range q.Items {
-		out.Items = append(out.Items, &ordersv1.QuotedItem{
-			VariantId: it.VariantID.String(), ProductName: it.ProductName, VariantName: it.VariantName,
-			Quantity: it.Quantity, UnitPriceIdr: it.UnitPriceIDR, LineTotalIdr: it.LineTotalIDR,
-		})
+	out := &ordersv1.QuoteOrderResponse{
+		Items: itemsToProto(q.Items), SubtotalIdr: q.SubtotalIDR, TaxIdr: q.TaxIDR, TotalIdr: q.TotalIDR,
+		DpRequiredIdr: q.DPRequiredIDR, TermsVersion: q.TermsVersion,
 	}
 	switch {
 	case q.Schedule != nil:

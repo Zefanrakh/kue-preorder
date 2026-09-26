@@ -167,3 +167,48 @@ func (q *Queries) ListTenants(ctx context.Context, maxRows int32) ([]Tenant, err
 	}
 	return items, nil
 }
+
+const upsertCustomer = `-- name: UpsertCustomer :one
+insert into customers (tenant_id, auth_user_id, name, email, phone, created_at)
+values ($1, $2, $3, $4, $5, $6)
+on conflict (tenant_id, auth_user_id) where auth_user_id is not null
+do update set name = excluded.name, email = excluded.email, phone = excluded.phone
+returning id, name, email, phone
+`
+
+type UpsertCustomerParams struct {
+	TenantID   uuid.UUID
+	AuthUserID *uuid.UUID
+	Name       string
+	Email      *string
+	Phone      *string
+	CreatedAt  time.Time
+}
+
+type UpsertCustomerRow struct {
+	ID    uuid.UUID
+	Name  string
+	Email *string
+	Phone *string
+}
+
+// A signed-in customer has one record per tenant. The phone comes from the
+// verified token; the name and email from the latest checkout.
+func (q *Queries) UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (UpsertCustomerRow, error) {
+	row := q.db.QueryRow(ctx, upsertCustomer,
+		arg.TenantID,
+		arg.AuthUserID,
+		arg.Name,
+		arg.Email,
+		arg.Phone,
+		arg.CreatedAt,
+	)
+	var i UpsertCustomerRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+	)
+	return i, err
+}

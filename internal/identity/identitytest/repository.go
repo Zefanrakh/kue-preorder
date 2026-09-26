@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,6 +17,7 @@ type Repository struct {
 	tenantIDs []uuid.UUID
 	roles     map[membership][]identity.Role
 	customers map[membership]uuid.UUID
+	records   map[uuid.UUID]identity.Customer
 	err       error
 }
 
@@ -31,6 +33,7 @@ func NewRepository(tenantIDs ...uuid.UUID) *Repository {
 		tenantIDs: tenantIDs,
 		roles:     map[membership][]identity.Role{},
 		customers: map[membership]uuid.UUID{},
+		records:   map[uuid.UUID]identity.Customer{},
 	}
 }
 
@@ -92,4 +95,22 @@ func (r *Repository) FindCustomerID(_ context.Context, tenantID, authUserID uuid
 		return uuid.UUID{}, identity.ErrNotFound
 	}
 	return id, nil
+}
+
+// UpsertCustomer implements identity.Repository.
+func (r *Repository) UpsertCustomer(_ context.Context, tenantID, authUserID uuid.UUID, c identity.Customer, _ time.Time) (identity.Customer, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return identity.Customer{}, r.err
+	}
+	m := membership{tenantID, authUserID}
+	id, ok := r.customers[m]
+	if !ok {
+		id = uuid.New()
+		r.customers[m] = id
+	}
+	c.ID = id
+	r.records[id] = c
+	return c, nil
 }

@@ -7,9 +7,46 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const addPayment = `-- name: AddPayment :exec
+insert into payments (id, tenant_id, order_id, kind, provider, amount_idr, fee_idr, status,
+                      expires_at, created_at, updated_at)
+values ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10, $10)
+`
+
+type AddPaymentParams struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	OrderID   uuid.UUID
+	Kind      string
+	Provider  string
+	AmountIdr int64
+	FeeIdr    int64
+	Status    string
+	ExpiresAt *time.Time
+	Now       time.Time
+}
+
+func (q *Queries) AddPayment(ctx context.Context, arg AddPaymentParams) error {
+	_, err := q.db.Exec(ctx, addPayment,
+		arg.ID,
+		arg.TenantID,
+		arg.OrderID,
+		arg.Kind,
+		arg.Provider,
+		arg.AmountIdr,
+		arg.FeeIdr,
+		arg.Status,
+		arg.ExpiresAt,
+		arg.Now,
+	)
+	return err
+}
 
 const getPaymentPolicy = `-- name: GetPaymentPolicy :one
 
@@ -31,4 +68,79 @@ func (q *Queries) GetPaymentPolicy(ctx context.Context, tenantID uuid.UUID) (Pay
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const orderPayments = `-- name: OrderPayments :many
+select id, tenant_id, order_id, kind, provider, external_id, amount_idr, fee_idr, status, expires_at, paid_at, raw, created_at, updated_at, checkout_url from payments
+where tenant_id = $1 and order_id = $2
+order by created_at, id
+`
+
+type OrderPaymentsParams struct {
+	TenantID uuid.UUID
+	OrderID  uuid.UUID
+}
+
+func (q *Queries) OrderPayments(ctx context.Context, arg OrderPaymentsParams) ([]Payment, error) {
+	rows, err := q.db.Query(ctx, orderPayments, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Payment{}
+	for rows.Next() {
+		var i Payment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.OrderID,
+			&i.Kind,
+			&i.Provider,
+			&i.ExternalID,
+			&i.AmountIdr,
+			&i.FeeIdr,
+			&i.Status,
+			&i.ExpiresAt,
+			&i.PaidAt,
+			&i.Raw,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CheckoutUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setPaymentInvoice = `-- name: SetPaymentInvoice :execrows
+update payments
+set external_id = $1, checkout_url = $2, updated_at = $3
+where tenant_id = $4 and id = $5 and status = 'pending'
+`
+
+type SetPaymentInvoiceParams struct {
+	ExternalID  *string
+	CheckoutUrl *string
+	Now         time.Time
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) SetPaymentInvoice(ctx context.Context, arg SetPaymentInvoiceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPaymentInvoice,
+		arg.ExternalID,
+		arg.CheckoutUrl,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -3,3 +3,56 @@
 //   sqlc v1.31.1
 
 package postgres
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Order struct {
+	ID                  uuid.UUID
+	TenantID            uuid.UUID
+	CustomerID          uuid.UUID
+	ChannelID           uuid.UUID
+	ExternalOrderRef    *string
+	Status              string
+	PaymentStatus       string
+	FulfillmentType     string
+	PickupAt            time.Time
+	ProductionStartAt   time.Time
+	ProductionDate      pgtype.Date
+	ShoppingCutoffAt    time.Time
+	DpDueAt             time.Time
+	BalanceDueAt        time.Time
+	SubtotalIdr         int64
+	TaxIdr              int64
+	ShippingIdr         int64
+	TotalIdr            int64
+	DpRequiredIdr       int64
+	FullPaymentRequired bool
+	TermsVersion        string
+	TermsAcceptedAt     time.Time
+	IdempotencyKey      uuid.UUID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	Code                string
+	Notes               string
+	CustomerName        string
+	CustomerPhone       string
+	CustomerEmail       *string
+}
+
+type OrderItem struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	OrderID           uuid.UUID
+	VariantID         uuid.UUID
+	ProductName       string
+	VariantName       string
+	Quantity          int32
+	UnitPriceIdr      int64
+	ProductionMinutes int32
+	MinNoticeHours    int32
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
+	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
@@ -83,16 +84,6 @@ func (f *fakePolicies) Policy(context.Context, uuid.UUID) (payments.Policy, erro
 	return f.policy, nil
 }
 
-type fakeRepo struct {
-	cutoffs  map[clock.Date]time.Time
-	statuses []orders.Status
-}
-
-func (f *fakeRepo) BatchCutoffs(_ context.Context, _ uuid.UUID, _, _ clock.Date, statuses []orders.Status) (map[clock.Date]time.Time, error) {
-	f.statuses = statuses
-	return f.cutoffs, nil
-}
-
 // shop sells donuts: chocolate at 8,000 and cheese at 8,500, 90 minutes of
 // production and 12 hours' notice each, with 1,530 rupiah of ingredients.
 type shop struct {
@@ -101,6 +92,9 @@ type shop struct {
 	schedules         *fakeSchedules
 	policies          *fakePolicies
 	repo              *fakeRepo
+	customers         *fakeCustomers
+	ledger            *fakeLedger
+	provider          *fakeProvider
 	clock             *clock.Fake
 	logs              *bytes.Buffer
 	checkout          *orders.Checkout
@@ -117,8 +111,15 @@ func newShop() *shop {
 	}
 	s.schedules = &fakeSchedules{settings: scheduling.DefaultSettings()}
 	s.policies = &fakePolicies{policy: payments.DefaultPolicy()}
-	s.repo = &fakeRepo{}
-	s.checkout = orders.NewCheckout(s.catalog, s.schedules, s.policies, s.repo, tenantOf(tenant), s.clock, slog.New(slog.NewJSONHandler(s.logs, nil)))
+	s.repo = newFakeRepo()
+	s.customers = &fakeCustomers{customer: identity.Customer{Phone: "+6281234567890"}}
+	s.ledger = &fakeLedger{}
+	s.provider = &fakeProvider{}
+	s.checkout = orders.NewCheckout(orders.Deps{
+		Catalog: s.catalog, Schedules: s.schedules, Policies: s.policies, Repo: s.repo,
+		Customers: s.customers, Ledger: s.ledger, Provider: s.provider, Tx: fakeTx{},
+		Tenants: tenantOf(tenant), Clock: s.clock, Logger: slog.New(slog.NewJSONHandler(s.logs, nil)),
+	})
 	return s
 }
 

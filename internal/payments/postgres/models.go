@@ -10,6 +10,24 @@ import (
 	"github.com/google/uuid"
 )
 
+type Payment struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	OrderID     uuid.UUID
+	Kind        string
+	Provider    string
+	ExternalID  *string
+	AmountIdr   int64
+	FeeIdr      int64
+	Status      string
+	ExpiresAt   *time.Time
+	PaidAt      *time.Time
+	Raw         []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	CheckoutUrl *string
+}
+
 type PaymentPolicy struct {
 	TenantID               uuid.UUID
 	DpMinPercent           int32

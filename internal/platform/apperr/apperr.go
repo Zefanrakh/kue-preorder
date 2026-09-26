@@ -18,7 +18,25 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrNotFound means the record does not exist in the caller's tenant.
 	ErrNotFound = errors.New("not found")
+	// ErrFailedPrecondition means the request is fine but the state does not
+	// allow it yet; a *PreconditionError says which state and what to do.
+	ErrFailedPrecondition = errors.New("failed precondition")
 )
+
+// PreconditionError refuses a request until something else happens first,
+// such as signing in with a phone number. Reason is a stable code the client
+// acts on; Message tells the customer what to do, in Indonesian.
+type PreconditionError struct {
+	Reason  string
+	Message string
+}
+
+func (e *PreconditionError) Error() string {
+	return "failed precondition " + e.Reason + ": " + e.Message
+}
+
+// Is makes errors.Is(err, ErrFailedPrecondition) true.
+func (e *PreconditionError) Is(target error) bool { return target == ErrFailedPrecondition }
 
 // ValidationError lists invalid fields with messages for the person editing,
 // in Indonesian. Conflict marks a clash with an existing record, such as a

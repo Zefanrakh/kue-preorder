@@ -18,7 +18,7 @@ import (
 
 func TestMain(m *testing.M) { dbtest.Main(m) }
 
-func insertTenant(ctx context.Context, tx pgx.Tx, name string) error {
+func insertTenant(ctx context.Context, tx db.Querier, name string) error {
 	_, err := tx.Exec(ctx, "insert into tenants (name) values ($1)", name)
 	return err
 }
@@ -131,5 +131,61 @@ func TestInTx_RollsBackOnPanic(t *testing.T) {
 
 	if tenantExists(t, d, "panicked") {
 		t.Error("row persisted although fn panicked")
+	}
+}
+
+// Work through Conn inside a Tx is one transaction: an error anywhere rolls
+// back everything, whichever repository wrote it.
+func TestTx_SharesOneTransaction(t *testing.T) {
+	d := dbtest.New(t)
+	errBoom := errors.New("boom")
+
+	err := d.Tx(t.Context(), func(ctx context.Context) error {
+		if err := insertTenant(ctx, d.Conn(ctx), "first"); err != nil {
+			return err
+		}
+		if err := insertTenant(ctx, d.Conn(ctx), "second"); err != nil {
+			return err
+		}
+		return errBoom
+	})
+
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("Tx() error = %v, want %v", err, errBoom)
+	}
+	if tenantExists(t, d, "first") || tenantExists(t, d, "second") {
+		t.Error("rows persisted although the transaction failed")
+	}
+
+	err = d.Tx(t.Context(), func(ctx context.Context) error {
+		return insertTenant(ctx, d.Conn(ctx), "committed together")
+	})
+	if err != nil || !tenantExists(t, d, "committed together") {
+		t.Errorf("Tx() = %v; want the row committed", err)
+	}
+}
+
+// A repository's own InTx inside a Tx belongs to the outer transaction.
+func TestInTx_InsideTxRollsBackWithIt(t *testing.T) {
+	d := dbtest.New(t)
+	errBoom := errors.New("boom")
+
+	_ = d.Tx(t.Context(), func(ctx context.Context) error {
+		if err := d.InTx(ctx, func(tx pgx.Tx) error { return insertTenant(ctx, tx, "inner") }); err != nil {
+			return err
+		}
+		return errBoom
+	})
+
+	if tenantExists(t, d, "inner") {
+		t.Error("the inner InTx committed on its own")
+	}
+}
+
+// Outside a Tx, Conn is the pool.
+func TestConn_OutsideTxIsThePool(t *testing.T) {
+	d := dbtest.New(t)
+	if err := insertTenant(t.Context(), d.Conn(t.Context()), "pooled"); err != nil || !tenantExists(t, d, "pooled") {
+		t.Errorf("insert through Conn = %v; want the row stored", err)
 	}
 }

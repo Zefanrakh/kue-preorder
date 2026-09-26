@@ -52,6 +52,9 @@ message ClosedDate {
   // Shown to customers, such as "Libur Lebaran".
   string reason = 2;
   google.protobuf.Timestamp created_at = 3;
+  // Orders still active that day. Above zero the day is on hold: it takes
+  // no new orders, and these must be moved or settled first (§15).
+  int32 active_orders = 4;
 }
 
 message GetScheduleSettingsRequest {}

@@ -34,11 +34,50 @@ type Policies interface {
 	Policy(ctx context.Context, tenantID uuid.UUID) (payments.Policy, error)
 }
 
-// Repository is the persistence port of orders.
+// Customers is what checkout needs from identity; identity.Service implements it.
+type Customers interface {
+	Principal(ctx context.Context) (identity.Principal, error)
+	EnsureCustomer(ctx context.Context, in identity.CustomerInput, at time.Time) (identity.Customer, error)
+}
+
+// Ledger is what checkout needs from the payment ledger; payments.Ledger implements it.
+type Ledger interface {
+	AddPending(ctx context.Context, tenantID uuid.UUID, p payments.Payment, at time.Time) error
+	AttachInvoice(ctx context.Context, tenantID, paymentID uuid.UUID, inv payments.Invoice, at time.Time) error
+	OrderPayments(ctx context.Context, tenantID, orderID uuid.UUID) ([]payments.Payment, error)
+}
+
+// Transactor runs a unit of work across modules in one transaction;
+// *db.DB implements it (platform/db.Tx).
+type Transactor interface {
+	Tx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// Repository is the persistence port of orders. It works in the caller's
+// transaction when there is one.
 type Repository interface {
 	// BatchCutoffs returns, for each production date from..to with orders
 	// in any of statuses, the earliest shopping cutoff among them.
 	BatchCutoffs(ctx context.Context, tenantID uuid.UUID, from, to clock.Date, statuses []Status) (map[clock.Date]time.Time, error)
+	// LockCustomer serializes one customer's checkouts until the
+	// transaction ends.
+	LockCustomer(ctx context.Context, customerID uuid.UUID) error
+	// FindByIdempotencyKey returns apperr.ErrNotFound when the customer
+	// never used key.
+	FindByIdempotencyKey(ctx context.Context, tenantID, customerID, key uuid.UUID) (uuid.UUID, error)
+	CountByStatus(ctx context.Context, tenantID, customerID uuid.UUID, status Status) (int, error)
+	// Insert stores an order, its items, and its order.placed outbox event.
+	// It returns false, storing nothing, when o.Code is already taken.
+	Insert(ctx context.Context, tenantID uuid.UUID, o Order, idempotencyKey uuid.UUID, at time.Time) (bool, error)
+	// Get and FindCustomerOrder return the order with its items but not its
+	// payments, or apperr.ErrNotFound.
+	Get(ctx context.Context, tenantID, id uuid.UUID) (Order, error)
+	FindCustomerOrder(ctx context.Context, tenantID, customerID uuid.UUID, code string) (Order, error)
+	// ListCustomerOrders returns a customer's orders, newest first.
+	ListCustomerOrders(ctx context.Context, tenantID, customerID uuid.UUID, limit int32) ([]Summary, error)
+	// ActiveOrderDays counts, for each day from..to, the orders in statuses
+	// produced or picked up that day.
+	ActiveOrderDays(ctx context.Context, tenantID uuid.UUID, from, to clock.Date, statuses []Status) (map[clock.Date]int, error)
 }
 
 // Cart limits.
@@ -87,23 +126,49 @@ type Quote struct {
 	// DPRequiredIDR is the first payment of an order paid with a DP; it is
 	// the total when the schedule requires full payment. Set with Schedule.
 	DPRequiredIDR int64
+	// TermsVersion is the version of the terms the customer accepts by
+	// placing the order.
+	TermsVersion string
 }
 
-// Checkout prices carts and, from M2.4, places orders. The storefront uses
-// it for anyone, signed in or not, so the tenant comes from the request.
+// Deps are what Checkout works with.
+type Deps struct {
+	Catalog   Catalog
+	Schedules Schedules
+	Policies  Policies
+	Repo      Repository
+	Customers Customers
+	Ledger    Ledger
+	Provider  payments.Provider
+	Tx        Transactor
+	Tenants   identity.TenantResolver
+	Clock     clock.Clock
+	Logger    *slog.Logger
+}
+
+// Checkout prices carts, places orders, and shows customers their orders.
+// Quotes are for anyone, signed in or not, so the tenant comes from the
+// request; placing an order needs a customer signed in with WhatsApp.
 type Checkout struct {
 	catalog   Catalog
 	schedules Schedules
 	policies  Policies
 	repo      Repository
+	customers Customers
+	ledger    Ledger
+	provider  payments.Provider
+	tx        Transactor
 	tenants   identity.TenantResolver
 	clock     clock.Clock
 	logger    *slog.Logger
 }
 
-// NewCheckout returns a Checkout.
-func NewCheckout(cat Catalog, sch Schedules, pol Policies, repo Repository, tenants identity.TenantResolver, clk clock.Clock, logger *slog.Logger) *Checkout {
-	return &Checkout{catalog: cat, schedules: sch, policies: pol, repo: repo, tenants: tenants, clock: clk, logger: logger}
+// NewCheckout returns a Checkout over d.
+func NewCheckout(d Deps) *Checkout {
+	return &Checkout{
+		catalog: d.Catalog, schedules: d.Schedules, policies: d.Policies, repo: d.Repo, customers: d.Customers,
+		ledger: d.Ledger, provider: d.Provider, tx: d.Tx, tenants: d.Tenants, clock: d.Clock, logger: d.Logger,
+	}
 }
 
 // committed are the statuses whose orders fix a batch's shopping cutoff.
@@ -123,6 +188,7 @@ func (c *Checkout) Quote(ctx context.Context, req QuoteRequest) (Quote, error) {
 	if err != nil {
 		return Quote{}, err
 	}
+	q.TermsVersion = TermsVersion
 
 	policy, err := c.policies.Policy(ctx, tenant)
 	if err != nil {

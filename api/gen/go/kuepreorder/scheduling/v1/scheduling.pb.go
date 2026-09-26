@@ -109,8 +109,11 @@ type ClosedDate struct {
 	// Such as "2026-10-05".
 	Date string `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
 	// Shown to customers, such as "Libur Lebaran".
-	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Reason    string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Orders still active that day. Above zero the day is on hold: it takes
+	// no new orders, and these must be moved or settled first (§15).
+	ActiveOrders  int32 `protobuf:"varint,4,opt,name=active_orders,json=activeOrders,proto3" json:"active_orders,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -164,6 +167,13 @@ func (x *ClosedDate) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *ClosedDate) GetActiveOrders() int32 {
+	if x != nil {
+		return x.ActiveOrders
+	}
+	return 0
 }
 
 type GetScheduleSettingsRequest struct {
@@ -644,13 +654,14 @@ const file_kuepreorder_scheduling_v1_scheduling_proto_rawDesc = "" +
 	"\x11pickup_window_end\x18\x04 \x01(\tR\x0fpickupWindowEnd\x129\n" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x19\n" +
-	"\x17_daily_capacity_minutes\"s\n" +
+	"\x17_daily_capacity_minutes\"\x98\x01\n" +
 	"\n" +
 	"ClosedDate\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x1c\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12#\n" +
+	"\ractive_orders\x18\x04 \x01(\x05R\factiveOrders\"\x1c\n" +
 	"\x1aGetScheduleSettingsRequest\"f\n" +
 	"\x1bGetScheduleSettingsResponse\x12G\n" +
 	"\bsettings\x18\x01 \x01(\v2+.kuepreorder.scheduling.v1.ScheduleSettingsR\bsettings\"\x85\x02\n" +

@@ -6,6 +6,7 @@ package connect
 import (
 	"context"
 	"log/slog"
+	"math"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -120,7 +121,13 @@ func settingsToProto(s scheduling.Settings) *schedulingv1.ScheduleSettings {
 }
 
 func closedDateToProto(d scheduling.ClosedDate) *schedulingv1.ClosedDate {
-	return &schedulingv1.ClosedDate{Date: d.Date.String(), Reason: d.Reason, CreatedAt: timestamppb.New(d.CreatedAt)}
+	active := d.ActiveOrders
+	if active > math.MaxInt32 || active < 0 {
+		active = math.MaxInt32
+	}
+	return &schedulingv1.ClosedDate{
+		Date: d.Date.String(), Reason: d.Reason, CreatedAt: timestamppb.New(d.CreatedAt), ActiveOrders: int32(active),
+	}
 }
 
 // parser reads the date and time fields of one request, collecting every

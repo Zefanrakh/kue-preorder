@@ -26,11 +26,18 @@ type principals struct {
 
 func (s principals) Principal(context.Context) (identity.Principal, error) { return s.p, s.err }
 
+// orderCounts stands in for the orders module: the active orders per day.
+type orderCounts map[clock.Date]int
+
+func (c orderCounts) ActiveOrders(context.Context, uuid.UUID, clock.Date, clock.Date) (map[clock.Date]int, error) {
+	return c, nil
+}
+
 // service returns the service as a caller with roles in tenant; no roles
 // means a signed-in customer.
 func service(d *db.DB, tenant uuid.UUID, roles ...identity.Role) *scheduling.Service {
 	p := identity.Principal{AuthUserID: uuid.New(), TenantID: tenant, Roles: roles}
-	return scheduling.NewService(postgres.NewRepository(d), principals{p: p}, clock.NewFake(monday10))
+	return scheduling.NewService(postgres.NewRepository(d), principals{p: p}, orderCounts{date(12): 3}, clock.NewFake(monday10))
 }
 
 func noErr(t *testing.T, err error) {
@@ -104,7 +111,7 @@ func TestService_Roles(t *testing.T) {
 	ctx := t.Context()
 	kitchen := service(d, tenant, identity.RoleKitchen)
 	customer := service(d, tenant)
-	anonymous := scheduling.NewService(postgres.NewRepository(d), principals{err: identity.ErrUnauthenticated}, clock.NewFake(monday10))
+	anonymous := scheduling.NewService(postgres.NewRepository(d), principals{err: identity.ErrUnauthenticated}, orderCounts{}, clock.NewFake(monday10))
 
 	if _, err := kitchen.Settings(ctx); err != nil {
 		t.Errorf("kitchen Settings() error = %v, want allowed", err)
@@ -137,6 +144,10 @@ func TestService_ClosedDates(t *testing.T) {
 	if len(got) != 3 || got[0].Date != date(5) || got[1].Date != date(12) || got[2].Date != date(20) ||
 		got[0].Reason != "Libur" || !got[0].CreatedAt.Equal(monday10) {
 		t.Errorf("ClosedDates() = %+v, want 5, 12, 20 October in order, trimmed reasons", got)
+	}
+	// The 12th still holds 3 active orders: it is on hold, not yet a day off.
+	if len(got) == 3 && (got[1].ActiveOrders != 3 || got[0].ActiveOrders != 0 || got[2].ActiveOrders != 0) {
+		t.Errorf("active orders = %d %d %d, want 0 3 0", got[0].ActiveOrders, got[1].ActiveOrders, got[2].ActiveOrders)
 	}
 	if got, _ := cook.ClosedDates(ctx, date(6), date(19)); len(got) != 1 {
 		t.Errorf("ClosedDates(6..19) = %+v, want only the 12th", got)

@@ -11,3 +11,13 @@ message FieldErrors {
   // message to show, in Indonesian.
   map<string, string> fields = 1;
 }
+
+// Precondition travels as a Connect error detail on FailedPrecondition: the
+// request is fine, but something must happen first.
+message Precondition {
+  // Stable code the client acts on, such as "phone_required" (send the
+  // customer to sign in with WhatsApp) or "too_many_unpaid".
+  string reason = 1;
+  // What to do, in Indonesian, for the customer.
+  string message = 2;
+}

@@ -42,6 +42,30 @@ var (
 type AuthUser struct {
 	ID    uuid.UUID
 	Email string
+	// Phone is the number the user proved with an OTP, in E.164 (+62...);
+	// empty for a user who signed in another way (§8).
+	Phone string
+}
+
+// Customer is a signed-in customer's record in a tenant.
+type Customer struct {
+	ID    uuid.UUID
+	Name  string
+	Email string // optional
+	Phone string // E.164, from the verified token
+}
+
+// CustomerInput is what a customer types at checkout. The phone number is
+// never typed: it comes from the token.
+type CustomerInput struct {
+	Name, Email string
+}
+
+// ErrPhoneRequired refuses an order from a user without a verified phone
+// number: they must sign in with WhatsApp first (§8).
+var ErrPhoneRequired = &apperr.PreconditionError{
+	Reason:  "phone_required",
+	Message: "Masuk dengan nomor WhatsApp dulu untuk memesan.",
 }
 
 // Principal is the caller of a request as the shop sees them.

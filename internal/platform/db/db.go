@@ -1,5 +1,8 @@
-// Package db owns the Postgres connection pool and the transaction helper.
-// Modules run multi-statement work through InTx instead of calling Begin.
+// Package db owns the Postgres connection pool and the transaction helpers.
+// A repository runs its own multi-statement work through InTx. A unit of
+// work across modules, such as an order and its first payment, runs through
+// Tx: every repository reaching the database through Conn(ctx) then shares
+// one transaction, without any module importing another's postgres package.
 package db
 
 import (
@@ -9,6 +12,7 @@ import (
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -65,7 +69,45 @@ func (d *DB) Close() {
 }
 
 // InTx runs fn in a transaction. It commits when fn returns nil and rolls
-// back when fn returns an error or panics.
+// back when fn returns an error or panics. Inside a Tx it runs in a
+// savepoint of that transaction, so it commits or rolls back with it.
 func (d *DB) InTx(ctx context.Context, fn func(pgx.Tx) error) error {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return pgx.BeginFunc(ctx, tx, fn)
+	}
 	return pgx.BeginFunc(ctx, d.pool, fn)
+}
+
+type txKey struct{}
+
+// Querier runs SQL on the pool or in a transaction; it is the DBTX that
+// sqlc-generated queries take.
+type Querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// Tx runs fn in one transaction that every repository reached with the
+// ctx it gets shares, through Conn. It commits when fn returns nil and rolls
+// back when fn returns an error or panics. A Tx inside a Tx joins the outer
+// transaction as a savepoint.
+func (d *DB) Tx(ctx context.Context, fn func(ctx context.Context) error) error {
+	var begin interface {
+		Begin(ctx context.Context) (pgx.Tx, error)
+	} = d.pool
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		begin = tx
+	}
+	return pgx.BeginFunc(ctx, begin, func(tx pgx.Tx) error {
+		return fn(context.WithValue(ctx, txKey{}, tx))
+	})
+}
+
+// Conn returns the transaction ctx carries from Tx, or else the pool.
+func (d *DB) Conn(ctx context.Context) Querier {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return tx
+	}
+	return d.pool
 }
