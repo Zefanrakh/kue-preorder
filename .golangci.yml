@@ -38,6 +38,9 @@ linters:
       forbid:
         - pattern: ^time\.(Now|Since|Until)$
           msg: take the time from an injected clock.Clock (internal/platform/clock)
+        # The server's zone is not the shop's: business times are Asia/Jakarta.
+        - pattern: ^time\.(Local|Time\.Local)$
+          msg: use clock.Jakarta (internal/platform/clock), never the server's zone
   exclusions:
     presets:
       - std-error-handling
