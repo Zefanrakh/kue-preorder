@@ -20,7 +20,10 @@ import (
 // into request field names where they differ, so a form can mark the field
 // it sent.
 func Wrap(ctx context.Context, logger *slog.Logger, err error, rename map[string]string) error {
-	var invalid *apperr.ValidationError
+	var (
+		invalid      *apperr.ValidationError
+		precondition *apperr.PreconditionError
+	)
 	switch {
 	case errors.As(err, &invalid):
 		code, msg := connect.CodeInvalidArgument, "invalid input"
@@ -36,6 +39,13 @@ func Wrap(ctx context.Context, logger *slog.Logger, err error, rename map[string
 		}
 		cerr := connect.NewError(code, errors.New(msg))
 		if detail, derr := connect.NewErrorDetail(&validationv1.FieldErrors{Fields: fields}); derr == nil {
+			cerr.AddDetail(detail)
+		}
+		return cerr
+	case errors.As(err, &precondition):
+		cerr := connect.NewError(connect.CodeFailedPrecondition, errors.New(precondition.Message))
+		detail := &validationv1.Precondition{Reason: precondition.Reason, Message: precondition.Message}
+		if detail, derr := connect.NewErrorDetail(detail); derr == nil {
 			cerr.AddDetail(detail)
 		}
 		return cerr

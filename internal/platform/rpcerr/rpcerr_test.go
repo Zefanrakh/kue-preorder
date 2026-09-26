@@ -97,3 +97,20 @@ func TestIDs(t *testing.T) {
 		t.Errorf("err() = %v, want both malformed fields", p.Err())
 	}
 }
+
+func TestWrap_PreconditionCarriesItsReason(t *testing.T) {
+	err := rpcerr.Wrap(t.Context(), slog.New(slog.DiscardHandler), fmt.Errorf("place order: %w",
+		&apperr.PreconditionError{Reason: "phone_required", Message: "Masuk dengan nomor WhatsApp dulu."}), nil)
+
+	var cerr *connect.Error
+	if !errors.As(err, &cerr) || cerr.Code() != connect.CodeFailedPrecondition || cerr.Message() != "Masuk dengan nomor WhatsApp dulu." {
+		t.Fatalf("error = %v, want FailedPrecondition with the message", err)
+	}
+	v, _ := cerr.Details()[0].Value()
+	if p, ok := v.(*validationv1.Precondition); !ok || p.GetReason() != "phone_required" {
+		t.Errorf("detail = %v, want the reason", v)
+	}
+	if !errors.Is(&apperr.PreconditionError{}, apperr.ErrFailedPrecondition) {
+		t.Error("a PreconditionError is not ErrFailedPrecondition")
+	}
+}

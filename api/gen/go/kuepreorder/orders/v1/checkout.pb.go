@@ -439,7 +439,10 @@ type QuoteOrderResponse struct {
 	//
 	//	*QuoteOrderResponse_Schedule
 	//	*QuoteOrderResponse_Rejection
-	Pickup        isQuoteOrderResponse_Pickup `protobuf_oneof:"pickup"`
+	Pickup isQuoteOrderResponse_Pickup `protobuf_oneof:"pickup"`
+	// The version of the DP terms placing the order accepts; send it back in
+	// PlaceOrderRequest.terms_version.
+	TermsVersion  string `protobuf:"bytes,8,opt,name=terms_version,json=termsVersion,proto3" json:"terms_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -534,6 +537,13 @@ func (x *QuoteOrderResponse) GetRejection() *PickupRejection {
 	return nil
 }
 
+func (x *QuoteOrderResponse) GetTermsVersion() string {
+	if x != nil {
+		return x.TermsVersion
+	}
+	return ""
+}
+
 type isQuoteOrderResponse_Pickup interface {
 	isQuoteOrderResponse_Pickup()
 }
@@ -580,7 +590,7 @@ const file_kuepreorder_orders_v1_checkout_proto_rawDesc = "" +
 	"\x0fPickupRejection\x12>\n" +
 	"\aproblem\x18\x01 \x01(\x0e2$.kuepreorder.orders.v1.PickupProblemR\aproblem\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12J\n" +
-	"\x13suggested_pickup_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x11suggestedPickupAt\"\xdf\x02\n" +
+	"\x13suggested_pickup_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x11suggestedPickupAt\"\x84\x03\n" +
 	"\x12QuoteOrderResponse\x127\n" +
 	"\x05items\x18\x01 \x03(\v2!.kuepreorder.orders.v1.QuotedItemR\x05items\x12!\n" +
 	"\fsubtotal_idr\x18\x02 \x01(\x03R\vsubtotalIdr\x12\x17\n" +
@@ -588,7 +598,8 @@ const file_kuepreorder_orders_v1_checkout_proto_rawDesc = "" +
 	"\ttotal_idr\x18\x04 \x01(\x03R\btotalIdr\x12&\n" +
 	"\x0fdp_required_idr\x18\x05 \x01(\x03R\rdpRequiredIdr\x12=\n" +
 	"\bschedule\x18\x06 \x01(\v2\x1f.kuepreorder.orders.v1.ScheduleH\x00R\bschedule\x12F\n" +
-	"\trejection\x18\a \x01(\v2&.kuepreorder.orders.v1.PickupRejectionH\x00R\trejectionB\b\n" +
+	"\trejection\x18\a \x01(\v2&.kuepreorder.orders.v1.PickupRejectionH\x00R\trejection\x12#\n" +
+	"\rterms_version\x18\b \x01(\tR\ftermsVersionB\b\n" +
 	"\x06pickup*\xe2\x01\n" +
 	"\rPickupProblem\x12\x1e\n" +
 	"\x1aPICKUP_PROBLEM_UNSPECIFIED\x10\x00\x12\x1a\n" +

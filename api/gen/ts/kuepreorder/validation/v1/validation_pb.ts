@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kuepreorder/validation/v1/validation.proto.
  */
 export const file_kuepreorder_validation_v1_validation: GenFile = /*@__PURE__*/
-  fileDesc("CiprdWVwcmVvcmRlci92YWxpZGF0aW9uL3YxL3ZhbGlkYXRpb24ucHJvdG8SGWt1ZXByZW9yZGVyLnZhbGlkYXRpb24udjEigAEKC0ZpZWxkRXJyb3JzEkIKBmZpZWxkcxgBIAMoCzIyLmt1ZXByZW9yZGVyLnZhbGlkYXRpb24udjEuRmllbGRFcnJvcnMuRmllbGRzRW50cnkaLQoLRmllbGRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUKLAgodY29tLmt1ZXByZW9yZGVyLnZhbGlkYXRpb24udjFCD1ZhbGlkYXRpb25Qcm90b1ABWlNnaXRodWIuY29tL1plZmFucmFraC9rdWUtcHJlb3JkZXIvYXBpL2dlbi9nby9rdWVwcmVvcmRlci92YWxpZGF0aW9uL3YxO3ZhbGlkYXRpb252MaICA0tWWKoCGUt1ZXByZW9yZGVyLlZhbGlkYXRpb24uVjHKAhlLdWVwcmVvcmRlclxWYWxpZGF0aW9uXFYx4gIlS3VlcHJlb3JkZXJcVmFsaWRhdGlvblxWMVxHUEJNZXRhZGF0YeoCG0t1ZXByZW9yZGVyOjpWYWxpZGF0aW9uOjpWMWIGcHJvdG8z");
+  fileDesc("CiprdWVwcmVvcmRlci92YWxpZGF0aW9uL3YxL3ZhbGlkYXRpb24ucHJvdG8SGWt1ZXByZW9yZGVyLnZhbGlkYXRpb24udjEigAEKC0ZpZWxkRXJyb3JzEkIKBmZpZWxkcxgBIAMoCzIyLmt1ZXByZW9yZGVyLnZhbGlkYXRpb24udjEuRmllbGRFcnJvcnMuRmllbGRzRW50cnkaLQoLRmllbGRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASIvCgxQcmVjb25kaXRpb24SDgoGcmVhc29uGAEgASgJEg8KB21lc3NhZ2UYAiABKAlCiwIKHWNvbS5rdWVwcmVvcmRlci52YWxpZGF0aW9uLnYxQg9WYWxpZGF0aW9uUHJvdG9QAVpTZ2l0aHViLmNvbS9aZWZhbnJha2gva3VlLXByZW9yZGVyL2FwaS9nZW4vZ28va3VlcHJlb3JkZXIvdmFsaWRhdGlvbi92MTt2YWxpZGF0aW9udjGiAgNLVliqAhlLdWVwcmVvcmRlci5WYWxpZGF0aW9uLlYxygIZS3VlcHJlb3JkZXJcVmFsaWRhdGlvblxWMeICJUt1ZXByZW9yZGVyXFZhbGlkYXRpb25cVjFcR1BCTWV0YWRhdGHqAhtLdWVwcmVvcmRlcjo6VmFsaWRhdGlvbjo6VjFiBnByb3RvMw");
 
 /**
  * FieldErrors travels as a Connect error detail on InvalidArgument (bad
@@ -36,4 +36,34 @@ export type FieldErrors = Message<"kuepreorder.validation.v1.FieldErrors"> & {
  */
 export const FieldErrorsSchema: GenMessage<FieldErrors> = /*@__PURE__*/
   messageDesc(file_kuepreorder_validation_v1_validation, 0);
+
+/**
+ * Precondition travels as a Connect error detail on FailedPrecondition: the
+ * request is fine, but something must happen first.
+ *
+ * @generated from message kuepreorder.validation.v1.Precondition
+ */
+export type Precondition = Message<"kuepreorder.validation.v1.Precondition"> & {
+  /**
+   * Stable code the client acts on, such as "phone_required" (send the
+   * customer to sign in with WhatsApp) or "too_many_unpaid".
+   *
+   * @generated from field: string reason = 1;
+   */
+  reason: string;
+
+  /**
+   * What to do, in Indonesian, for the customer.
+   *
+   * @generated from field: string message = 2;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message kuepreorder.validation.v1.Precondition.
+ * Use `create(PreconditionSchema)` to create a new message.
+ */
+export const PreconditionSchema: GenMessage<Precondition> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_validation_v1_validation, 1);
 

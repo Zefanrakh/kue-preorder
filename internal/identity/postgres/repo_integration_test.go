@@ -81,3 +81,28 @@ func TestRepository_FindCustomerID(t *testing.T) {
 		t.Errorf("FindCustomerID(stranger) error = %v, want identity.ErrNotFound", err)
 	}
 }
+
+func TestRepository_UpsertCustomer(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d.Pool())
+	user := uuid.New()
+	ctx := t.Context()
+
+	first, err := repo.UpsertCustomer(ctx, dbtest.DefaultTenantID, user, identity.Customer{Name: "Sari", Email: "sari@contoh.com", Phone: "+6281234567890"}, createdAt)
+	if err != nil || first.Name != "Sari" || first.Email != "sari@contoh.com" || first.Phone != "+6281234567890" {
+		t.Fatalf("UpsertCustomer() = %+v, %v", first, err)
+	}
+	again, err := repo.UpsertCustomer(ctx, dbtest.DefaultTenantID, user, identity.Customer{Name: "Sari W.", Phone: "+6289876543210"}, createdAt)
+	if err != nil || again.ID != first.ID || again.Name != "Sari W." || again.Email != "" || again.Phone != "+6289876543210" {
+		t.Errorf("second UpsertCustomer() = %+v, %v; want the same row, updated", again, err)
+	}
+	if got, err := repo.FindCustomerID(ctx, dbtest.DefaultTenantID, user); err != nil || got != first.ID {
+		t.Errorf("FindCustomerID() = %s, %v; want %s", got, err, first.ID)
+	}
+
+	other := dbtest.CreateTenant(t, d, "Toko Lain")
+	elsewhere, err := repo.UpsertCustomer(ctx, other, user, identity.Customer{Name: "Sari", Phone: "+6281234567890"}, createdAt)
+	if err != nil || elsewhere.ID == first.ID {
+		t.Errorf("UpsertCustomer(other tenant) = %+v, %v; want a separate record", elsewhere, err)
+	}
+}

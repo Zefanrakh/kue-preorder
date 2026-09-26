@@ -35,3 +35,12 @@ values (
     sqlc.arg(created_at)
 )
 returning id, tenant_id, auth_user_id, name, email, phone, created_at;
+
+-- name: UpsertCustomer :one
+-- A signed-in customer has one record per tenant. The phone comes from the
+-- verified token; the name and email from the latest checkout.
+insert into customers (tenant_id, auth_user_id, name, email, phone, created_at)
+values (sqlc.arg(tenant_id), sqlc.arg(auth_user_id), sqlc.arg(name), sqlc.narg(email), sqlc.arg(phone), sqlc.arg(created_at))
+on conflict (tenant_id, auth_user_id) where auth_user_id is not null
+do update set name = excluded.name, email = excluded.email, phone = excluded.phone
+returning id, name, email, phone;

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -23,7 +24,9 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/identitytest"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db/dbtest"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/ratelimit"
 )
@@ -40,11 +43,38 @@ func (o ownerOf) Principal(context.Context) (identity.Principal, error) {
 	return identity.Principal{AuthUserID: uuid.New(), TenantID: uuid.UUID(o), Roles: []identity.Role{identity.RoleOwner}}, nil
 }
 
-// wiredCheckout serves the API exactly as serve wires it, over a fresh
-// database holding one donut at 8,000 rupiah (90 minutes of production, 12
-// hours' notice) with Wednesday 7 October closed. It is Monday 5 October,
-// 10.00.
+// wired is the API exactly as serve wires it, over a fresh database
+// holding one donut at 8,000 rupiah (90 minutes of production, 12 hours'
+// notice) with Wednesday 7 October closed. It is Monday 5 October, 10.00.
+type wired struct {
+	url    string
+	http   *http.Client
+	issuer *identitytest.TokenIssuer
+	d      *db.DB
+	donut  catalog.Variant
+}
+
 func wiredCheckout(t *testing.T, opts ...connect.ClientOption) (ordersv1connect.CheckoutServiceClient, catalog.Variant) {
+	t.Helper()
+	w := newWired(t)
+	return ordersv1connect.NewCheckoutServiceClient(w.http, w.url, opts...), w.donut
+}
+
+// bearer signs a token for user; with a phone, as after a WhatsApp sign-in.
+func (w *wired) bearer(t *testing.T, user uuid.UUID, phone string) connect.ClientOption {
+	t.Helper()
+	claims := identitytest.Claims(user, wib(5, 10, 0))
+	claims["phone"] = phone
+	token := w.issuer.Sign(t, claims)
+	return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			req.Header().Set("Authorization", "Bearer "+token)
+			return next(ctx, req)
+		}
+	}))
+}
+
+func newWired(t *testing.T) *wired {
 	t.Helper()
 	ctx := t.Context()
 	d := dbtest.New(t)
@@ -66,7 +96,7 @@ func wiredCheckout(t *testing.T, opts ...connect.ClientOption) (ordersv1connect.
 	keys, err := identity.NewJWKS(ctx, issuer.JWKSURL, logger)
 	noErr(t, err)
 
-	deps := wire(d, identity.NewService(identityRepo, tenants), tenants, clk, logger)
+	deps := wire(d, identity.NewService(identityRepo, tenants), tenants, payments.DevProvider{}, clk, logger)
 	deps.tracerProvider = sdktrace.NewTracerProvider()
 	deps.verifier = identity.NewTokenVerifier(keys, identitytest.Issuer, clk)
 	deps.limiter = ratelimit.New(clk, rateLimits)
@@ -74,7 +104,7 @@ func wiredCheckout(t *testing.T, opts ...connect.ClientOption) (ordersv1connect.
 	noErr(t, err)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return ordersv1connect.NewCheckoutServiceClient(srv.Client(), srv.URL, opts...), donut
+	return &wired{url: srv.URL, http: srv.Client(), issuer: issuer, d: d, donut: donut}
 }
 
 func noErr(t *testing.T, err error) {

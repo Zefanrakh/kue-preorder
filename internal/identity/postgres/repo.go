@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -58,4 +59,26 @@ func (r *Repository) FindCustomerID(ctx context.Context, tenantID, authUserID uu
 		return uuid.UUID{}, err
 	}
 	return c.ID, nil
+}
+
+// UpsertCustomer implements identity.Repository.
+func (r *Repository) UpsertCustomer(ctx context.Context, tenantID, authUserID uuid.UUID, c identity.Customer, at time.Time) (identity.Customer, error) {
+	var email *string
+	if c.Email != "" {
+		email = &c.Email
+	}
+	row, err := r.q.UpsertCustomer(ctx, UpsertCustomerParams{
+		TenantID: tenantID, AuthUserID: &authUserID, Name: c.Name, Email: email, Phone: &c.Phone, CreatedAt: at,
+	})
+	if err != nil {
+		return identity.Customer{}, err
+	}
+	out := identity.Customer{ID: row.ID, Name: row.Name}
+	if row.Email != nil {
+		out.Email = *row.Email
+	}
+	if row.Phone != nil {
+		out.Phone = *row.Phone
+	}
+	return out, nil
 }

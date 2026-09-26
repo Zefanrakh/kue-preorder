@@ -151,6 +151,12 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 
 `depguard` dan `forbidigo` berjalan di golangci-lint. Dua aturan lainnya tidak bisa dinyatakan secara umum di `depguard`, jadi `internal/archtest` memeriksanya dari graf import hasil `go list`, termasuk import di file test.
 
+**Satu transaksi lintas modul** (sejak M2.4). Kadang satu unit kerja menyentuh tabel milik beberapa modul, misalnya order (milik `orders`) dan pembayaran pertamanya (milik `payments`), dan keduanya harus tersimpan atau batal bersama.
+- Service yang mengatur unit kerja itu memanggil `db.Tx(ctx, fn)` lewat interface `Transactor`.
+- Semua repo mengakses database lewat `db.Conn(ctx)`, jadi repo modul mana pun yang dipanggil di dalam `fn` otomatis ikut transaksi yang sama.
+- `InTx` milik repo, kalau dipanggil di dalam `Tx`, menjadi savepoint dari transaksi luar.
+- Hasilnya: setiap tabel tetap diurus modul pemiliknya, tidak ada modul yang mengimpor paket `postgres/` milik modul lain, dan domain tidak pernah menyentuh `pgx`.
+
 ---
 
 ## 6. Modul domain dan tanggung jawabnya
@@ -184,7 +190,7 @@ Tata letak:
 - `buf.gen.yaml` memakai managed mode untuk `go_package`. Plugin Go (`protoc-gen-go`, `protoc-gen-connect-go`) dijalankan lewat `go tool`, jadi versinya ikut `go.mod` dan selalu cocok dengan library runtime. Plugin TS (`buf.build/bufbuild/es`, protobuf-es v2) dikunci versinya di BSR; client memakai `@connectrpc/connect` v2.
 - Hasil generate (`api/gen/go`, `api/gen/ts`) di-commit.
 
-Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC), `kuepreorder.catalog.v1.StorefrontService` (toko publik: `ListShopProducts`, `GetShopProduct`), dan `kuepreorder.scheduling.v1.ScheduleAdminService` (setelan jadwal dan tanggal libur). Tanggal ditulis `2006-01-02` dan jam `15:04`, keduanya waktu Asia/Jakarta. Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
+Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC), `kuepreorder.catalog.v1.StorefrontService` (toko publik: `ListShopProducts`, `GetShopProduct`), `kuepreorder.scheduling.v1.ScheduleAdminService` (setelan jadwal dan tanggal libur), `kuepreorder.orders.v1.CheckoutService` (`QuoteOrder`, publik), dan `kuepreorder.orders.v1.CustomerOrderService` (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`, untuk pelanggan yang masuk dengan WhatsApp). Tanggal ditulis `2006-01-02` dan jam `15:04`, keduanya waktu Asia/Jakarta. Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
 
 **Konvensi kontrak** (berlaku untuk service berikutnya juga):
 - Handler di `internal/<modul>/connect` hanya menerjemahkan proto ↔ domain. Aturan, normalisasi, dan otorisasi tetap di service.
@@ -203,6 +209,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
   | `ErrNotFound` (termasuk record tenant lain) | `NotFound` | — |
   | `ErrForbidden` | `PermissionDenied` | — |
   | `identity.ErrUnauthenticated` | `Unauthenticated` | — |
+  | `apperr.PreconditionError` (permintaan benar, tapi ada yang harus terjadi dulu) | `FailedPrecondition` | `kuepreorder.validation.v1.Precondition`: `reason` yang stabil untuk client (`phone_required`, `too_many_unpaid`) dan `message` bahasa Indonesia |
   | lainnya | `Internal` | Pesan generik; detailnya hanya di log ERROR (dan Sentry) |
 
   Form di `web/` membaca detail lewat `ConnectError.findDetails(FieldErrorsSchema)` dan menandai setiap field yang disebut.
@@ -238,6 +245,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
+| Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
 
 Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik tidak memeriksa peran dan hanya menampilkan yang dijual: produk aktif yang punya minimal satu varian aktif, beserta varian aktifnya saja (termurah dulu). Tenant diambil dari `TenantResolver`, bukan dari orangnya. Slug dicocokkan tanpa membedakan huruf besar-kecil. Token yang ada tapi rusak tetap `Unauthenticated`.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
@@ -402,6 +410,10 @@ orders (
   full_payment_required bool,
   terms_version text, terms_accepted_at timestamptz,
   idempotency_key uuid,               -- unique per pelanggan: checkout ganda = satu order
+  code text,                          -- 6 karakter acak tanpa huruf mirip (0 1 I L O), unique per tenant
+  notes text,                         -- catatan pelanggan, maks 500, mis. tulisan di kue
+  customer_name, customer_phone,      -- salinan saat checkout; nomor dari token (E.164)
+  customer_email text null,
   unique (channel_id, external_order_ref)
 )
 order_items ( id, tenant_id, order_id, variant_id,
@@ -456,8 +468,9 @@ payment_policies ( tenant_id primary key,          -- tanpa baris: payments.Defa
 payments (
   id, tenant_id, order_id,
   kind text,                          -- 'dp' | 'balance' | 'full' | 'refund'
-  provider text,                      -- 'xendit' | 'manual'
+  provider text,                      -- 'xendit' | 'manual' | 'dev' (provider palsu, hanya development)
   external_id text,                   -- unique per provider
+  checkout_url text,                  -- link bayar dari provider; kosong sampai tagihannya ada
   amount_idr bigint,                  -- bagian untuk order; refund bernilai negatif
   fee_idr bigint,                     -- "Biaya admin" Xendit yang dibayar pelanggan di atasnya
   status text,                        -- 'pending' | 'paid' | 'expired' | 'failed'
@@ -724,6 +737,16 @@ stateDiagram-v2
 - `forfeited` hanya dari `dp_paid`. `refunded` dari `dp_paid` atau `paid_in_full`.
 - **Uang yang masuk setelah pembayaran ditutup** (misalnya pelunasan terlambat setelah DP hangus) tidak membuka order lagi. Statusnya tetap, dan `ErrClosed` dikembalikan ke pemanggil. Pemanggil me-log ERROR (menjadi alert Sentry), karena orang yang harus memutuskan: uangnya dikembalikan atau ordernya dibuat ulang.
 
+**Memasang order** (`orders.Checkout.Place`, sejak M2.4):
+- Pelanggan harus masuk dengan WhatsApp (§8). Data pelanggannya dibuat atau diperbarui otomatis (`identity.EnsureCustomer`), dengan nomor HP dari token, bukan dari form.
+- Semuanya dihitung ulang lewat `Quote`. Kalau jam ambil sudah tidak bisa, jawabannya `InvalidArgument` pada `pickup_at`. Versi S&K yang disetujui harus sama dengan `orders.TermsVersion`; teksnya masih ditulis pemilik (§27), dan versinya naik setiap kali teksnya berubah.
+- Pembayaran pertama adalah DP, atau total penuh kalau pelanggan memilihnya atau jadwalnya mewajibkan lunas.
+- Satu transaksi (`db.Tx`) menulis: order `awaiting_dp`, itemnya, pembayaran pertama (`pending`, berakhir di tenggat DP), dan event outbox `order.placed`. Kode order acak diambil ulang kalau bentrok, tanpa membatalkan transaksi.
+- **Klik ganda aman.** Idempotency key dari client dicek dua kali: sebelum menghitung dan di dalam transaksi, setelah lock per pelanggan. Checkout yang terkirim dua kali mengembalikan order yang sama.
+- **Paling banyak 2 order menunggu DP per pelanggan** (§27). Order ketiga ditolak dengan `FailedPrecondition` `too_many_unpaid`. Lock per pelanggan menjaga batas ini dari dua checkout yang bersamaan.
+- **Tagihan dibuat setelah transaksi selesai**, lewat port `payments.Provider`. Kalau provider gagal, order tetap ada, kegagalannya dicatat ERROR, dan link bayar dibuat lagi saat pelanggan membuka ordernya (`GetMyOrder`). Provider wajib idempoten per pembayaran, jadi percobaan ulang tidak menagih dua kali. Sampai Xendit hadir (M2.6), `api` hanya bisa jalan dengan `APP_ENV=development` dan provider palsu (`dev`).
+- **Kasus tepi untuk M2.6.** Cutoff batch bisa maju setelah tagihan DP dibuat, kalau order lain untuk hari yang sama terkonfirmasi dengan cutoff lebih awal. DP yang masuk setelah ibu berbelanja untuk hari itu harus ditangani saat DP dikonfirmasi.
+
 **Alur:**
 1. Checkout → pelanggan memilih **bayar DP** atau **bayar penuh**. Syarat dan ketentuan DP (termasuk DP hangus) wajib dicentang; versi S&K disimpan di order.
 2. DP masuk → order `confirmed` → invoice pelunasan dibuat otomatis dengan tenggat yang sudah dikunci.
@@ -924,7 +947,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
   - Saat shutdown, span dan event yang tertahan dikirim dulu (batas 5 detik).
 - **Config dan secret:** dari environment variable atau secret manager. Divalidasi saat start; kalau kurang, aplikasi berhenti dengan pesan jelas.
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
-  - **Rate limit** (`platform/ratelimit`, sejak M2.3): token bucket per procedure per alamat klien, di memori server. Setiap instance menghitung sendiri, dan itu cukup untuk satu toko. Batasnya longgar karena banyak pengguna seluler Indonesia berbagi satu IP (CGNAT). Saat ini `QuoteOrder` dibatasi rata-rata 1 per detik dengan burst 30; checkout dan OTP menyusul di potongannya masing-masing. Batas dicek sebelum auth, jadi banjir request tidak memakan biaya verifikasi token. Yang melewati batas mendapat `ResourceExhausted`.
+  - **Rate limit** (`platform/ratelimit`, sejak M2.3): token bucket per procedure per alamat klien, di memori server. Setiap instance menghitung sendiri, dan itu cukup untuk satu toko. Batasnya longgar karena banyak pengguna seluler Indonesia berbagi satu IP (CGNAT). Saat ini `QuoteOrder` dibatasi rata-rata 1 per detik dengan burst 30, `PlaceOrder` rata-rata 1 per 6 menit dengan burst 10 (cukup untuk satu keluarga yang memesan untuk acara), dan `GetMyOrder` 1 per detik dengan burst 30 karena bisa memanggil provider pembayaran. Batas OTP menyusul di M2.5. Batas dicek sebelum auth, jadi banjir request tidak memakan biaya verifikasi token. Yang melewati batas mendapat `ResourceExhausted`.
   - **Alamat klien** (`httpserver.ClientIP`) diambil dari header proxy yang disebut `CLIENT_IP_HEADER`, misalnya `CF-Connecting-IP`; untuk `X-Forwarded-For`, entri terakhir. Setelan ini wajib di production, karena tanpa itu semua pelanggan terlihat sebagai IP proxy. Request yang tidak membawa header itu dihitung per alamat koneksinya, sehingga header yang dipalsukan tanpa melewati proxy tidak berguna. Alamat IPv6 dihitung per /64.
   - **Cache** (`httpserver.CacheControl`): semua respons `no-store`, kecuali respons 200 dari GET katalog publik (`ListShopProducts`, `GetShopProduct`), yang boleh disimpan CDN 60 detik. Error tidak pernah di-cache. Data order, pelanggan, dan CMS tidak boleh di-cache.
   - **Cloudflare menyusul setelah domain dibeli** (diputuskan 2026-09-26). Domain yang sama dipakai untuk website, API (`api.`), dan email Resend (`notif.`). Cloudflare menjadi lapisan luar: DDoS, bot, cache katalog, dan Turnstile di permintaan OTP. Rate limit Go tetap menjadi lapisan dalam untuk batas yang presisi, misalnya OTP per nomor HP. Saat itu `CLIENT_IP_HEADER=CF-Connecting-IP`, dan server asal harus menolak request yang tidak lewat Cloudflare (misalnya dengan Authenticated Origin Pulls atau header rahasia), karena tanpa itu header IP bisa dipalsukan.
@@ -1067,6 +1090,9 @@ Diputuskan 2026-09-26:
 | Pajak | Kolom pajak di order disiapkan dengan nilai 0. Aturannya (tanpa pajak, termasuk dalam harga, atau ditambahkan) ditetapkan setelah perusahaan berdiri dan ada arahan akuntan |
 | Tanggal libur yang sudah ada ordernya | On hold, bukan ditolak; order baru ditawari tanggal lain (§15) |
 | Perlindungan endpoint publik | Rate limit di Go sekarang; Cloudflare dan Turnstile setelah domain dibeli (§22) |
+| Order menunggu DP per pelanggan | Paling banyak 2 sekaligus (§14) |
+| Catatan order | Satu catatan bebas per order, maksimal 500 karakter, misalnya tulisan di kue |
+| Kode order | 6 karakter acak tanpa huruf yang mirip angka, misalnya `K7M3QX`; tidak membocorkan jumlah order |
 
 ### Masih terbuka
 

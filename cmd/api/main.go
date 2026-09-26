@@ -110,7 +110,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 		return fmt.Errorf("resolve tenant: %w", err)
 	}
 
-	deps := wire(database, identity.NewService(identityRepo, tenants), tenants, clock.Real{}, logger)
+	provider, err := paymentProvider(cfg)
+	if err != nil {
+		return err
+	}
+	deps := wire(database, identity.NewService(identityRepo, tenants), tenants, provider, clock.Real{}, logger)
 	deps.tracerProvider = tel.TracerProvider()
 	deps.verifier = identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{})
 	deps.limiter = ratelimit.New(clock.Real{}, rateLimits)
@@ -135,20 +139,34 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 // wire assembles every module over database as production runs them: this
 // is the one place allowed to join a module to another's postgres package
 // (§5). The caller adds tracing, token verification, and rate limits.
-func wire(database *db.DB, identitySvc *identity.Service, tenants identity.TenantResolver, clk clock.Clock, logger *slog.Logger) handlerDeps {
+func wire(database *db.DB, identitySvc *identity.Service, tenants identity.TenantResolver, provider payments.Provider, clk clock.Clock, logger *slog.Logger) handlerDeps {
 	catalogRepo := catalogpg.NewRepository(database)
 	schedulingRepo := schedulingpg.NewRepository(database)
+	ordersRepo := orderspg.NewRepository(database)
+	paymentsRepo := paymentspg.NewRepository(database)
 	return handlerDeps{
 		logger:     logger,
 		identity:   identitySvc,
 		catalog:    catalog.NewService(catalogRepo, identitySvc, clk),
 		storefront: catalog.NewStorefront(catalogRepo, tenants),
-		scheduling: scheduling.NewService(schedulingRepo, identitySvc, clk),
-		checkout: orders.NewCheckout(catalog.NewReader(catalogRepo), scheduling.NewReader(schedulingRepo),
-			payments.NewReader(paymentspg.NewRepository(database)), orderspg.NewRepository(database),
-			tenants, clk, logger),
+		scheduling: scheduling.NewService(schedulingRepo, identitySvc, orders.NewReader(ordersRepo), clk),
+		checkout: orders.NewCheckout(orders.Deps{
+			Catalog: catalog.NewReader(catalogRepo), Schedules: scheduling.NewReader(schedulingRepo),
+			Policies: payments.NewReader(paymentsRepo), Repo: ordersRepo, Customers: identitySvc,
+			Ledger: payments.NewLedger(paymentsRepo), Provider: provider, Tx: database,
+			Tenants: tenants, Clock: clk, Logger: logger,
+		}),
 		db: database,
 	}
+}
+
+// paymentProvider picks who makes invoices. Only development may pretend;
+// Xendit arrives in M2.6, and until then nothing else may take orders.
+func paymentProvider(cfg config.Config) (payments.Provider, error) {
+	if cfg.AppEnv == config.EnvDevelopment {
+		return payments.DevProvider{}, nil
+	}
+	return nil, fmt.Errorf("APP_ENV=%s needs a payment provider, and Xendit arrives in M2.6: run with APP_ENV=development until then", cfg.AppEnv)
 }
 
 // handlerDeps is what the HTTP handler needs; tests pass fakes.
@@ -172,6 +190,10 @@ type handlerDeps struct {
 var rateLimits = map[string]ratelimit.Rule{
 	// A customer quotes as they edit the cart and pick a time.
 	ordersv1connect.CheckoutServiceQuoteOrderProcedure: {Every: time.Second, Burst: 30},
+	// An order an hour on average, ten at once: a family ordering for an event.
+	ordersv1connect.CustomerOrderServicePlaceOrderProcedure: {Every: 6 * time.Minute, Burst: 10},
+	// Opening an order may ask the payment provider for a missing link.
+	ordersv1connect.CustomerOrderServiceGetMyOrderProcedure: {Every: time.Second, Burst: 30},
 }
 
 // cacheable are the public responses a CDN may keep, and for how long (§22).
@@ -209,6 +231,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(d.storefront, d.logger), connectOpts...))
 	mux.Handle(schedulingv1connect.NewScheduleAdminServiceHandler(schedulingrpc.NewHandler(d.scheduling, d.logger), connectOpts...))
 	mux.Handle(ordersv1connect.NewCheckoutServiceHandler(ordersrpc.NewCheckoutHandler(d.checkout, d.logger), connectOpts...))
+	mux.Handle(ordersv1connect.NewCustomerOrderServiceHandler(ordersrpc.NewCustomerOrderHandler(d.checkout, d.logger), connectOpts...))
 
 	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil

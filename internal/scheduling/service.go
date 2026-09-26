@@ -29,6 +29,12 @@ type Repository interface {
 	RemoveClosedDate(ctx context.Context, tenantID uuid.UUID, d clock.Date) error
 }
 
+// OrderCounter counts the active orders of each day; orders.Reader
+// implements it.
+type OrderCounter interface {
+	ActiveOrders(ctx context.Context, tenantID uuid.UUID, from, to clock.Date) (map[clock.Date]int, error)
+}
+
 // PrincipalSource tells who is calling; identity.Service implements it.
 type PrincipalSource interface {
 	Principal(ctx context.Context) (identity.Principal, error)
@@ -48,12 +54,14 @@ const maxClosedDateRange = 366
 type Service struct {
 	repo       Repository
 	principals PrincipalSource
+	orders     OrderCounter
 	clock      clock.Clock
 }
 
-// NewService returns a Service storing through repo.
-func NewService(repo Repository, principals PrincipalSource, clk clock.Clock) *Service {
-	return &Service{repo: repo, principals: principals, clock: clk}
+// NewService returns a Service storing through repo and counting orders
+// through orders.
+func NewService(repo Repository, principals PrincipalSource, orders OrderCounter, clk clock.Clock) *Service {
+	return &Service{repo: repo, principals: principals, orders: orders, clock: clk}
 }
 
 func (s *Service) authorize(ctx context.Context, roles []identity.Role) (identity.Principal, error) {
@@ -95,7 +103,8 @@ func (s *Service) UpdateSettings(ctx context.Context, in Settings) (Settings, er
 	return s.repo.SaveSettings(ctx, p.TenantID, in, s.clock.Now())
 }
 
-// ClosedDates returns the closed dates from..to, both included. Staff only.
+// ClosedDates returns the closed dates from..to, both included, each with
+// its active orders: those above zero are on hold. Staff only.
 func (s *Service) ClosedDates(ctx context.Context, from, to clock.Date) ([]ClosedDate, error) {
 	p, err := s.authorize(ctx, staff)
 	if err != nil {
@@ -107,7 +116,18 @@ func (s *Service) ClosedDates(ctx context.Context, from, to clock.Date) ([]Close
 	if err := f.Err(); err != nil {
 		return nil, err
 	}
-	return s.repo.ClosedDates(ctx, p.TenantID, from, to)
+	dates, err := s.repo.ClosedDates(ctx, p.TenantID, from, to)
+	if err != nil || len(dates) == 0 {
+		return dates, err
+	}
+	counts, err := s.orders.ActiveOrders(ctx, p.TenantID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	for i := range dates {
+		dates[i].ActiveOrders = counts[dates[i].Date]
+	}
+	return dates, nil
 }
 
 // AddClosedDate closes a day, from today on. Staff: the owner and the kitchen.

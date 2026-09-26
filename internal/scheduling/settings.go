@@ -85,11 +85,14 @@ func (s Settings) validate() error {
 	return f.Err()
 }
 
-// ClosedDate is a day nothing is picked up or produced.
+// ClosedDate is a day that takes no new orders (§15). While ActiveOrders
+// is above zero it is on hold: those orders still have to be moved or
+// settled; after that nothing is produced or picked up that day.
 type ClosedDate struct {
-	Date      clock.Date
-	Reason    string // shown to customers, such as "Libur Lebaran"
-	CreatedAt time.Time
+	Date         clock.Date
+	Reason       string // shown to customers, such as "Libur Lebaran"
+	CreatedAt    time.Time
+	ActiveOrders int
 }
 
 var (

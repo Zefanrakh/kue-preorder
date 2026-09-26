@@ -230,3 +230,25 @@ func tamper(t *testing.T, token string) string {
 	parts[1] = base64.RawURLEncoding.EncodeToString(payload)
 	return strings.Join(parts, ".")
 }
+
+// Supabase writes the phone without the plus; a user who signed in by email
+// has none. A malformed number is no number rather than a broken token.
+func TestVerify_ReadsThePhone(t *testing.T) {
+	iss := identitytest.NewTokenIssuer(t)
+	v := newVerifier(t, iss.JWKSURL, clock.NewFake(now))
+	tests := map[string]string{
+		"6281234567890":  "+6281234567890",
+		"+6281234567890": "+6281234567890",
+		"":               "",
+		"0812345":        "",
+		"not a phone":    "",
+	}
+	for claim, want := range tests {
+		claims := identitytest.Claims(uuid.New(), now)
+		claims["phone"] = claim
+		got, err := v.Verify(t.Context(), iss.Sign(t, claims))
+		if err != nil || got.Phone != want {
+			t.Errorf("phone claim %q: Verify() = %q, %v; want %q", claim, got.Phone, err, want)
+		}
+	}
+}

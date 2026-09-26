@@ -32,6 +32,13 @@ func TestMain(m *testing.M) { dbtest.Main(m) }
 // Monday 5 October 2026, 10.00 WIB.
 var now = time.Date(2026, time.October, 5, 10, 0, 0, 0, clock.Jakarta)
 
+// noOrders stands in for the orders module: no day has orders.
+type noOrders struct{}
+
+func (noOrders) ActiveOrders(context.Context, uuid.UUID, clock.Date, clock.Date) (map[clock.Date]int, error) {
+	return nil, nil
+}
+
 type server struct {
 	url    string
 	http   *http.Client
@@ -55,7 +62,7 @@ func newServer(t *testing.T) *server {
 		t.Fatalf("ResolveSingleTenant() error = %v", err)
 	}
 	verifier := identity.NewTokenVerifier(keys, identitytest.Issuer, clock.NewFake(now))
-	svc := scheduling.NewService(postgres.NewRepository(dbtest.New(t)), identity.NewService(roles, tenants), clock.NewFake(now))
+	svc := scheduling.NewService(postgres.NewRepository(dbtest.New(t)), identity.NewService(roles, tenants), noOrders{}, clock.NewFake(now))
 
 	mux := http.NewServeMux()
 	mux.Handle(schedulingv1connect.NewScheduleAdminServiceHandler(schedulingrpc.NewHandler(svc, logger),

@@ -113,9 +113,9 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		// internal/catalog/connect tests the catalog over a real one.
 		catalog:    catalog.NewService(nil, identitySvc, clock.NewFake(now)),
 		storefront: catalog.NewStorefront(emptyShop{}, tenants),
-		scheduling: scheduling.NewService(nil, identitySvc, clock.NewFake(now)),
+		scheduling: scheduling.NewService(nil, identitySvc, nil, clock.NewFake(now)),
 		// No readers: the quotes these tests send fail validation first.
-		checkout: orders.NewCheckout(nil, nil, nil, nil, tenants, clock.NewFake(now), logger),
+		checkout: orders.NewCheckout(orders.Deps{Customers: identitySvc, Tenants: tenants, Clock: clock.NewFake(now), Logger: logger}),
 		limiter: ratelimit.New(clock.NewFake(now), map[string]ratelimit.Rule{
 			ordersv1connect.CheckoutServiceQuoteOrderProcedure: {Every: time.Hour, Burst: 2},
 		}),

@@ -95,4 +95,7 @@ message QuoteOrderResponse {
     Schedule schedule = 6;
     PickupRejection rejection = 7;
   }
+  // The version of the DP terms placing the order accepts; send it back in
+  // PlaceOrderRequest.terms_version.
+  string terms_version = 8;
 }

@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package kuepreorder.orders.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kuepreorder/orders/v1/checkout.proto";
+
+// CustomerOrderService is for a customer signed in with WhatsApp
+// (docs/architecture.md §8): placing an order and following it. A caller
+// signed in without a verified phone number gets FailedPrecondition with a
+// kuepreorder.validation.v1.Precondition detail, reason "phone_required".
+// Money is int64 rupiah; the "Biaya admin" of a payment is fee_idr, on top.
+service CustomerOrderService {
+  // PlaceOrder prices and schedules the cart again on the server and places
+  // an order waiting for its first payment. The same idempotency_key returns
+  // the order placed the first time. FailedPrecondition "too_many_unpaid"
+  // while two orders still wait for their DP; InvalidArgument with
+  // FieldErrors when the cart, the pickup time, or the terms do not hold.
+  // Rate limited per client address.
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  // ListMyOrders lists the caller's orders, newest first.
+  rpc ListMyOrders(ListMyOrdersRequest) returns (ListMyOrdersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // GetMyOrder returns one of the caller's orders by its code; NotFound for
+  // anyone else's. A payment link the provider failed to make is made now.
+  rpc GetMyOrder(GetMyOrderRequest) returns (GetMyOrderResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+}
+
+// OrderStatus is where an order is in its life (§13).
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_AWAITING_DP = 1;
+  ORDER_STATUS_CONFIRMED = 2;
+  ORDER_STATUS_EXPIRED = 3;
+  ORDER_STATUS_IN_PRODUCTION = 4;
+  ORDER_STATUS_READY = 5;
+  ORDER_STATUS_OUT_FOR_DELIVERY = 6;
+  ORDER_STATUS_COMPLETED = 7;
+  ORDER_STATUS_CANCELLED = 8;
+}
+
+// PaymentStatus is how far an order is paid (§14).
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_UNPAID = 1;
+  PAYMENT_STATUS_DP_PAID = 2;
+  PAYMENT_STATUS_PAID_IN_FULL = 3;
+  PAYMENT_STATUS_FORFEITED = 4;
+  PAYMENT_STATUS_REFUNDED = 5;
+}
+
+enum PaymentKind {
+  PAYMENT_KIND_UNSPECIFIED = 0;
+  PAYMENT_KIND_DP = 1;
+  PAYMENT_KIND_BALANCE = 2;
+  // The whole total at once.
+  PAYMENT_KIND_FULL = 3;
+  PAYMENT_KIND_REFUND = 4;
+}
+
+enum PaymentState {
+  PAYMENT_STATE_UNSPECIFIED = 0;
+  PAYMENT_STATE_PENDING = 1;
+  PAYMENT_STATE_PAID = 2;
+  PAYMENT_STATE_EXPIRED = 3;
+  PAYMENT_STATE_FAILED = 4;
+}
+
+message Payment {
+  string id = 1;
+  PaymentKind kind = 2;
+  // Towards the order; negative for a refund.
+  int64 amount_idr = 3;
+  // "Biaya admin", paid on top of amount_idr.
+  int64 fee_idr = 4;
+  PaymentState state = 5;
+  // Where to pay; empty until the invoice exists. Try GetMyOrder again.
+  string checkout_url = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp paid_at = 8;
+}
+
+message Order {
+  string id = 1;
+  // Six characters to read out on WhatsApp, such as "K7M3QX".
+  string code = 2;
+  OrderStatus status = 3;
+  PaymentStatus payment_status = 4;
+  repeated QuotedItem items = 5;
+  int64 subtotal_idr = 6;
+  int64 tax_idr = 7;
+  int64 total_idr = 8;
+  // The first payment of a DP order; the total when full payment is required.
+  int64 dp_required_idr = 9;
+  Schedule schedule = 10;
+  // The customer's notes, such as the writing on the cake.
+  string notes = 11;
+  // The ledger, oldest first.
+  repeated Payment payments = 12;
+  string customer_name = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message OrderSummary {
+  string id = 1;
+  string code = 2;
+  OrderStatus status = 3;
+  PaymentStatus payment_status = 4;
+  google.protobuf.Timestamp pickup_at = 5;
+  int64 total_idr = 6;
+  // Such as "Donut Coklat".
+  string first_item = 7;
+  int32 item_count = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message PlaceOrderRequest {
+  repeated CartItem items = 1;
+  google.protobuf.Timestamp pickup_at = 2;
+  // Pay the whole total now instead of a DP. Ignored when the schedule
+  // requires full payment anyway.
+  bool pay_in_full = 3;
+  // The version of the terms the customer accepted: QuoteOrderResponse's.
+  string terms_version = 4;
+  // 1 to 100 characters; the phone number comes from the sign-in, not here.
+  string customer_name = 5;
+  // Optional.
+  string customer_email = 6;
+  // Up to 500 characters, such as the writing on the cake.
+  string notes = 7;
+  // A UUID the client makes once per checkout and sends again on a retry.
+  string idempotency_key = 8;
+}
+
+message PlaceOrderResponse {
+  Order order = 1;
+}
+
+message ListMyOrdersRequest {}
+
+message ListMyOrdersResponse {
+  repeated OrderSummary orders = 1;
+}
+
+message GetMyOrderRequest {
+  string code = 1;
+}
+
+message GetMyOrderResponse {
+  Order order = 1;
+}
