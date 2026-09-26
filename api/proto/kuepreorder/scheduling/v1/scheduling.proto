@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package kuepreorder.scheduling.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ScheduleAdminService is the scheduling part of the CMS
+// (docs/architecture.md §9.5, §15): pickup hours, the shopping buffer, the
+// daily capacity, and closed dates. The owner changes the settings; the
+// owner and the kitchen close and reopen dates; all staff read.
+//
+// Dates are calendar days in Asia/Jakarta written 2006-01-02; times of day
+// are Asia/Jakarta wall-clock times written 15:04. Errors follow the
+// conventions of §7, with FieldErrors on InvalidArgument and AlreadyExists.
+service ScheduleAdminService {
+  // GetScheduleSettings returns the settings, or the defaults when they were
+  // never changed (updated_at unset).
+  rpc GetScheduleSettings(GetScheduleSettingsRequest) returns (GetScheduleSettingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // UpdateScheduleSettings replaces the settings. Orders already placed keep
+  // the times locked at checkout.
+  rpc UpdateScheduleSettings(UpdateScheduleSettingsRequest) returns (UpdateScheduleSettingsResponse);
+
+  // ListClosedDates lists the closed dates in a range of at most 366 days.
+  rpc ListClosedDates(ListClosedDatesRequest) returns (ListClosedDatesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // AddClosedDate closes a day from today on; AlreadyExists when it is closed.
+  rpc AddClosedDate(AddClosedDateRequest) returns (AddClosedDateResponse);
+  // RemoveClosedDate opens a closed day again; NotFound when it is not closed.
+  rpc RemoveClosedDate(RemoveClosedDateRequest) returns (RemoveClosedDateResponse);
+}
+
+message ScheduleSettings {
+  // How long before the day's first production the kitchen shops, 0 to 168.
+  int32 shopping_buffer_hours = 1;
+  // Production minutes a day may hold, 1 to 1440; unset: no limit.
+  optional int32 daily_capacity_minutes = 2;
+  // Pickup hours, both included, such as "09:00" and "17:00".
+  string pickup_window_start = 3;
+  string pickup_window_end = 4;
+  // Unset while the defaults are in use.
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ClosedDate {
+  // Such as "2026-10-05".
+  string date = 1;
+  // Shown to customers, such as "Libur Lebaran".
+  string reason = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message GetScheduleSettingsRequest {}
+
+message GetScheduleSettingsResponse {
+  ScheduleSettings settings = 1;
+}
+
+message UpdateScheduleSettingsRequest {
+  int32 shopping_buffer_hours = 1;
+  optional int32 daily_capacity_minutes = 2;
+  string pickup_window_start = 3;
+  string pickup_window_end = 4;
+}
+
+message UpdateScheduleSettingsResponse {
+  ScheduleSettings settings = 1;
+}
+
+message ListClosedDatesRequest {
+  // Both included.
+  string from_date = 1;
+  string to_date = 2;
+}
+
+message ListClosedDatesResponse {
+  // In date order.
+  repeated ClosedDate closed_dates = 1;
+}
+
+message AddClosedDateRequest {
+  string date = 1;
+  string reason = 2;
+}
+
+message AddClosedDateResponse {
+  ClosedDate closed_date = 1;
+}
+
+message RemoveClosedDateRequest {
+  string date = 1;
+}
+
+message RemoveClosedDateResponse {}

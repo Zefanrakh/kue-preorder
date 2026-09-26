@@ -23,12 +23,15 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	identityv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	schedulingv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/identitytest"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/httpserver"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
+	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 )
 
 var now = time.Date(2026, 9, 25, 3, 0, 0, 0, time.UTC)
@@ -105,6 +108,7 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		// internal/catalog/connect tests the catalog over a real one.
 		catalog:    catalog.NewService(nil, identitySvc, clock.NewFake(now)),
 		storefront: catalog.NewStorefront(nil, tenants),
+		scheduling: scheduling.NewService(nil, identitySvc, clock.NewFake(now)),
 		db:         db,
 	})
 	if err != nil {
@@ -284,5 +288,20 @@ func TestAPI_ServesTheStorefront(t *testing.T) {
 	}
 	if s.findSpan("kuepreorder.catalog.v1.StorefrontService/ListShopProducts") == nil {
 		t.Error("storefront request left no span")
+	}
+}
+
+// Scheduling is mounted behind the same interceptors: staff only.
+func TestAPI_ServesScheduling(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	client := schedulingv1connect.NewScheduleAdminServiceClient(http.DefaultClient, s.url)
+
+	_, err := client.GetScheduleSettings(t.Context(), connect.NewRequest(&schedulingv1.GetScheduleSettingsRequest{}))
+
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Errorf("GetScheduleSettings() code = %v, want Unauthenticated", connect.CodeOf(err))
+	}
+	if s.findSpan("kuepreorder.scheduling.v1.ScheduleAdminService/GetScheduleSettings") == nil {
+		t.Error("scheduling request left no span")
 	}
 }

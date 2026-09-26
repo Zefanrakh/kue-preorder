@@ -147,7 +147,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 - `recipe` tidak mengimpor apa pun dari `internal/`. Lebih ketat lagi, `recipe` hanya boleh mengimpor standard library, `expr-lang/expr`, dan (di test) `pgregory.net/rapid`. (`depguard`, daftar izin)
 - `aggregation` hanya mengimpor `recipe`, `platform`, dan paket akar modul lain (tempat interface service-nya). (`internal/archtest`)
 - Modul tidak pernah mengimpor paket `postgres/` milik modul lain. `cmd/` boleh, karena di sanalah semua adapter dirakit. (`internal/archtest`)
-- Waktu selalu lewat `platform/clock` (bukan `time.Now()`, `time.Since()`, atau `time.Until()` langsung), supaya cutoff dan tenggat bisa diuji. (`forbidigo`)
+- Waktu selalu lewat `platform/clock` (bukan `time.Now()`, `time.Since()`, atau `time.Until()` langsung), supaya cutoff dan tenggat bisa diuji. Zona bisnis selalu `clock.Jakarta`; `time.Local` dan `Time.Local()` dilarang, karena zona server bukan zona toko. Tanggal kalender WIB memakai `clock.Date`. (`forbidigo`)
 
 `depguard` dan `forbidigo` berjalan di golangci-lint. Dua aturan lainnya tidak bisa dinyatakan secara umum di `depguard`, jadi `internal/archtest` memeriksanya dari graf import hasil `go list`, termasuk import di file test.
 
@@ -162,7 +162,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
 | `recipe` | Hitung kebutuhan bahan per komponen dari model | `Model` (murni) |
 | `inventory` | Lot stok, ledger, cek stok harian, pencatatan bahan dibuang | `InventoryService` |
 | `orders` | Lifecycle order, jadwal ulang massal | `OrderService` |
-| `scheduling` | Cutoff per produk, tanggal pengambilan yang sah, hari libur | `ScheduleService` |
+| `scheduling` | Cutoff per produk, tanggal pengambilan yang sah, hari libur | `Service` (CMS: setelan dan tanggal libur), `Settings.Plan` (murni: jadwal satu order, dipakai checkout) |
 | `aggregation` | Batch → daftar belanja (`batch_requirements`) | `BatchService` |
 | `payments` | Kebijakan DP, invoice, pelunasan, refund, ledger | `PaymentService` |
 | `shipping` | Ongkir, draft order, konfirmasi kurir, tracking | `ShippingService` |
@@ -184,10 +184,11 @@ Tata letak:
 - `buf.gen.yaml` memakai managed mode untuk `go_package`. Plugin Go (`protoc-gen-go`, `protoc-gen-connect-go`) dijalankan lewat `go tool`, jadi versinya ikut `go.mod` dan selalu cocok dengan library runtime. Plugin TS (`buf.build/bufbuild/es`, protobuf-es v2) dikunci versinya di BSR; client memakai `@connectrpc/connect` v2.
 - Hasil generate (`api/gen/go`, `api/gen/ts`) di-commit.
 
-Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC), dan `kuepreorder.catalog.v1.StorefrontService` (toko publik: `ListShopProducts`, `GetShopProduct`). Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
+Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `kuepreorder.catalog.v1.CatalogAdminService` (CMS katalog dan resep, 26 RPC), `kuepreorder.catalog.v1.StorefrontService` (toko publik: `ListShopProducts`, `GetShopProduct`), dan `kuepreorder.scheduling.v1.ScheduleAdminService` (setelan jadwal dan tanggal libur). Tanggal ditulis `2006-01-02` dan jam `15:04`, keduanya waktu Asia/Jakarta. Semuanya dipasang di `cmd/api` dengan urutan interceptor yang sama: tracing → auth → handler, panic menjadi `Internal`, request maksimal 1 MiB.
 
 **Konvensi kontrak** (berlaku untuk service berikutnya juga):
 - Handler di `internal/<modul>/connect` hanya menerjemahkan proto ↔ domain. Aturan, normalisasi, dan otorisasi tetap di service.
+- Error domain yang dipakai semua modul ada di `platform/apperr` (`ErrNotFound`, `ErrForbidden`, `ErrUnauthenticated`, `ValidationError`); modul mengekspornya ulang dengan namanya sendiri (`catalog.ErrNotFound`). Pemetaannya ke kode Connect ada di satu tempat, `platform/rpcerr`, termasuk parsing ID (`rpcerr.IDs`).
 - ID berupa string UUID. ID kosong diteruskan sebagai `uuid.Nil` agar service menjawab dengan pesannya sendiri ("Pilih produknya."). ID yang bukan UUID langsung `InvalidArgument` untuk field itu, sebelum otorisasi. Yang bocor hanya fakta bahwa string itu bukan UUID, tidak ada data yang ikut bocor.
 - RPC baca ditandai `NO_SIDE_EFFECTS`, jadi client boleh memanggilnya lewat HTTP GET (`useHttpGet` di connect-web) dan hasilnya bisa di-cache. Storefront memakainya.
 - Pesan untuk pelanggan terpisah dari pesan CMS (`ShopProduct` dan `ShopVariant` vs `Product` dan `Variant`), supaya field internal seperti SKU, menit produksi, dan resep tidak pernah ikut keluar ke publik hanya karena ditambahkan ke CMS.
@@ -234,6 +235,8 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Komponen, bahan, dan resep (termasuk titik ukur) | ✅ | ✅ | ❌ |
 | Melihat seluruh katalog di CMS | ✅ | ✅ | ❌ |
 | Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
+| Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
+| Tanggal libur | ✅ | ✅ | ❌ |
 
 Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik tidak memeriksa peran dan hanya menampilkan yang dijual: produk aktif yang punya minimal satu varian aktif, beserta varian aktifnya saja (termurah dulu). Tenant diambil dari `TenantResolver`, bukan dari orangnya. Slug dicocokkan tanpa membedakan huruf besar-kecil. Token yang ada tapi rusak tetap `Unauthenticated`.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
@@ -364,11 +367,15 @@ stock_checks (                       -- hasil "cek stok" oleh ibu
 
 ```sql
 schedule_settings ( tenant_id primary key,
-                    shopping_buffer_hours int,     -- waktu belanja default
-                    daily_capacity_minutes int null,
-                    pickup_window_start time, pickup_window_end time )
-closed_dates ( id, tenant_id, date date, reason text )   -- ibu libur / hari raya
+                    shopping_buffer_hours int,     -- 0..168; waktu belanja sebelum produksi
+                    daily_capacity_minutes int null,   -- 1..1440; null = tidak dibatasi
+                    pickup_window_start time, pickup_window_end time,   -- jam dinding WIB, start < end
+                    updated_at timestamptz )
+closed_dates ( id, tenant_id, date date, reason text, created_at,   -- ibu libur / hari raya
+               unique (tenant_id, date) )
 ```
+
+Tenant tanpa baris `schedule_settings` memakai `scheduling.DefaultSettings()`. Default hanya ada di Go, tidak di SQL. Perubahan pertama di CMS menyisipkan barisnya (upsert).
 
 ### 9.6 Order dan jadwal ulang
 
@@ -717,6 +724,16 @@ Admin bisa menandai pelunasan manual (transfer langsung) hanya dengan bukti dan 
 - Cutoff belanja sebuah batch = jam mulai produksi paling awal di batch itu dikurangi `shopping_buffer_hours`. Setelah cutoff, batch `locked` dan order baru untuk tanggal itu ditolak.
 - `daily_capacity_minutes` bersifat opsional: kalau diisi, checkout menolak tanggal yang total menit produksinya sudah penuh.
 
+**Jadwal satu order** (`scheduling.Settings.Plan`, murni, dikunci saat checkout; diputuskan 2026-09-25):
+- **Mulai produksi** = jam ambil − `production_minutes` **terlama** di order, karena beberapa kue dikerjakan bersamaan. **Tanggal produksi** = tanggal WIB dari jam mulai itu, dan itulah kunci batch.
+- Jam ambil harus di dalam jam pengambilan (batas awal dan akhir ikut), paling cepat sekarang + `min_notice_hours` terbesar, paling jauh 365 hari ke depan, dan tanggal ambil maupun tanggal produksi bukan tanggal libur.
+- **Cutoff** = mulai produksi − `shopping_buffer_hours`, atau cutoff batch yang sudah ada kalau lebih awal. Order ditolak kalau cutoff kurang dari 30 menit lagi, supaya pelanggan masih sempat membayar DP.
+- **Tenggat DP** = sekarang + masa berlaku invoice DP (minimal 30 menit), tapi **tidak pernah setelah cutoff**. Dengan begitu tidak ada order yang terkonfirmasi ke batch yang sudah dibelanjakan.
+- **Tenggat pelunasan** = mulai produksi − `balance_due_hours_before` (§14). Kalau tenggat pelunasan tidak lebih lambat dari tenggat DP, pembayaran pertama harus lunas (`FullPaymentRequired`).
+- Selalu berlaku: sekarang < tenggat DP ≤ cutoff ≤ mulai produksi ≤ jam ambil, dan tenggat pelunasan ≤ mulai produksi (property test).
+- Penolakan membawa alasan (`ErrTooSoon`, `ErrOutsideWindow`, `ErrClosed`, `ErrCutoffPassed`, `ErrFull`, `ErrTooFar`) dan pesan untuk pelanggan, misalnya "Paling cepat bisa diambil Selasa, 6 Oktober 2026 pukul 10.00 WIB."
+- Cara menghitung beban kapasitas harian diputuskan di M2.3, bersama tabel order. Di sana juga ditambahkan larangan meliburkan tanggal yang sudah punya order terkonfirmasi; tanggal seperti itu harus lewat jadwal ulang (M6).
+
 Semua perhitungan waktu memakai `platform/clock` dan zona `Asia/Jakarta`, dan diuji dengan jam palsu.
 
 ---
@@ -1013,6 +1030,9 @@ Tautan desain yang disetujui:
 | Selisih ongkir | Ditanggung toko |
 | Cek stok | Hasil cek berlaku 24 jam |
 | Kapasitas harian ibu | Tidak dibatasi; bisa diaktifkan lewat `daily_capacity_minutes` |
+| Waktu belanja (`shopping_buffer_hours`) | 12 jam sebelum produksi |
+| Jam pengambilan | 09.00–17.00 WIB |
+| Yang boleh meliburkan tanggal | Owner dan ibu (§8) |
 
 ### Masih terbuka
 

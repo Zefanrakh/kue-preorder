@@ -2,12 +2,12 @@ package catalog
 
 import (
 	"context"
-	"errors"
 	"slices"
 
 	"github.com/google/uuid"
 
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 )
 
@@ -287,20 +287,11 @@ func (s *Service) SetDefaultPack(ctx context.Context, id uuid.UUID) (Pack, error
 // requireID checks that a parent record was chosen.
 func requireID(id uuid.UUID, field, msg string) error {
 	f := fields{}
-	f.check(id != uuid.Nil, field, msg)
-	return f.err()
+	f.Check(id != uuid.Nil, field, msg)
+	return f.Err()
 }
 
 // joinValidation merges the field errors of several checks into one.
 func joinValidation(errs ...error) error {
-	merged := fields{}
-	for _, err := range errs {
-		var v *ValidationError
-		if errors.As(err, &v) {
-			for f, msg := range v.Fields {
-				merged.check(false, f, msg)
-			}
-		}
-	}
-	return merged.err()
+	return apperr.Join(errs...)
 }

@@ -11,8 +11,6 @@
 package catalog
 
 import (
-	"errors"
-	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -21,48 +19,25 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
 	"github.com/Zefanrakh/kue-preorder/internal/recipe"
 )
 
+// The catalog's errors are the shared ones of platform/apperr, so every
+// module maps to Connect codes the same way.
 var (
 	// ErrNotFound means the record does not exist in the caller's tenant.
-	ErrNotFound = errors.New("not found")
+	ErrNotFound = apperr.ErrNotFound
 	// ErrForbidden means the caller's roles do not allow the action.
-	ErrForbidden = errors.New("forbidden")
+	ErrForbidden = apperr.ErrForbidden
 )
 
 // ValidationError lists invalid fields with messages for the person editing.
 // Conflict marks a clash with an existing record, such as a SKU in use.
-type ValidationError struct {
-	Fields   map[string]string
-	Conflict bool
-}
+type ValidationError = apperr.ValidationError
 
-func (e *ValidationError) Error() string {
-	parts := make([]string, 0, len(e.Fields))
-	for _, f := range slices.Sorted(maps.Keys(e.Fields)) {
-		parts = append(parts, f+": "+e.Fields[f])
-	}
-	return "invalid input: " + strings.Join(parts, "; ")
-}
-
-// fields collects field errors; nil when there are none.
-type fields map[string]string
-
-func (f fields) check(ok bool, field, msg string) {
-	if !ok {
-		if _, seen := f[field]; !seen {
-			f[field] = msg
-		}
-	}
-}
-
-func (f fields) err() error {
-	if len(f) == 0 {
-		return nil
-	}
-	return &ValidationError{Fields: f}
-}
+// fields collects field errors.
+type fields = apperr.Fields
 
 // BaseUnit is the unit an ingredient is weighed or counted in.
 type BaseUnit string
@@ -133,11 +108,11 @@ func (in ProductInput) normalize() ProductInput {
 
 func (in ProductInput) validate() error {
 	f := fields{}
-	f.check(in.Name != "", "name", "Nama produk wajib diisi.")
-	f.check(len(in.Name) <= 200, "name", "Nama produk paling panjang 200 karakter.")
-	f.check(slugPattern.MatchString(in.Slug), "slug", "Slug hanya boleh huruf kecil, angka, dan tanda hubung, misalnya kue-lapis.")
-	f.check(len(in.Description) <= 5000, "description", "Deskripsi paling panjang 5000 karakter.")
-	return f.err()
+	f.Check(in.Name != "", "name", "Nama produk wajib diisi.")
+	f.Check(len(in.Name) <= 200, "name", "Nama produk paling panjang 200 karakter.")
+	f.Check(slugPattern.MatchString(in.Slug), "slug", "Slug hanya boleh huruf kecil, angka, dan tanda hubung, misalnya kue-lapis.")
+	f.Check(len(in.Description) <= 5000, "description", "Deskripsi paling panjang 5000 karakter.")
+	return f.Err()
 }
 
 // Variant is what a customer buys, such as "Donut Coklat" or "Lapis 20x20".
@@ -187,22 +162,22 @@ func (in VariantInput) normalize() VariantInput {
 
 func (in VariantInput) validate() error {
 	f := fields{}
-	f.check(in.SKU != "" && !strings.ContainsAny(in.SKU, " \t\n"), "sku", "SKU wajib diisi dan tidak boleh berisi spasi.")
-	f.check(len(in.SKU) <= 64, "sku", "SKU paling panjang 64 karakter.")
-	f.check(in.Name != "", "name", "Nama varian wajib diisi.")
-	f.check(in.ProductionMinutes >= 1 && in.ProductionMinutes <= maxProductionMinutes, "production_minutes", "Waktu produksi 1 sampai 240 menit.")
-	f.check(in.MinNoticeHours >= 0 && in.MinNoticeHours <= maxMinNoticeHours, "min_notice_hours", "Jarak pesan ke ambil 0 sampai 2160 jam.")
-	f.check(len(in.Options) <= maxVariantOptions, "options", "Paling banyak 10 pilihan.")
+	f.Check(in.SKU != "" && !strings.ContainsAny(in.SKU, " \t\n"), "sku", "SKU wajib diisi dan tidak boleh berisi spasi.")
+	f.Check(len(in.SKU) <= 64, "sku", "SKU paling panjang 64 karakter.")
+	f.Check(in.Name != "", "name", "Nama varian wajib diisi.")
+	f.Check(in.ProductionMinutes >= 1 && in.ProductionMinutes <= maxProductionMinutes, "production_minutes", "Waktu produksi 1 sampai 240 menit.")
+	f.Check(in.MinNoticeHours >= 0 && in.MinNoticeHours <= maxMinNoticeHours, "min_notice_hours", "Jarak pesan ke ambil 0 sampai 2160 jam.")
+	f.Check(len(in.Options) <= maxVariantOptions, "options", "Paling banyak 10 pilihan.")
 	for k, v := range in.Options {
-		f.check(k != "" && v != "", "options", "Setiap pilihan butuh nama dan nilai, misalnya rasa: coklat.")
+		f.Check(k != "" && v != "", "options", "Setiap pilihan butuh nama dan nilai, misalnya rasa: coklat.")
 	}
-	return f.err()
+	return f.Err()
 }
 
 func validatePrice(priceIDR int64) error {
 	f := fields{}
-	f.check(priceIDR >= 0 && priceIDR <= maxPriceIDR, "price_idr", "Harga harus 0 atau lebih, dalam rupiah.")
-	return f.err()
+	f.Check(priceIDR >= 0 && priceIDR <= maxPriceIDR, "price_idr", "Harga harus 0 atau lebih, dalam rupiah.")
+	return f.Err()
 }
 
 // Component is a half-made good made in one go and shared by variants:
@@ -228,9 +203,9 @@ func (in ComponentInput) normalize() ComponentInput {
 
 func (in ComponentInput) validate() error {
 	f := fields{}
-	f.check(in.Name != "", "name", "Nama komponen wajib diisi.")
-	f.check(in.UnitLabel != "", "unit_label", "Satuan komponen wajib diisi, misalnya porsi atau loyang.")
-	return f.err()
+	f.Check(in.Name != "", "name", "Nama komponen wajib diisi.")
+	f.Check(in.UnitLabel != "", "unit_label", "Satuan komponen wajib diisi, misalnya porsi atau loyang.")
+	return f.Err()
 }
 
 // Ingredient is something the kitchen buys.
@@ -267,12 +242,12 @@ func (in IngredientInput) normalize() IngredientInput {
 
 func (in IngredientInput) validate() error {
 	f := fields{}
-	f.check(in.Name != "", "name", "Nama bahan wajib diisi.")
-	f.check(slices.Contains([]BaseUnit{Gram, Millilitre, Piece}, in.BaseUnit), "base_unit", "Satuan dasar harus g, ml, atau pcs.")
-	f.check(slices.Contains([]LeftoverPolicy{LeftoverAuto, LeftoverConfirm, LeftoverNever}, in.LeftoverPolicy), "leftover_policy", "Aturan sisa harus auto, confirm, atau never.")
-	f.check(!in.Perishable || in.LeftoverPolicy != LeftoverAuto, "leftover_policy", "Sisa bahan mudah rusak harus dicek dulu: pilih confirm atau never.")
-	f.check(in.ShelfLifeDays == nil || *in.ShelfLifeDays > 0, "shelf_life_days", "Umur simpan harus lebih dari 0 hari.")
-	return f.err()
+	f.Check(in.Name != "", "name", "Nama bahan wajib diisi.")
+	f.Check(slices.Contains([]BaseUnit{Gram, Millilitre, Piece}, in.BaseUnit), "base_unit", "Satuan dasar harus g, ml, atau pcs.")
+	f.Check(slices.Contains([]LeftoverPolicy{LeftoverAuto, LeftoverConfirm, LeftoverNever}, in.LeftoverPolicy), "leftover_policy", "Aturan sisa harus auto, confirm, atau never.")
+	f.Check(!in.Perishable || in.LeftoverPolicy != LeftoverAuto, "leftover_policy", "Sisa bahan mudah rusak harus dicek dulu: pilih confirm atau never.")
+	f.Check(in.ShelfLifeDays == nil || *in.ShelfLifeDays > 0, "shelf_life_days", "Umur simpan harus lebih dari 0 hari.")
+	return f.Err()
 }
 
 // Supplier sells ingredients.
@@ -328,11 +303,11 @@ func normalizePhone(raw string) string {
 
 func (in SupplierInput) validate() error {
 	f := fields{}
-	f.check(in.Name != "", "name", "Nama supplier wajib diisi.")
-	f.check(in.WhatsAppPhone == "" || e164Pattern.MatchString(in.WhatsAppPhone), "whatsapp_phone", "Nomor WhatsApp tidak valid, misalnya 0812 3456 789.")
-	f.check(slices.Contains([]AdapterKey{AdapterManual, AdapterWhatsApp}, in.Adapter), "adapter", "Cara pesan harus manual atau whatsapp.")
-	f.check(in.Adapter != AdapterWhatsApp || in.WhatsAppPhone != "", "whatsapp_phone", "Supplier yang dipesan lewat WhatsApp butuh nomor WhatsApp.")
-	return f.err()
+	f.Check(in.Name != "", "name", "Nama supplier wajib diisi.")
+	f.Check(in.WhatsAppPhone == "" || e164Pattern.MatchString(in.WhatsAppPhone), "whatsapp_phone", "Nomor WhatsApp tidak valid, misalnya 0812 3456 789.")
+	f.Check(slices.Contains([]AdapterKey{AdapterManual, AdapterWhatsApp}, in.Adapter), "adapter", "Cara pesan harus manual atau whatsapp.")
+	f.Check(in.Adapter != AdapterWhatsApp || in.WhatsAppPhone != "", "whatsapp_phone", "Supplier yang dipesan lewat WhatsApp butuh nomor WhatsApp.")
+	return f.Err()
 }
 
 // Pack is how a supplier sells an ingredient. Size is in the ingredient's
@@ -370,11 +345,11 @@ func (in PackInput) normalize() PackInput {
 
 func (in PackInput) validate() error {
 	f := fields{}
-	f.check(in.SupplierID != uuid.Nil, "supplier_id", "Pilih suppliernya.")
-	f.check(in.Size > 0 && !math.IsInf(in.Size, 0) && !math.IsNaN(in.Size), "size", "Isi kemasan harus lebih dari 0, dalam satuan dasar bahan.")
-	f.check(in.Unit != "", "unit", "Nama kemasan wajib diisi, misalnya sak 1 kg.")
-	f.check(in.PriceIDR == nil || (*in.PriceIDR >= 0 && *in.PriceIDR <= maxPriceIDR), "price_idr", "Harga kemasan harus 0 atau lebih, dalam rupiah.")
-	return f.err()
+	f.Check(in.SupplierID != uuid.Nil, "supplier_id", "Pilih suppliernya.")
+	f.Check(in.Size > 0 && !math.IsInf(in.Size, 0) && !math.IsNaN(in.Size), "size", "Isi kemasan harus lebih dari 0, dalam satuan dasar bahan.")
+	f.Check(in.Unit != "", "unit", "Nama kemasan wajib diisi, misalnya sak 1 kg.")
+	f.Check(in.PriceIDR == nil || (*in.PriceIDR >= 0 && *in.PriceIDR <= maxPriceIDR), "price_idr", "Harga kemasan harus 0 atau lebih, dalam rupiah.")
+	return f.Err()
 }
 
 // PriceChange is an audited change of a variant's price.
@@ -392,6 +367,6 @@ func (c PriceChange) validate() error {
 		return err
 	}
 	f := fields{}
-	f.check(strings.TrimSpace(c.Reason) != "", "reason", "Alasan perubahan harga wajib diisi.")
-	return f.err()
+	f.Check(strings.TrimSpace(c.Reason) != "", "reason", "Alasan perubahan harga wajib diisi.")
+	return f.Err()
 }

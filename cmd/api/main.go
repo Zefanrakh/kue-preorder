@@ -18,6 +18,7 @@ import (
 
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	catalogrpc "github.com/Zefanrakh/kue-preorder/internal/catalog/connect"
 	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
@@ -30,6 +31,9 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/platform/httpserver"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/telemetry"
+	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
+	schedulingrpc "github.com/Zefanrakh/kue-preorder/internal/scheduling/connect"
+	schedulingpg "github.com/Zefanrakh/kue-preorder/internal/scheduling/postgres"
 )
 
 const (
@@ -108,6 +112,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 		identity:       identitySvc,
 		catalog:        catalog.NewService(catalogRepo, identitySvc, clock.Real{}),
 		storefront:     catalog.NewStorefront(catalogRepo, tenants),
+		scheduling:     scheduling.NewService(schedulingpg.NewRepository(database), identitySvc, clock.Real{}),
 		db:             database,
 	})
 	if err != nil {
@@ -134,6 +139,7 @@ type handlerDeps struct {
 	identity       *identity.Service
 	catalog        *catalog.Service
 	storefront     *catalog.Storefront
+	scheduling     *scheduling.Service
 	db             httpserver.Pinger
 }
 
@@ -163,6 +169,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(identityv1connect.NewIdentityServiceHandler(identityrpc.NewHandler(d.identity, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(d.catalog, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(d.storefront, d.logger), connectOpts...))
+	mux.Handle(schedulingv1connect.NewScheduleAdminServiceHandler(schedulingrpc.NewHandler(d.scheduling, d.logger), connectOpts...))
 
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, mux)), nil
 }
