@@ -12,9 +12,13 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// headerName matches an HTTP header name (RFC 9110 token).
+var headerName = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+.^_|~-]+$`)
 
 // Env is the deployment environment.
 type Env string
@@ -44,6 +48,12 @@ type Config struct {
 	OTLPEndpoint string
 	// SentryDSN turns error reporting to Sentry on when set.
 	SentryDSN string
+	// ClientIPHeader names the header in which the proxy in front of the API
+	// puts the caller's IP, such as CF-Connecting-IP or Fly-Client-IP; for
+	// X-Forwarded-For the last entry is used. Rate limits count per that IP.
+	// Required in production, where the connection's address is the proxy.
+	// Empty elsewhere: the connection's address is used.
+	ClientIPHeader string
 }
 
 // HTTPAddr is the address the API server listens on.
@@ -130,6 +140,16 @@ func Load(getenv func(string) string) (Config, error) {
 		} else {
 			cfg.SentryDSN = raw
 		}
+	}
+
+	if raw := strings.TrimSpace(getenv("CLIENT_IP_HEADER")); raw != "" {
+		if !headerName.MatchString(raw) {
+			errs = append(errs, fmt.Errorf("CLIENT_IP_HEADER=%q: must be an HTTP header name", raw))
+		} else {
+			cfg.ClientIPHeader = raw
+		}
+	} else if cfg.AppEnv == EnvProduction {
+		missing = append(missing, "CLIENT_IP_HEADER")
 	}
 
 	if len(missing) > 0 {

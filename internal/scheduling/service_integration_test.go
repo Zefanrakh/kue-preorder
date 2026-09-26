@@ -189,3 +189,25 @@ func TestService_ClosedDatesAreTenantScoped(t *testing.T) {
 		t.Errorf("AddClosedDate(same day, own tenant) error = %v", err)
 	}
 }
+
+// Checkout reads the rules of a tenant without a signed-in person.
+func TestReader(t *testing.T) {
+	d := dbtest.New(t)
+	reader := scheduling.NewReader(postgres.NewRepository(d))
+	ctx := t.Context()
+
+	if s, err := reader.Settings(ctx, dbtest.DefaultTenantID); err != nil || s != scheduling.DefaultSettings() {
+		t.Errorf("Settings() = %+v, %v; want the defaults", s, err)
+	}
+	owner := service(d, dbtest.DefaultTenantID, identity.RoleOwner)
+	_, err := owner.AddClosedDate(ctx, date(9), "Libur")
+	noErr(t, err)
+	_, err = owner.AddClosedDate(ctx, date(20), "Libur lagi")
+	noErr(t, err)
+
+	closed, err := reader.ClosedDates(ctx, dbtest.DefaultTenantID, date(5), date(10))
+	noErr(t, err)
+	if len(closed) != 1 || closed[date(9)] != "Libur" {
+		t.Errorf("ClosedDates() = %v, want only the 9th with its reason", closed)
+	}
+}

@@ -4,7 +4,7 @@ trigger: always_on
 
 # Kue Preorder — aturan proyek (selalu aktif)
 
-Platform preorder kue: storefront (guest + member), recipe engine non-linear,
+Platform preorder kue: storefront (pengunjung + pelanggan dengan OTP WhatsApp), recipe engine non-linear,
 agregasi batch → daftar belanja bahan, stok berbasis ledger, DP + pelunasan,
 jadwal ulang massal, pengiriman Biteship, procurement via WhatsApp.
 

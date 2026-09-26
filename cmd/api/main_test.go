@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -23,14 +24,18 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	identityv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	ordersv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
 	schedulingv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/identitytest"
+	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/httpserver"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/ratelimit"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 )
 
@@ -107,9 +112,14 @@ func newAPIServer(t *testing.T, db httpserver.Pinger) *apiServer {
 		// No catalog repository: these tests never reach the database.
 		// internal/catalog/connect tests the catalog over a real one.
 		catalog:    catalog.NewService(nil, identitySvc, clock.NewFake(now)),
-		storefront: catalog.NewStorefront(nil, tenants),
+		storefront: catalog.NewStorefront(emptyShop{}, tenants),
 		scheduling: scheduling.NewService(nil, identitySvc, clock.NewFake(now)),
-		db:         db,
+		// No readers: the quotes these tests send fail validation first.
+		checkout: orders.NewCheckout(nil, nil, nil, nil, tenants, clock.NewFake(now), logger),
+		limiter: ratelimit.New(clock.NewFake(now), map[string]ratelimit.Rule{
+			ordersv1connect.CheckoutServiceQuoteOrderProcedure: {Every: time.Hour, Burst: 2},
+		}),
+		db: db,
 	})
 	if err != nil {
 		t.Fatalf("newHandler() error = %v", err)
@@ -303,5 +313,65 @@ func TestAPI_ServesScheduling(t *testing.T) {
 	}
 	if s.findSpan("kuepreorder.scheduling.v1.ScheduleAdminService/GetScheduleSettings") == nil {
 		t.Error("scheduling request left no span")
+	}
+}
+
+// emptyShop is a catalog with nothing on sale; only the storefront reads it.
+type emptyShop struct{ catalog.Repository }
+
+func (emptyShop) ShopCatalog(context.Context, uuid.UUID) ([]catalog.ShopProduct, error) {
+	return []catalog.ShopProduct{}, nil
+}
+
+// Quotes are open to everyone but limited per client address: the limit
+// answers before the service does any work.
+func TestAPI_RateLimitsQuotes(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	client := ordersv1connect.NewCheckoutServiceClient(http.DefaultClient, s.url)
+	quote := func() error {
+		_, err := client.QuoteOrder(t.Context(), connect.NewRequest(&ordersv1.QuoteOrderRequest{}))
+		return err
+	}
+
+	for i := range 2 {
+		if err := quote(); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("quote %d code = %v, want InvalidArgument (an empty cart)", i+1, connect.CodeOf(err))
+		}
+	}
+	if err := quote(); connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Errorf("3rd quote code = %v, want ResourceExhausted", connect.CodeOf(err))
+	}
+}
+
+// Only the storefront's successful GETs may sit in a CDN.
+func TestAPI_CacheHeaders(t *testing.T) {
+	s := newAPIServer(t, healthyDB())
+	var header http.Header
+	capture := connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			res, err := next(ctx, req)
+			if res != nil {
+				header = res.Header()
+			}
+			var cerr *connect.Error
+			if errors.As(err, &cerr) {
+				header = cerr.Meta()
+			}
+			return res, err
+		}
+	}))
+
+	shop := catalogv1connect.NewStorefrontServiceClient(http.DefaultClient, s.url, connect.WithHTTPGet(), capture)
+	if _, err := shop.ListShopProducts(t.Context(), connect.NewRequest(&catalogv1.ListShopProductsRequest{})); err != nil {
+		t.Fatalf("ListShopProducts() error = %v", err)
+	}
+	if got := header.Get("Cache-Control"); got != "public, max-age=60" {
+		t.Errorf("storefront Cache-Control = %q, want public for a minute", got)
+	}
+
+	checkout := ordersv1connect.NewCheckoutServiceClient(http.DefaultClient, s.url, capture)
+	_, _ = checkout.QuoteOrder(t.Context(), connect.NewRequest(&ordersv1.QuoteOrderRequest{}))
+	if got := header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("quote Cache-Control = %q, want no-store", got)
 	}
 }

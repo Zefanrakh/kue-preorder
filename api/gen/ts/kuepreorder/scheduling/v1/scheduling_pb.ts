@@ -26,7 +26,9 @@ export type ScheduleSettings = Message<"kuepreorder.scheduling.v1.ScheduleSettin
   shoppingBufferHours: number;
 
   /**
-   * Production minutes a day may hold, 1 to 1440; unset: no limit.
+   * Production minutes a day may hold, 1 to 1440; unset: no limit. Stored but
+   * not enforced: a capacity model of pans and ovens replaces it after M3
+   * (docs/architecture.md §27).
    *
    * @generated from field: optional int32 daily_capacity_minutes = 2;
    */

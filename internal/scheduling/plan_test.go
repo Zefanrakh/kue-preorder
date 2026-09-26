@@ -101,11 +101,11 @@ func TestPlan_Boundaries(t *testing.T) {
 		}, scheduling.ErrCutoffPassed},
 		{"batch cutoff 30 minutes away", scheduling.DefaultSettings(), func(r *scheduling.Request) {
 			r.PickupAt = wib(7, 9, 0)
-			r.BatchCutoff = ptr(monday10.Add(30 * time.Minute))
+			r.BatchCutoffs = map[clock.Date]time.Time{date(7): monday10.Add(30 * time.Minute)}
 		}, nil},
 		{"batch cutoff 29 minutes away", scheduling.DefaultSettings(), func(r *scheduling.Request) {
 			r.PickupAt = wib(7, 9, 0)
-			r.BatchCutoff = ptr(monday10.Add(29 * time.Minute))
+			r.BatchCutoffs = map[clock.Date]time.Time{date(7): monday10.Add(29 * time.Minute)}
 		}, scheduling.ErrCutoffPassed},
 		{"capacity exactly used", capped, func(r *scheduling.Request) {
 			r.PickupAt, r.LoadMinutes, r.OrderMinutes = wib(7, 9, 0), 210, 90
@@ -236,8 +236,19 @@ func TestProperty_PlanKeepsDeadlinesInOrder(t *testing.T) {
 				MinNoticeHours:    rapid.Int32Range(0, 96).Draw(t, "notice"),
 			})
 		}
+		var batch *time.Time
 		if rapid.Bool().Draw(t, "has batch") {
-			r.BatchCutoff = ptr(now.Add(time.Duration(rapid.Int64Range(-600, 30*24*60).Draw(t, "batch")) * time.Minute))
+			cutoff := now.Add(time.Duration(rapid.Int64Range(-600, 30*24*60).Draw(t, "batch")) * time.Minute)
+			batch = &cutoff
+		}
+
+		if batch != nil {
+			// Put it on the production date the pickup would have.
+			var production int32
+			for _, it := range r.Items {
+				production = max(production, it.ProductionMinutes)
+			}
+			r.BatchCutoffs = map[clock.Date]time.Time{clock.DateOf(r.PickupAt.Add(-time.Duration(production) * time.Minute)): *batch}
 		}
 
 		p, err := s.Plan(r)
@@ -257,8 +268,8 @@ func TestProperty_PlanKeepsDeadlinesInOrder(t *testing.T) {
 		if p.DPDeadline.Sub(now) < 30*time.Minute {
 			t.Fatalf("only %v to pay the DP", p.DPDeadline.Sub(now))
 		}
-		if r.BatchCutoff != nil && p.Cutoff.After(*r.BatchCutoff) {
-			t.Fatalf("cutoff %v is after the batch's %v", p.Cutoff, *r.BatchCutoff)
+		if batch != nil && p.Cutoff.After(*batch) {
+			t.Fatalf("cutoff %v is after the batch's %v", p.Cutoff, *batch)
 		}
 		if p.FullPaymentRequired != !p.BalanceDue.After(p.DPDeadline) {
 			t.Fatalf("FullPaymentRequired = %v with balance due %v and DP deadline %v", p.FullPaymentRequired, p.BalanceDue, p.DPDeadline)
@@ -274,5 +285,3 @@ func plansEqual(a, b scheduling.Plan) bool {
 		a.Cutoff.Equal(b.Cutoff) && a.DPDeadline.Equal(b.DPDeadline) && a.BalanceDue.Equal(b.BalanceDue) &&
 		a.FullPaymentRequired == b.FullPaymentRequired
 }
-
-func ptr[T any](v T) *T { return &v }

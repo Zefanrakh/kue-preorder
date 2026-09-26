@@ -4,10 +4,12 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"pgregory.net/rapid"
 
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
 )
 
 var defaultPolicy = payments.Policy{DPMinPercent: 50, DPCoversIngredientCost: true}
@@ -186,5 +188,19 @@ func TestStatus_Closed(t *testing.T) {
 	}
 	if !slices.Equal(closed, []payments.Status{payments.Forfeited, payments.Refunded}) {
 		t.Errorf("closed statuses = %v, want forfeited and refunded", closed)
+	}
+}
+
+func TestPolicy_Validate(t *testing.T) {
+	if err := payments.DefaultPolicy().Validate(); err != nil {
+		t.Errorf("DefaultPolicy().Validate() = %v, want valid", err)
+	}
+	bad := payments.Policy{DPMinPercent: 0, BalanceDueHoursBefore: 200, DPInvoiceValidMinutes: 29}
+	var v *apperr.ValidationError
+	if err := bad.Validate(); !errors.As(err, &v) || len(v.Fields) != 3 {
+		t.Errorf("Validate() = %v, want all three fields", err)
+	}
+	if got := payments.DefaultPolicy().DPInvoiceValidFor(); got != 3*time.Hour {
+		t.Errorf("DPInvoiceValidFor() = %v, want 3h", got)
 	}
 }

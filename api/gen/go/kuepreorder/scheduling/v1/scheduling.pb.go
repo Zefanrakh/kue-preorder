@@ -26,7 +26,9 @@ type ScheduleSettings struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// How long before the day's first production the kitchen shops, 0 to 168.
 	ShoppingBufferHours int32 `protobuf:"varint,1,opt,name=shopping_buffer_hours,json=shoppingBufferHours,proto3" json:"shopping_buffer_hours,omitempty"`
-	// Production minutes a day may hold, 1 to 1440; unset: no limit.
+	// Production minutes a day may hold, 1 to 1440; unset: no limit. Stored but
+	// not enforced: a capacity model of pans and ovens replaces it after M3
+	// (docs/architecture.md §27).
 	DailyCapacityMinutes *int32 `protobuf:"varint,2,opt,name=daily_capacity_minutes,json=dailyCapacityMinutes,proto3,oneof" json:"daily_capacity_minutes,omitempty"`
 	// Pickup hours, both included, such as "09:00" and "17:00".
 	PickupWindowStart string `protobuf:"bytes,3,opt,name=pickup_window_start,json=pickupWindowStart,proto3" json:"pickup_window_start,omitempty"`

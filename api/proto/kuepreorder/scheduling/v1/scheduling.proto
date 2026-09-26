@@ -35,7 +35,9 @@ service ScheduleAdminService {
 message ScheduleSettings {
   // How long before the day's first production the kitchen shops, 0 to 168.
   int32 shopping_buffer_hours = 1;
-  // Production minutes a day may hold, 1 to 1440; unset: no limit.
+  // Production minutes a day may hold, 1 to 1440; unset: no limit. Stored but
+  // not enforced: a capacity model of pans and ovens replaces it after M3
+  // (docs/architecture.md §27).
   optional int32 daily_capacity_minutes = 2;
   // Pickup hours, both included, such as "09:00" and "17:00".
   string pickup_window_start = 3;

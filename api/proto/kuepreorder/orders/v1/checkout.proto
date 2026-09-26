@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package kuepreorder.orders.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// CheckoutService is where a customer turns a cart into an order
+// (docs/architecture.md §14, §15). Every amount is computed on the server
+// from the catalog; nothing the client says about money is used. Money is
+// int64 rupiah. The Xendit fee, shown as "Biaya admin", comes on top of the
+// order total when paying and is not part of these amounts.
+service CheckoutService {
+  // QuoteOrder prices a cart and checks a pickup time without saving
+  // anything: what the customer sees before paying. Open to everyone, signed
+  // in or not; rate limited per client address (ResourceExhausted). A cart
+  // that cannot be ordered is InvalidArgument with FieldErrors on "items" or
+  // "pickup_at"; a pickup time that does not work is a rejection in the
+  // response, with the nearest time that does.
+  rpc QuoteOrder(QuoteOrderRequest) returns (QuoteOrderResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+message CartItem {
+  string variant_id = 1;
+  // 1 to 1000.
+  int32 quantity = 2;
+}
+
+message QuoteOrderRequest {
+  // 1 to 30 lines, each variant at most once.
+  repeated CartItem items = 1;
+  google.protobuf.Timestamp pickup_at = 2;
+}
+
+message QuotedItem {
+  string variant_id = 1;
+  string product_name = 2;
+  string variant_name = 3;
+  int32 quantity = 4;
+  int64 unit_price_idr = 5;
+  int64 line_total_idr = 6;
+}
+
+// Schedule is the order's timetable, locked when it is placed.
+message Schedule {
+  google.protobuf.Timestamp pickup_at = 1;
+  // Asia/Jakarta date the kitchen makes the order, such as "2026-10-07".
+  string production_date = 2;
+  // The first payment must arrive by then, or the order expires. Never after
+  // the kitchen's shopping cutoff.
+  google.protobuf.Timestamp dp_due_at = 3;
+  // The balance must arrive by then, or the order is cancelled and the DP
+  // forfeited.
+  google.protobuf.Timestamp balance_due_at = 4;
+  // The pickup is too close for a DP: the first payment is the whole total.
+  bool full_payment_required = 5;
+}
+
+// PickupProblem is why a pickup time does not work.
+enum PickupProblem {
+  PICKUP_PROBLEM_UNSPECIFIED = 0;
+  // More than a year ahead.
+  PICKUP_PROBLEM_TOO_FAR = 1;
+  // Sooner than the cakes' notice allows.
+  PICKUP_PROBLEM_TOO_SOON = 2;
+  // Outside pickup hours.
+  PICKUP_PROBLEM_OUTSIDE_HOURS = 3;
+  // The shop is closed that day, or the day it would bake.
+  PICKUP_PROBLEM_CLOSED = 4;
+  // The kitchen has already shopped, or is about to, for that day.
+  PICKUP_PROBLEM_SHOPPING_CLOSED = 5;
+  // That day's production is full.
+  PICKUP_PROBLEM_FULL = 6;
+}
+
+message PickupRejection {
+  PickupProblem problem = 1;
+  // For the customer, in Indonesian.
+  string message = 2;
+  // The nearest pickup that works, within 60 days; unset when there is none.
+  google.protobuf.Timestamp suggested_pickup_at = 3;
+}
+
+message QuoteOrderResponse {
+  repeated QuotedItem items = 1;
+  int64 subtotal_idr = 2;
+  // 0 until the shop's tax policy is set.
+  int64 tax_idr = 3;
+  int64 total_idr = 4;
+  // The first payment when paying a DP; the total when full payment is
+  // required. Set only with a schedule.
+  int64 dp_required_idr = 5;
+  oneof pickup {
+    Schedule schedule = 6;
+    PickupRejection rejection = 7;
+  }
+}
