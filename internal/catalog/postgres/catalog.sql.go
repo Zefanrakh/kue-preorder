@@ -1539,10 +1539,12 @@ func (q *Queries) UpsertVariantComponent(ctx context.Context, arg UpsertVariantC
 }
 
 const variantsByIDs = `-- name: VariantsByIDs :many
-select id, product_id, name, price_idr, production_minutes, min_notice_hours, is_active
-from product_variants
-where tenant_id = $1 and id = any($2::uuid[])
-order by id
+select v.id, v.product_id, p.name as product_name, v.name, v.price_idr, v.production_minutes,
+       v.min_notice_hours, v.is_active, p.is_active as product_active
+from product_variants v
+join products p on p.tenant_id = v.tenant_id and p.id = v.product_id
+where v.tenant_id = $1 and v.id = any($2::uuid[])
+order by v.id
 `
 
 type VariantsByIDsParams struct {
@@ -1553,14 +1555,17 @@ type VariantsByIDsParams struct {
 type VariantsByIDsRow struct {
 	ID                uuid.UUID
 	ProductID         uuid.UUID
+	ProductName       string
 	Name              string
 	PriceIdr          int64
 	ProductionMinutes int32
 	MinNoticeHours    int32
 	IsActive          bool
+	ProductActive     bool
 }
 
-// For checkout (M2): what an order needs to price and schedule a variant.
+// For checkout (M2): what an order needs to price, name, and schedule a
+// variant, and whether it is on sale (the variant and its product active).
 func (q *Queries) VariantsByIDs(ctx context.Context, arg VariantsByIDsParams) ([]VariantsByIDsRow, error) {
 	rows, err := q.db.Query(ctx, variantsByIDs, arg.TenantID, arg.Ids)
 	if err != nil {
@@ -1573,11 +1578,13 @@ func (q *Queries) VariantsByIDs(ctx context.Context, arg VariantsByIDsParams) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProductID,
+			&i.ProductName,
 			&i.Name,
 			&i.PriceIdr,
 			&i.ProductionMinutes,
 			&i.MinNoticeHours,
 			&i.IsActive,
+			&i.ProductActive,
 		); err != nil {
 			return nil, err
 		}

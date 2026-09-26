@@ -430,6 +430,9 @@ func TestReader_DonutShop(t *testing.T) {
 	if len(variants) != 2 || byID[cheese.ID].PriceIDR != 8500 || byID[cheese.ID].Active || byID[k.variant.ID].MinNoticeHours != 24 {
 		t.Errorf("Variants() = %+v, want both known variants, inactive ones included", variants)
 	}
+	if v := byID[k.variant.ID]; v.ProductName != "Donut" || !v.OnSale() || byID[cheese.ID].OnSale() {
+		t.Errorf("Variants() = %+v, want the product name and only the active variant on sale", variants)
+	}
 
 	// Another tenant reads nothing of this shop.
 	otherTenant := dbtest.CreateTenant(t, d, "Toko Lain")
@@ -457,5 +460,47 @@ func TestReader_BrokenRecipeNamesTheLine(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), k.dough.ID.String()) || !strings.Contains(err.Error(), k.flour.ID.String()) {
 		t.Errorf("error = %q, want it to name the component and the ingredient", err)
+	}
+}
+
+// §14: the DP covers the ingredients of every item at u = 1. Flour costs
+// 15 rupiah a gram (a 1 kg bag for 15,000); one portion of dough takes
+// 100 g at u = 1, plus 2% waste: 1,530 rupiah. Eggs have no pack, so they
+// are left out and reported.
+func TestReader_IngredientCosts(t *testing.T) {
+	d := dbtest.New(t)
+	tenant := dbtest.DefaultTenantID
+	svc := owner(tenant).service(d)
+	k := seedKitchen(t, svc)
+	ctx := t.Context()
+	mini, err := svc.CreateVariant(ctx, k.product.ID, catalog.VariantInput{SKU: "DONUT-MINI", Name: "Donut Mini", ProductionMinutes: 60, Active: true}, 3000)
+	noErr(t, err)
+	plain, err := svc.CreateVariant(ctx, k.product.ID, catalog.VariantInput{SKU: "DONUT-POLOS", Name: "Donut Polos", ProductionMinutes: 60, Active: true}, 4000)
+	noErr(t, err)
+	_, err = svc.SetVariantComponents(ctx, k.variant.ID, []catalog.VariantComponent{{ComponentID: k.dough.ID, UnitsPerItem: 1}, {ComponentID: k.topping.ID, UnitsPerItem: 1}})
+	noErr(t, err)
+	_, err = svc.SetVariantComponents(ctx, mini.ID, []catalog.VariantComponent{{ComponentID: k.dough.ID, UnitsPerItem: 0.5}})
+	noErr(t, err)
+	_, err = svc.SetRecipeLine(ctx, k.dough.ID, k.flour.ID, catalog.RecipeLineInput{ModelType: recipe.Power, Params: json.RawMessage(`{"a":100,"b":0.926}`), WasteFactor: 1.02})
+	noErr(t, err)
+	_, err = svc.SetRecipeLine(ctx, k.dough.ID, k.egg.ID, catalog.RecipeLineInput{ModelType: recipe.Affine, Params: json.RawMessage(`{"a":0,"b":0.4}`)})
+	noErr(t, err)
+	_, err = svc.SetDefaultPack(ctx, k.bag.ID)
+	noErr(t, err)
+
+	costs, err := catalog.NewReader(postgres.NewRepository(d)).IngredientCosts(ctx, tenant, []uuid.UUID{k.variant.ID, mini.ID, plain.ID})
+	noErr(t, err)
+
+	want := map[uuid.UUID]int64{k.variant.ID: 1530, mini.ID: 765, plain.ID: 0}
+	for id, perItem := range want {
+		if costs[id].PerItemIDR != perItem {
+			t.Errorf("cost of %s = %+v, want %d rupiah per item", id, costs[id], perItem)
+		}
+	}
+	if u := costs[k.variant.ID].Unpriced; len(u) != 1 || u[0] != k.egg.ID {
+		t.Errorf("Unpriced = %v, want the eggs, which have no pack", u)
+	}
+	if len(costs) != 3 || len(costs[plain.ID].Unpriced) != 0 {
+		t.Errorf("IngredientCosts() = %+v, want every variant, the plain one free of ingredients", costs)
 	}
 }

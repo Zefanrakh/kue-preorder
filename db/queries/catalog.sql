@@ -275,8 +275,11 @@ where tenant_id = sqlc.arg(tenant_id) and component_id = sqlc.arg(component_id)
   and ingredient_id = sqlc.arg(ingredient_id);
 
 -- name: VariantsByIDs :many
--- For checkout (M2): what an order needs to price and schedule a variant.
-select id, product_id, name, price_idr, production_minutes, min_notice_hours, is_active
-from product_variants
-where tenant_id = sqlc.arg(tenant_id) and id = any(sqlc.arg(ids)::uuid[])
-order by id;
+-- For checkout (M2): what an order needs to price, name, and schedule a
+-- variant, and whether it is on sale (the variant and its product active).
+select v.id, v.product_id, p.name as product_name, v.name, v.price_idr, v.production_minutes,
+       v.min_notice_hours, v.is_active, p.is_active as product_active
+from product_variants v
+join products p on p.tenant_id = v.tenant_id and p.id = v.product_id
+where v.tenant_id = sqlc.arg(tenant_id) and v.id = any(sqlc.arg(ids)::uuid[])
+order by v.id;

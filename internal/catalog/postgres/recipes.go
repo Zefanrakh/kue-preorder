@@ -207,8 +207,9 @@ func (r *Repository) VariantSummaries(ctx context.Context, tenantID uuid.UUID, i
 	rows, err := r.q.VariantsByIDs(ctx, VariantsByIDsParams{TenantID: tenantID, Ids: ids})
 	return mapRows(rows, err, func(row VariantsByIDsRow) catalog.VariantSummary {
 		return catalog.VariantSummary{
-			ID: row.ID, ProductID: row.ProductID, Name: row.Name, PriceIDR: row.PriceIdr,
-			ProductionMinutes: row.ProductionMinutes, MinNoticeHours: row.MinNoticeHours, Active: row.IsActive,
+			ID: row.ID, ProductID: row.ProductID, ProductName: row.ProductName, Name: row.Name, PriceIDR: row.PriceIdr,
+			ProductionMinutes: row.ProductionMinutes, MinNoticeHours: row.MinNoticeHours,
+			Active: row.IsActive, ProductActive: row.ProductActive,
 		}
 	})
 }

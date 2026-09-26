@@ -71,7 +71,7 @@ pelanggan, dan pengiriman lewat Biteship.
 ```mermaid
 flowchart TD
     subgraph Frontend[Next.js - tampilan saja]
-      SHOP[Storefront - guest dan member]
+      SHOP[Storefront - pengunjung dan pelanggan]
       DASH[PWA dashboard ibu]
       CMS[Admin CMS]
     end
@@ -215,7 +215,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 2. Next.js mengirim JWT di header setiap panggilan ke Go.
 3. Go memverifikasi JWT memakai JWKS Supabase (di-cache, dirotasi otomatis), lalu memetakan `sub` ke `customers.auth_user_id`.
 4. Peran (pelanggan / admin / ibu) disimpan di tabel `staff_roles` milik aplikasi, bukan di klaim JWT, supaya bisa dicabut seketika.
-5. Guest tidak login. Guest melacak pesanan lewat `guest_access_token` di URL, dengan rate limit.
+5. **Pelanggan masuk dengan OTP WhatsApp, tanpa password** (diputuskan 2026-09-26). Supabase Auth memakai login nomor HP; kodenya dikirim `api` lewat WhatsApp melalui **Send SMS Hook** Supabase (tersedia di paket Free dan Pro; dibangun di M2.5). Tidak ada checkout tanpa nomor terverifikasi, jadi satu nomor adalah satu orang dan notifikasi tidak salah alamat. Pelanggan melihat pesanannya setelah masuk; tidak ada lagi `guest_access_token`. Melihat katalog dan meminta penawaran (`QuoteOrder`) tetap tanpa login. Setiap OTP berbayar, jadi permintaan OTP dibatasi per nomor dan per IP, dan diberi Turnstile setelah Cloudflare terpasang (§22).
 
 **Verifikasi token** (`internal/identity`):
 - Kunci publik diambil dari `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`, di-refresh tiap jam. Token dengan `kid` baru (rotasi key) memicu refresh paling sering sekali per menit; refresh itu diberi waktu hingga 5 detik, dan `kid` tak dikenal berikutnya di menit yang sama langsung ditolak alih-alih menunggu slot berikutnya. Gagal mengambil JWKS saat start tidak menghentikan `api`; token ditolak sampai key berhasil dimuat, dan kegagalannya di-log.
@@ -237,6 +237,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
+| Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 
 Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik tidak memeriksa peran dan hanya menampilkan yang dijual: produk aktif yang punya minimal satu varian aktif, beserta varian aktifnya saja (termurah dulu). Tenant diambil dari `TenantResolver`, bukan dari orangnya. Slug dicocokkan tanpa membedakan huruf besar-kecil. Token yang ada tapi rusak tetap `Unauthenticated`.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
@@ -267,10 +268,13 @@ audit_log ( id, tenant_id, actor_id uuid, action text, entity text, entity_id uu
 ### 9.2 Identitas
 
 ```sql
-customers ( id, tenant_id, auth_user_id uuid null, name, email, phone )
-customer_addresses ( id, tenant_id, customer_id, label, address text,
+customers ( id, tenant_id, auth_user_id uuid null, name, email, phone,
+            unique (tenant_id, id) )
+customer_addresses ( id, tenant_id, customer_id, label, address text,     -- M6, untuk delivery
                      postal_code text, lat numeric, lng numeric, notes text )
 ```
+
+Nomor HP pelanggan selalu terverifikasi lewat OTP (§8): satu baris per akun per tenant. Email opsional dan hanya dipakai untuk arsip.
 
 ### 9.3 Katalog: produk → varian → komponen → bahan
 
@@ -386,19 +390,25 @@ orders (
   id, tenant_id, customer_id, channel_id, external_order_ref text null,
   status text,                        -- lihat §13
   payment_status text,                -- lihat §14
-  pickup_at timestamptz,              -- jadwal ambil/kirim (WIB saat ditampilkan)
-  production_date date,               -- turunan dari pickup_at, kunci batch
-  fulfillment_type text,              -- 'pickup' | 'delivery'
-  address_id uuid null,
-  subtotal_idr bigint, shipping_idr bigint, total_idr bigint,
-  dp_required_idr bigint,             -- dikunci saat checkout
-  balance_due_at timestamptz,         -- tenggat pelunasan, dikunci saat checkout
+  fulfillment_type text,              -- 'pickup' | 'delivery' (delivery dan address_id di M6)
+  -- jadwal dikunci saat checkout (scheduling.Plan, §15)
+  pickup_at, production_start_at, production_date date,   -- production_date: kunci batch (WIB)
+  shopping_cutoff_at,                 -- cutoff milik order ini; cutoff batch = yang paling awal
+  dp_due_at, balance_due_at,
+  -- uang dikunci saat checkout (§14); pajak 0 sampai kebijakan pajak ditetapkan (§27)
+  subtotal_idr, tax_idr, shipping_idr bigint,
+  total_idr bigint,                   -- check: subtotal + tax + shipping
+  dp_required_idr bigint,             -- check: 1..total; = total kalau wajib lunas
+  full_payment_required bool,
   terms_version text, terms_accepted_at timestamptz,
-  guest_access_token text null,
+  idempotency_key uuid,               -- unique per pelanggan: checkout ganda = satu order
   unique (channel_id, external_order_ref)
 )
 order_items ( id, tenant_id, order_id, variant_id,
-              quantity int check (quantity > 0), unit_price_idr bigint )
+              product_name, variant_name,            -- disalin saat checkout
+              quantity int check (1..1000), unit_price_idr bigint,
+              production_minutes, min_notice_hours,  -- disalin saat checkout
+              unique (order_id, variant_id) )
 
 reschedule_requests (                 -- satu aksi massal oleh admin
   id, tenant_id, reason_code text, reason_text text,
@@ -437,20 +447,25 @@ procurement_order_items ( id, tenant_id, procurement_order_id, ingredient_id,
 ### 9.8 Pembayaran (ledger)
 
 ```sql
-payment_policies ( tenant_id primary key,
-                   dp_min_percent int,              -- mis. 50
-                   dp_covers_ingredient_cost bool default true,
-                   balance_due_rule text,           -- 'before_production' (default)
-                   balance_due_hours_before int )   -- jarak dari mulai produksi
+payment_policies ( tenant_id primary key,          -- tanpa baris: payments.DefaultPolicy()
+                   dp_min_percent int,              -- 1..100, default 50
+                   dp_covers_ingredient_cost bool,  -- default true
+                   balance_due_hours_before int,    -- 0..168, default 12 (dari mulai produksi)
+                   dp_invoice_valid_minutes int,    -- 30..10080, default 180
+                   updated_at )
 payments (
   id, tenant_id, order_id,
   kind text,                          -- 'dp' | 'balance' | 'full' | 'refund'
-  provider text default 'xendit', external_id text,
-  amount_idr bigint,                  -- refund bernilai negatif
+  provider text,                      -- 'xendit' | 'manual'
+  external_id text,                   -- unique per provider
+  amount_idr bigint,                  -- bagian untuk order; refund bernilai negatif
+  fee_idr bigint,                     -- "Biaya admin" Xendit yang dibayar pelanggan di atasnya
   status text,                        -- 'pending' | 'paid' | 'expired' | 'failed'
-  raw jsonb, created_at timestamptz
+  expires_at, paid_at,                -- check: paid_at terisi tepat saat status 'paid'
+  raw jsonb, created_at, updated_at
 )
--- Terbayar = SUM(amount_idr) WHERE status='paid'. Tidak ada kolom "sisa" yang di-update.
+-- Terbayar = SUM(amount_idr) WHERE status='paid'. fee_idr tidak pernah dihitung sebagai terbayar.
+-- Tidak ada kolom "sisa" yang di-update.
 ```
 
 ### 9.9 Pengiriman
@@ -685,6 +700,10 @@ dp_required = min( total,
 `dp_min_percent` bernilai 1–100: DP selalu ada. DP tidak pernah melebihi total, termasuk untuk kue yang dijual di bawah biaya bahannya. Semua hitungan memakai `int64` rupiah dan pembulatan ke atas dengan bilangan bulat (`payments.DPRequired`). Total order dibatasi `payments.MaxOrderTotalIDR` (2^40) agar tidak pernah mendekati overflow.
 
 Estimasi biaya bahan memakai biaya per unit pada `u = 1` (batas atas, karena efek skala hanya bisa menurunkan biaya). Artinya, kalau pelanggan menghilang, DP sudah menutup bahan yang terlanjur dibeli.
+- Cara menghitungnya (`catalog.Reader.IngredientCosts`): setiap resep di `u = 1` dikali waste factor, lalu dihargai dengan kemasan default (harga kemasan ÷ isi kemasan). Hasilnya dibulatkan ke atas ke rupiah per buah. Jumlah bahan tidak dibulatkan ke unit utuh, karena yang dihitung adalah bagian satu buah.
+- Bahan tanpa kemasan default, atau kemasan tanpa harga, dilewati dan dicatat WARN, supaya owner tahu harga mana yang belum diisi. DP tetap minimal persentasenya.
+- **Biaya transaksi Xendit ditanggung pelanggan** dan ditampilkan sebagai **"Biaya admin"**, di atas total order (`payments.fee_idr`). Biaya ini tidak pernah dihitung sebagai pembayaran order. Cara menghitungnya diputuskan di M2.6.
+- Sebelum membayar, pelanggan melihat semua angka ini lewat `QuoteOrder`: harga dari server, pajak (0), total, DP, tenggat DP, tenggat pelunasan, dan apakah harus lunas.
 
 **Tenggat pelunasan** dikunci saat checkout: default sebelum produksi dimulai (`balance_due_hours_before` dari jam mulai produksi). Pelanggan melihat tanggal dan jam pastinya sebelum membayar.
 
@@ -732,7 +751,9 @@ Admin bisa menandai pelunasan manual (transfer langsung) hanya dengan bukti dan 
 - **Tenggat pelunasan** = mulai produksi − `balance_due_hours_before` (§14). Kalau tenggat pelunasan tidak lebih lambat dari tenggat DP, pembayaran pertama harus lunas (`FullPaymentRequired`).
 - Selalu berlaku: sekarang < tenggat DP ≤ cutoff ≤ mulai produksi ≤ jam ambil, dan tenggat pelunasan ≤ mulai produksi (property test).
 - Penolakan membawa alasan (`ErrTooSoon`, `ErrOutsideWindow`, `ErrClosed`, `ErrCutoffPassed`, `ErrFull`, `ErrTooFar`) dan pesan untuk pelanggan, misalnya "Paling cepat bisa diambil Selasa, 6 Oktober 2026 pukul 10.00 WIB."
-- Cara menghitung beban kapasitas harian diputuskan di M2.3, bersama tabel order. Di sana juga ditambahkan larangan meliburkan tanggal yang sudah punya order terkonfirmasi; tanggal seperti itu harus lewat jadwal ulang (M6).
+- **Tanggal libur tidak ditolak, tapi "on hold"** (diputuskan 2026-09-26). Tanggal yang diliburkan langsung berhenti menerima order baru. Kalau masih ada order aktif di tanggal itu, CMS menampilkannya sebagai "On hold: N order perlu dipindah", dan status itu dihitung dari jumlah order aktif, tidak disimpan. Setelah order-order itu selesai, tanggal itu menjadi "Libur". Sebelum M6, order diselesaikan manual (M2.8); setelah M6, on hold memicu jadwal ulang massal.
+- **Order baru untuk tanggal yang tidak bisa tidak ditolak mentah-mentah, tapi ditawari tanggal lain** (`Settings.Suggest`). Tawarannya: jam yang sama (dijaga di dalam jam pengambilan) pada hari itu atau hari-hari berikutnya, paling cepat sesuai `min_notice_hours`, dibulatkan ke 15 menit, paling jauh 60 hari. **Pelanggan yang memilih;** tanggal tidak pernah dipindah diam-diam, karena kue sering dipesan untuk acara tertentu.
+- **Kapasitas harian belum diterapkan.** `daily_capacity_minutes` tersimpan tapi tidak dicek checkout. Penggantinya adalah model loyang dan oven, yang dirancang setelah M3 (§27).
 
 Semua perhitungan waktu memakai `platform/clock` dan zona `Asia/Jakarta`, dan diuji dengan jam palsu.
 
@@ -903,7 +924,10 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
   - Saat shutdown, span dan event yang tertahan dikirim dulu (batas 5 detik).
 - **Config dan secret:** dari environment variable atau secret manager. Divalidasi saat start; kalau kurang, aplikasi berhenti dengan pesan jelas.
 - **Keamanan:** JWT diverifikasi di batas sistem, otorisasi di service, validasi input, rate limit di endpoint publik, semua webhook diverifikasi.
-  - **Rate limit menyusul di M2** (diputuskan 2026-09-25), bersama checkout dan pelacakan pesanan guest, yang paling rawan disalahgunakan. Limit per IP butuh IP klien yang benar, dan IP itu datang dari header proxy yang berbeda per platform deploy (§24, belum dipilih). Menebak header malah berbahaya: `X-Forwarded-For` yang dipercaya begitu saja gampang dipalsukan, dan kalau diabaikan, semua traffic terlihat dari satu IP proxy. Sampai M2, satu-satunya endpoint publik adalah storefront. Isinya baca saja, bisa di-cache lewat GET, dan akan di-render server Next.js.
+  - **Rate limit** (`platform/ratelimit`, sejak M2.3): token bucket per procedure per alamat klien, di memori server. Setiap instance menghitung sendiri, dan itu cukup untuk satu toko. Batasnya longgar karena banyak pengguna seluler Indonesia berbagi satu IP (CGNAT). Saat ini `QuoteOrder` dibatasi rata-rata 1 per detik dengan burst 30; checkout dan OTP menyusul di potongannya masing-masing. Batas dicek sebelum auth, jadi banjir request tidak memakan biaya verifikasi token. Yang melewati batas mendapat `ResourceExhausted`.
+  - **Alamat klien** (`httpserver.ClientIP`) diambil dari header proxy yang disebut `CLIENT_IP_HEADER`, misalnya `CF-Connecting-IP`; untuk `X-Forwarded-For`, entri terakhir. Setelan ini wajib di production, karena tanpa itu semua pelanggan terlihat sebagai IP proxy. Request yang tidak membawa header itu dihitung per alamat koneksinya, sehingga header yang dipalsukan tanpa melewati proxy tidak berguna. Alamat IPv6 dihitung per /64.
+  - **Cache** (`httpserver.CacheControl`): semua respons `no-store`, kecuali respons 200 dari GET katalog publik (`ListShopProducts`, `GetShopProduct`), yang boleh disimpan CDN 60 detik. Error tidak pernah di-cache. Data order, pelanggan, dan CMS tidak boleh di-cache.
+  - **Cloudflare menyusul setelah domain dibeli** (diputuskan 2026-09-26). Domain yang sama dipakai untuk website, API (`api.`), dan email Resend (`notif.`). Cloudflare menjadi lapisan luar: DDoS, bot, cache katalog, dan Turnstile di permintaan OTP. Rate limit Go tetap menjadi lapisan dalam untuk batas yang presisi, misalnya OTP per nomor HP. Saat itu `CLIENT_IP_HEADER=CF-Connecting-IP`, dan server asal harus menolak request yang tidak lewat Cloudflare (misalnya dengan Authenticated Origin Pulls atau header rahasia), karena tanpa itu header IP bisa dipalsukan.
 - **Waktu:** simpan `timestamptz` (UTC), tampilkan dalam WIB. `production_date` bertipe `date` dan ditafsirkan dalam WIB.
 - **Audit:** aksi admin yang mengubah uang, stok, atau jadwal selalu mencatat siapa, kapan, dan alasannya.
   - Tabel `audit_log` bersifat **append-only**: trigger database menolak `UPDATE` dan `DELETE`, jadi entri tidak bisa diubah atau dihapus oleh aplikasi.
@@ -925,7 +949,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 | Repository | Integration test (`-tags=integration`) dengan testcontainers Postgres 17 dan migrasi asli. Satu container per paket; migrasi sekali ke database template, lalu setiap test mendapat salinan sendiri (`internal/platform/db/dbtest`) | Query terbukti benar |
 | Skema | Setiap tabel milik tenant punya `tenant_id uuid not null` + FK ke `tenants`; setiap tabel mengaktifkan RLS; migrasi bisa naik-turun-naik | Invariant §9 dan §25 |
 | Webhook | Event yang sama dua kali → satu efek | Semua provider |
-| Handler RPC | Integration test lewat HTTP sungguhan: interceptor auth asli, token dari issuer lokal, Postgres asli, client hasil generate. Setiap RPC minimal satu round trip; pemetaan error termasuk detail `FieldErrors` yang terbaca client | Setiap RPC |
+| Handler RPC | Integration test lewat HTTP sungguhan: interceptor auth asli, token dari issuer lokal, Postgres asli, client hasil generate. Setiap RPC minimal satu round trip; pemetaan error termasuk detail `FieldErrors` yang terbaca client. RPC yang merangkai beberapa modul (misalnya `QuoteOrder` membaca katalog, jadwal, dan pembayaran) diuji e2e di `cmd/api` lewat `wire`, satu-satunya tempat yang boleh merakit repo milik modul lain; di dalam modulnya, ia diuji dengan fake | Setiap RPC |
 | Kontrak | `buf lint`, `buf format`, `buf breaking` terhadap branch tujuan PR, hasil `buf generate` sudah ter-commit, client TS lolos `tsc` strict (`api/`, sampai `web/` ada) | Setiap PR |
 | Konkurensi | `go test -race`; recompute paralel batch yang sama | Setiap PR |
 
@@ -968,7 +992,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 |---|---|---|
 | **M0 Fondasi** | Skeleton repo, `platform`, verifikasi JWT Supabase, migrasi awal, CI | `/healthz` hijau, pipeline CI lengkap |
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
-| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Xendit, outbox | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
+| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Xendit, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6 Xendit, M2.7 worker, M2.8 operasional admin | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
@@ -985,7 +1009,7 @@ bahwa langkah desain berikut harus selesai dan disetujui:
    radius, komponen dasar, logo kalau ada.
 2. **Mockup Design** (tipe artifact *Design* di Claude, atau claude.ai/design) untuk tiga area:
    - PWA ibu: cek sisa bahan, daftar belanja, daftar produksi, siap kirim (prioritas utama)
-   - Storefront: katalog varian, checkout dengan pilihan DP/lunas dan pin peta, tracking guest
+   - Storefront: katalog varian, masuk dengan OTP WhatsApp, checkout dengan pilihan DP/lunas dan pin peta, lacak pesanan
    - CMS: editor resep + grafik fit, jadwal ulang massal dengan pratinjau dampak
 3. **Tautan artifact** Design System dan mockup yang disetujui dicatat di bagian ini.
 
@@ -1025,18 +1049,35 @@ Tautan desain yang disetujui:
 | Setting | Default |
 |---|---|
 | `dp_min_percent` | 50%, dan minimal menutup estimasi biaya bahan |
-| Tenggat pelunasan | Sebelum produksi dimulai |
+| Tenggat pelunasan | 12 jam sebelum produksi dimulai |
+| Masa berlaku tagihan DP | 3 jam, dan tidak pernah setelah cutoff belanja (§15) |
 | Jawaban jadwal ulang | Otomatis setuju setelah 12 jam tanpa balasan |
 | Selisih ongkir | Ditanggung toko |
 | Cek stok | Hasil cek berlaku 24 jam |
-| Kapasitas harian ibu | Tidak dibatasi; bisa diaktifkan lewat `daily_capacity_minutes` |
+| Kapasitas harian ibu | Tidak dibatasi; model loyang dan oven dirancang setelah M3 (lihat "Masih terbuka") |
 | Waktu belanja (`shopping_buffer_hours`) | 12 jam sebelum produksi |
 | Jam pengambilan | 09.00–17.00 WIB |
 | Yang boleh meliburkan tanggal | Owner dan ibu (§8) |
 
+Diputuskan 2026-09-26:
+
+| Topik | Keputusan |
+|---|---|
+| Identitas pelanggan | Masuk dengan OTP WhatsApp tanpa password, lewat Supabase (Send SMS Hook), dengan OTP buatan sendiri sebagai cadangan kalau fitur itu hilang; tidak ada checkout tanpa nomor terverifikasi (§8) |
+| Pajak | Kolom pajak di order disiapkan dengan nilai 0. Aturannya (tanpa pajak, termasuk dalam harga, atau ditambahkan) ditetapkan setelah perusahaan berdiri dan ada arahan akuntan |
+| Tanggal libur yang sudah ada ordernya | On hold, bukan ditolak; order baru ditawari tanggal lain (§15) |
+| Perlindungan endpoint publik | Rate limit di Go sekarang; Cloudflare dan Turnstile setelah domain dibeli (§22) |
+
 ### Masih terbuka
 
-Tidak ada. Refund dan kapasitas harian diputuskan 2026-09-25 (lihat tabel di atas).
+1. **Model kapasitas produksi berbasis loyang dan oven**, dirancang setelah M3, karena total adonan per hari baru dihitung di sana. Yang sudah disepakati:
+   - Satu resep adonan (komponen) menghasilkan sejumlah buah, misalnya 40 donut.
+   - Satu loyang hanya berisi **satu jenis** adonan dan menampung sejumlah buah, misalnya 20 donut. Jadi 40 donut = 2 loyang.
+   - Oven: sekali panggang muat sejumlah loyang dengan ukuran tertentu, dan jumlah ovennya bisa lebih dari satu.
+   - Adonan dengan **suhu sama boleh dipanggang bersamaan**.
+
+   Dari sana: total adonan per hari → jumlah loyang → putaran panggang per oven → muat atau tidak. `daily_capacity_minutes` diganti model ini.
+2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order.
 
 ### 27.1 Pertimbangan: email transaksional
 
@@ -1079,6 +1120,7 @@ PORT=                            # opsional, default 8080
 SUPABASE_URL=                    # wajib; issuer token = <SUPABASE_URL>/auth/v1
 SUPABASE_JWKS_URL=               # opsional; default <SUPABASE_URL>/auth/v1/.well-known/jwks.json
 SUPABASE_SERVICE_ROLE_KEY=       # hanya server, untuk Storage (M5; akan memakai secret key sb_secret_…)
+CLIENT_IP_HEADER=                # wajib di production: header IP klien dari proxy, mis. CF-Connecting-IP (§22)
 XENDIT_SECRET_KEY=
 XENDIT_WEBHOOK_TOKEN=
 BITESHIP_API_KEY=

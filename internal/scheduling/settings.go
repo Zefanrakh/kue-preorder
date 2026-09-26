@@ -60,7 +60,8 @@ type Settings struct {
 	// the kitchen shops for it: the batch's shopping cutoff (§15).
 	ShoppingBufferHours int32
 	// DailyCapacityMinutes limits the production of one day; nil means no
-	// limit, the default (§27).
+	// limit, the default. Checkout does not enforce it: a model of pans and
+	// ovens replaces it after M3 (§27).
 	DailyCapacityMinutes *int32
 	// Customers pick up between PickupStart and PickupEnd, both included.
 	PickupStart, PickupEnd TimeOfDay

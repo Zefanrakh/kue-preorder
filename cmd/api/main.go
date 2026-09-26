@@ -18,6 +18,7 @@ import (
 
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	catalogrpc "github.com/Zefanrakh/kue-preorder/internal/catalog/connect"
@@ -25,11 +26,17 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identityrpc "github.com/Zefanrakh/kue-preorder/internal/identity/connect"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/orders"
+	ordersrpc "github.com/Zefanrakh/kue-preorder/internal/orders/connect"
+	orderspg "github.com/Zefanrakh/kue-preorder/internal/orders/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/payments"
+	paymentspg "github.com/Zefanrakh/kue-preorder/internal/payments/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/config"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/httpserver"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/ratelimit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/telemetry"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 	schedulingrpc "github.com/Zefanrakh/kue-preorder/internal/scheduling/connect"
@@ -103,18 +110,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 		return fmt.Errorf("resolve tenant: %w", err)
 	}
 
-	identitySvc := identity.NewService(identityRepo, tenants)
-	catalogRepo := catalogpg.NewRepository(database)
-	handler, err := newHandler(handlerDeps{
-		logger:         logger,
-		tracerProvider: tel.TracerProvider(),
-		verifier:       identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{}),
-		identity:       identitySvc,
-		catalog:        catalog.NewService(catalogRepo, identitySvc, clock.Real{}),
-		storefront:     catalog.NewStorefront(catalogRepo, tenants),
-		scheduling:     scheduling.NewService(schedulingpg.NewRepository(database), identitySvc, clock.Real{}),
-		db:             database,
-	})
+	deps := wire(database, identity.NewService(identityRepo, tenants), tenants, clock.Real{}, logger)
+	deps.tracerProvider = tel.TracerProvider()
+	deps.verifier = identity.NewTokenVerifier(keys, cfg.AuthIssuer(), clock.Real{})
+	deps.limiter = ratelimit.New(clock.Real{}, rateLimits)
+	deps.clientIPHeader = cfg.ClientIPHeader
+	handler, err := newHandler(deps)
 	if err != nil {
 		return err
 	}
@@ -131,6 +132,25 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 	return httpserver.Run(ctx, httpserver.New(handler, logger), ln)
 }
 
+// wire assembles every module over database as production runs them: this
+// is the one place allowed to join a module to another's postgres package
+// (§5). The caller adds tracing, token verification, and rate limits.
+func wire(database *db.DB, identitySvc *identity.Service, tenants identity.TenantResolver, clk clock.Clock, logger *slog.Logger) handlerDeps {
+	catalogRepo := catalogpg.NewRepository(database)
+	schedulingRepo := schedulingpg.NewRepository(database)
+	return handlerDeps{
+		logger:     logger,
+		identity:   identitySvc,
+		catalog:    catalog.NewService(catalogRepo, identitySvc, clk),
+		storefront: catalog.NewStorefront(catalogRepo, tenants),
+		scheduling: scheduling.NewService(schedulingRepo, identitySvc, clk),
+		checkout: orders.NewCheckout(catalog.NewReader(catalogRepo), scheduling.NewReader(schedulingRepo),
+			payments.NewReader(paymentspg.NewRepository(database)), orderspg.NewRepository(database),
+			tenants, clk, logger),
+		db: database,
+	}
+}
+
 // handlerDeps is what the HTTP handler needs; tests pass fakes.
 type handlerDeps struct {
 	logger         *slog.Logger
@@ -140,15 +160,33 @@ type handlerDeps struct {
 	catalog        *catalog.Service
 	storefront     *catalog.Storefront
 	scheduling     *scheduling.Service
+	checkout       *orders.Checkout
+	limiter        *ratelimit.Limiter
+	clientIPHeader string
 	db             httpserver.Pinger
+}
+
+// rateLimits are the limits on public procedures, per client address
+// (§22). Many Indonesian mobile users share one address, so they are
+// generous. Staff procedures need a sign-in and have none.
+var rateLimits = map[string]ratelimit.Rule{
+	// A customer quotes as they edit the cart and pick a time.
+	ordersv1connect.CheckoutServiceQuoteOrderProcedure: {Every: time.Second, Burst: 30},
+}
+
+// cacheable are the public responses a CDN may keep, and for how long (§22).
+var cacheable = map[string]time.Duration{
+	catalogv1connect.StorefrontServiceListShopProductsProcedure: time.Minute,
+	catalogv1connect.StorefrontServiceGetShopProductProcedure:   time.Minute,
 }
 
 // newHandler builds every route with the middleware order production uses:
 //
-//	CorrelationID → Recover → mux
-//	Connect: tracing → auth → handler; a panic becomes Internal
+//	CorrelationID → Recover → ClientIP → CacheControl → mux
+//	Connect: tracing → rate limit → auth → handler; a panic becomes Internal
 //
-// Tracing runs before auth so rejected requests are traced too.
+// Tracing runs first so refused requests are traced too; the rate limit runs
+// before auth so a flood costs no token verification.
 func newHandler(d handlerDeps) (http.Handler, error) {
 	tracing, err := otelconnect.NewInterceptor(
 		otelconnect.WithTracerProvider(d.tracerProvider),
@@ -158,7 +196,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 		return nil, fmt.Errorf("create tracing interceptor: %w", err)
 	}
 	connectOpts := []connect.HandlerOption{
-		connect.WithInterceptors(tracing, identityrpc.NewAuthInterceptor(d.verifier, d.logger)),
+		connect.WithInterceptors(tracing, d.limiter.Interceptor(), identityrpc.NewAuthInterceptor(d.verifier, d.logger)),
 		httpserver.ConnectRecover(d.logger),
 		connect.WithReadMaxBytes(maxRequestBytes),
 	}
@@ -170,6 +208,8 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(catalogv1connect.NewCatalogAdminServiceHandler(catalogrpc.NewHandler(d.catalog, d.logger), connectOpts...))
 	mux.Handle(catalogv1connect.NewStorefrontServiceHandler(catalogrpc.NewStorefrontHandler(d.storefront, d.logger), connectOpts...))
 	mux.Handle(schedulingv1connect.NewScheduleAdminServiceHandler(schedulingrpc.NewHandler(d.scheduling, d.logger), connectOpts...))
+	mux.Handle(ordersv1connect.NewCheckoutServiceHandler(ordersrpc.NewCheckoutHandler(d.checkout, d.logger), connectOpts...))
 
-	return httpserver.CorrelationID(httpserver.Recover(d.logger, mux)), nil
+	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
+	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil
 }

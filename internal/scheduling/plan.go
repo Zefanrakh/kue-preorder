@@ -55,9 +55,9 @@ type Request struct {
 	// Closed holds the closed dates that could matter (at least the pickup
 	// date and the day before it), with their reasons.
 	Closed map[clock.Date]string
-	// BatchCutoff is the earliest shopping cutoff among the orders already
-	// committed to the production date; nil when there are none.
-	BatchCutoff *time.Time
+	// BatchCutoffs holds, for each production date that already has
+	// committed orders, the earliest shopping cutoff among them.
+	BatchCutoffs map[clock.Date]time.Time
 	// LoadMinutes is the production date's committed load and OrderMinutes
 	// what this order adds; checkout (M2.3) decides how they are counted.
 	LoadMinutes, OrderMinutes int32
@@ -130,8 +130,8 @@ func (s Settings) Plan(r Request) (Plan, error) {
 	}
 
 	p.Cutoff = p.ProductionStart.Add(-time.Duration(s.ShoppingBufferHours) * time.Hour)
-	if r.BatchCutoff != nil && r.BatchCutoff.Before(p.Cutoff) {
-		p.Cutoff = *r.BatchCutoff
+	if batch, ok := r.BatchCutoffs[p.ProductionDate]; ok && batch.Before(p.Cutoff) {
+		p.Cutoff = batch
 	}
 	if p.Cutoff.Sub(r.Now) < minPaymentWindow {
 		return Plan{}, &Rejection{ErrCutoffPassed, "Belanja bahan untuk tanggal " + formatDate(p.ProductionDate) + " sudah ditutup. Pilih tanggal lain."}

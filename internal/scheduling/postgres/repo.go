@@ -54,7 +54,7 @@ func (r *Repository) SaveSettings(ctx context.Context, tenantID uuid.UUID, s sch
 
 // ClosedDates implements scheduling.Repository.
 func (r *Repository) ClosedDates(ctx context.Context, tenantID uuid.UUID, from, to clock.Date) ([]scheduling.ClosedDate, error) {
-	rows, err := r.q.ListClosedDates(ctx, ListClosedDatesParams{TenantID: tenantID, FromDate: fromDate(from), ToDate: fromDate(to)})
+	rows, err := r.q.ListClosedDates(ctx, ListClosedDatesParams{TenantID: tenantID, FromDate: db.Date(from), ToDate: db.Date(to)})
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (r *Repository) ClosedDates(ctx context.Context, tenantID uuid.UUID, from, 
 
 // AddClosedDate implements scheduling.Repository.
 func (r *Repository) AddClosedDate(ctx context.Context, tenantID uuid.UUID, d clock.Date, reason string, at time.Time) (scheduling.ClosedDate, error) {
-	row, err := r.q.AddClosedDate(ctx, AddClosedDateParams{TenantID: tenantID, Date: fromDate(d), Reason: reason, Now: at})
+	row, err := r.q.AddClosedDate(ctx, AddClosedDateParams{TenantID: tenantID, Date: db.Date(d), Reason: reason, Now: at})
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation on (tenant_id, date)
 		return scheduling.ClosedDate{}, &scheduling.ValidationError{Fields: map[string]string{"date": "Tanggal ini sudah diliburkan."}, Conflict: true}
@@ -80,7 +80,7 @@ func (r *Repository) AddClosedDate(ctx context.Context, tenantID uuid.UUID, d cl
 
 // RemoveClosedDate implements scheduling.Repository.
 func (r *Repository) RemoveClosedDate(ctx context.Context, tenantID uuid.UUID, d clock.Date) error {
-	n, err := r.q.RemoveClosedDate(ctx, RemoveClosedDateParams{TenantID: tenantID, Date: fromDate(d)})
+	n, err := r.q.RemoveClosedDate(ctx, RemoveClosedDateParams{TenantID: tenantID, Date: db.Date(d)})
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func toSettings(row ScheduleSetting) scheduling.Settings {
 }
 
 func toClosedDate(row ClosedDate) scheduling.ClosedDate {
-	return scheduling.ClosedDate{Date: toDate(row.Date), Reason: row.Reason, CreatedAt: row.CreatedAt}
+	return scheduling.ClosedDate{Date: db.FromDate(row.Date), Reason: row.Reason, CreatedAt: row.CreatedAt}
 }
 
 const microsPerMinute = int64(time.Minute / time.Microsecond)
@@ -109,14 +109,4 @@ func toTimeOfDay(t pgtype.Time) scheduling.TimeOfDay {
 
 func fromTimeOfDay(t scheduling.TimeOfDay) pgtype.Time {
 	return pgtype.Time{Microseconds: int64(t) * microsPerMinute, Valid: true}
-}
-
-// A Postgres date has no zone; pgx reads and writes it at UTC midnight.
-func toDate(d pgtype.Date) clock.Date {
-	y, m, day := d.Time.Date()
-	return clock.Date{Year: y, Month: m, Day: day}
-}
-
-func fromDate(d clock.Date) pgtype.Date {
-	return pgtype.Date{Time: time.Date(d.Year, d.Month, d.Day, 0, 0, 0, 0, time.UTC), Valid: true}
 }

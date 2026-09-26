@@ -16,9 +16,10 @@ func env(vars map[string]string) func(string) string {
 // valid returns a complete production environment with overrides applied.
 func valid(overrides map[string]string) map[string]string {
 	vars := map[string]string{
-		"APP_ENV":      "production",
-		"DATABASE_URL": "postgres://db",
-		"SUPABASE_URL": "https://abc.supabase.co",
+		"APP_ENV":          "production",
+		"DATABASE_URL":     "postgres://db",
+		"SUPABASE_URL":     "https://abc.supabase.co",
+		"CLIENT_IP_HEADER": "CF-Connecting-IP",
 	}
 	maps.Copy(vars, overrides)
 	return vars
@@ -236,5 +237,30 @@ func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want it to mention %s", err, want)
 		}
+	}
+}
+
+func TestLoad_ClientIPHeader(t *testing.T) {
+	cfg, err := config.Load(env(valid(nil)))
+	if err != nil || cfg.ClientIPHeader != "CF-Connecting-IP" {
+		t.Errorf("Load() = %q, %v; want CF-Connecting-IP", cfg.ClientIPHeader, err)
+	}
+
+	// Production sits behind a proxy: without the header every caller would
+	// share the proxy's address and its rate limits.
+	prod := valid(nil)
+	delete(prod, "CLIENT_IP_HEADER")
+	if _, err := config.Load(env(prod)); err == nil || !strings.Contains(err.Error(), "CLIENT_IP_HEADER") {
+		t.Errorf("Load(production without CLIENT_IP_HEADER) error = %v, want it missing", err)
+	}
+
+	dev := valid(map[string]string{"APP_ENV": "development"})
+	delete(dev, "CLIENT_IP_HEADER")
+	if cfg, err := config.Load(env(dev)); err != nil || cfg.ClientIPHeader != "" {
+		t.Errorf("Load(development) = %q, %v; want no header, no error", cfg.ClientIPHeader, err)
+	}
+
+	if _, err := config.Load(env(valid(map[string]string{"CLIENT_IP_HEADER": "X Forwarded"}))); err == nil {
+		t.Error("Load(header name with a space) succeeded, want an error")
 	}
 }
