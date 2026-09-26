@@ -188,6 +188,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 
 **Konvensi kontrak** (berlaku untuk service berikutnya juga):
 - Handler di `internal/<modul>/connect` hanya menerjemahkan proto ↔ domain. Aturan, normalisasi, dan otorisasi tetap di service.
+- Error domain yang dipakai semua modul ada di `platform/apperr` (`ErrNotFound`, `ErrForbidden`, `ErrUnauthenticated`, `ValidationError`); modul mengekspornya ulang dengan namanya sendiri (`catalog.ErrNotFound`). Pemetaannya ke kode Connect ada di satu tempat, `platform/rpcerr`, termasuk parsing ID (`rpcerr.IDs`).
 - ID berupa string UUID. ID kosong diteruskan sebagai `uuid.Nil` agar service menjawab dengan pesannya sendiri ("Pilih produknya."). ID yang bukan UUID langsung `InvalidArgument` untuk field itu, sebelum otorisasi. Yang bocor hanya fakta bahwa string itu bukan UUID, tidak ada data yang ikut bocor.
 - RPC baca ditandai `NO_SIDE_EFFECTS`, jadi client boleh memanggilnya lewat HTTP GET (`useHttpGet` di connect-web) dan hasilnya bisa di-cache. Storefront memakainya.
 - Pesan untuk pelanggan terpisah dari pesan CMS (`ShopProduct` dan `ShopVariant` vs `Product` dan `Variant`), supaya field internal seperti SKU, menit produksi, dan resep tidak pernah ikut keluar ke publik hanya karena ditambahkan ke CMS.

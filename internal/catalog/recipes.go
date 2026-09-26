@@ -22,15 +22,15 @@ const maxComponentsPerVariant = 50
 
 func validateVariantComponents(uses []VariantComponent) error {
 	f := fields{}
-	f.check(len(uses) <= maxComponentsPerVariant, "components", "Paling banyak 50 komponen per varian.")
+	f.Check(len(uses) <= maxComponentsPerVariant, "components", "Paling banyak 50 komponen per varian.")
 	seen := map[uuid.UUID]bool{}
 	for _, u := range uses {
-		f.check(u.ComponentID != uuid.Nil, "components", "Pilih komponennya.")
-		f.check(!seen[u.ComponentID], "components", "Komponen yang sama tidak boleh dipilih dua kali.")
-		f.check(u.UnitsPerItem > 0 && isFinite(u.UnitsPerItem), "components", "Jumlah komponen per item harus lebih dari 0.")
+		f.Check(u.ComponentID != uuid.Nil, "components", "Pilih komponennya.")
+		f.Check(!seen[u.ComponentID], "components", "Komponen yang sama tidak boleh dipilih dua kali.")
+		f.Check(u.UnitsPerItem > 0 && isFinite(u.UnitsPerItem), "components", "Jumlah komponen per item harus lebih dari 0.")
 		seen[u.ComponentID] = true
 	}
-	return f.err()
+	return f.Err()
 }
 
 // RecipeLine is how much of an ingredient a component needs: a recipe model
@@ -71,15 +71,15 @@ type RecipeLineWrite struct {
 // refused here, at input, and never reaches a batch (§10).
 func (in RecipeLineInput) resolve(componentID, ingredientID uuid.UUID) (RecipeLineWrite, error) {
 	f := fields{}
-	f.check(ingredientID != uuid.Nil, "ingredient_id", "Pilih bahannya.")
+	f.Check(ingredientID != uuid.Nil, "ingredient_id", "Pilih bahannya.")
 	waste := in.WasteFactor
 	if waste == 0 {
 		waste = 1
 	}
-	f.check(isFinite(waste) && waste >= 1, "waste_factor", "Faktor susut minimal 1, misalnya 1,05 untuk susut 5%.")
-	f.check(len(in.Points) <= recipe.MaxPoints, "points", "Paling banyak 100 titik ukur.")
+	f.Check(isFinite(waste) && waste >= 1, "waste_factor", "Faktor susut minimal 1, misalnya 1,05 untuk susut 5%.")
+	f.Check(len(in.Points) <= recipe.MaxPoints, "points", "Paling banyak 100 titik ukur.")
 	for _, p := range in.Points {
-		f.check(isFinite(p.U) && isFinite(p.Amount) && p.U > 0 && p.Amount >= 0, "points", "Setiap titik ukur butuh jumlah unit > 0 dan jumlah bahan >= 0.")
+		f.Check(isFinite(p.U) && isFinite(p.Amount) && p.U > 0 && p.Amount >= 0, "points", "Setiap titik ukur butuh jumlah unit > 0 dan jumlah bahan >= 0.")
 	}
 
 	var model recipe.Model
@@ -89,16 +89,16 @@ func (in RecipeLineInput) resolve(componentID, ingredientID uuid.UUID) (RecipeLi
 		if err == nil {
 			err = recipe.Validate(m)
 		}
-		f.check(err == nil, "params", ExplainRecipeError(err))
+		f.Check(err == nil, "params", ExplainRecipeError(err))
 		model = m
 	case len(in.Points) > 0:
 		m, err := fit(in.ModelType, in.Points)
-		f.check(err == nil, "points", ExplainRecipeError(err))
+		f.Check(err == nil, "points", ExplainRecipeError(err))
 		model = m
 	default:
-		f.check(false, "params", "Isi parameter resep atau titik ukur.")
+		f.Check(false, "params", "Isi parameter resep atau titik ukur.")
 	}
-	if err := f.err(); err != nil {
+	if err := f.Err(); err != nil {
 		return RecipeLineWrite{}, err
 	}
 	params, err := recipe.Params(model)

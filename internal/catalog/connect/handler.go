@@ -65,8 +65,8 @@ func (h *Handler) CreateProduct(ctx context.Context, req *connect.Request[catalo
 func (h *Handler) UpdateProduct(ctx context.Context, req *connect.Request[catalogv1.UpdateProductRequest]) (*connect.Response[catalogv1.UpdateProductResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	product, err := h.svc.UpdateProduct(ctx, id, catalog.ProductInput{
@@ -81,8 +81,8 @@ func (h *Handler) UpdateProduct(ctx context.Context, req *connect.Request[catalo
 // ListVariants implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) ListVariants(ctx context.Context, req *connect.Request[catalogv1.ListVariantsRequest]) (*connect.Response[catalogv1.ListVariantsResponse], error) {
 	var p ids
-	productID := p.parse("product_id", req.Msg.GetProductId())
-	if err := p.err(); err != nil {
+	productID := p.Parse("product_id", req.Msg.GetProductId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	variants, err := h.svc.ListVariants(ctx, productID)
@@ -96,8 +96,8 @@ func (h *Handler) ListVariants(ctx context.Context, req *connect.Request[catalog
 func (h *Handler) CreateVariant(ctx context.Context, req *connect.Request[catalogv1.CreateVariantRequest]) (*connect.Response[catalogv1.CreateVariantResponse], error) {
 	m := req.Msg
 	var p ids
-	productID := p.parse("product_id", m.GetProductId())
-	if err := p.err(); err != nil {
+	productID := p.Parse("product_id", m.GetProductId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	variant, err := h.svc.CreateVariant(ctx, productID, catalog.VariantInput{
@@ -114,8 +114,8 @@ func (h *Handler) CreateVariant(ctx context.Context, req *connect.Request[catalo
 func (h *Handler) UpdateVariant(ctx context.Context, req *connect.Request[catalogv1.UpdateVariantRequest]) (*connect.Response[catalogv1.UpdateVariantResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	variant, err := h.svc.UpdateVariant(ctx, id, catalog.VariantInput{
@@ -132,8 +132,8 @@ func (h *Handler) UpdateVariant(ctx context.Context, req *connect.Request[catalo
 func (h *Handler) ChangeVariantPrice(ctx context.Context, req *connect.Request[catalogv1.ChangeVariantPriceRequest]) (*connect.Response[catalogv1.ChangeVariantPriceResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	variant, err := h.svc.ChangeVariantPrice(ctx, id, m.GetPriceIdr(), m.GetReason())
@@ -165,8 +165,8 @@ func (h *Handler) CreateComponent(ctx context.Context, req *connect.Request[cata
 func (h *Handler) UpdateComponent(ctx context.Context, req *connect.Request[catalogv1.UpdateComponentRequest]) (*connect.Response[catalogv1.UpdateComponentResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	component, err := h.svc.UpdateComponent(ctx, id, catalog.ComponentInput{Name: m.GetName(), UnitLabel: m.GetUnitLabel()})
@@ -202,8 +202,8 @@ func (h *Handler) CreateIngredient(ctx context.Context, req *connect.Request[cat
 func (h *Handler) UpdateIngredient(ctx context.Context, req *connect.Request[catalogv1.UpdateIngredientRequest]) (*connect.Response[catalogv1.UpdateIngredientResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	ingredient, err := h.svc.UpdateIngredient(ctx, id, catalog.IngredientInput{
@@ -241,8 +241,8 @@ func (h *Handler) CreateSupplier(ctx context.Context, req *connect.Request[catal
 func (h *Handler) UpdateSupplier(ctx context.Context, req *connect.Request[catalogv1.UpdateSupplierRequest]) (*connect.Response[catalogv1.UpdateSupplierResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	supplier, err := h.svc.UpdateSupplier(ctx, id, catalog.SupplierInput{
@@ -257,8 +257,8 @@ func (h *Handler) UpdateSupplier(ctx context.Context, req *connect.Request[catal
 // ListPacks implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) ListPacks(ctx context.Context, req *connect.Request[catalogv1.ListPacksRequest]) (*connect.Response[catalogv1.ListPacksResponse], error) {
 	var p ids
-	ingredientID := p.parse("ingredient_id", req.Msg.GetIngredientId())
-	if err := p.err(); err != nil {
+	ingredientID := p.Parse("ingredient_id", req.Msg.GetIngredientId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	packs, err := h.svc.ListPacks(ctx, ingredientID)
@@ -272,9 +272,9 @@ func (h *Handler) ListPacks(ctx context.Context, req *connect.Request[catalogv1.
 func (h *Handler) CreatePack(ctx context.Context, req *connect.Request[catalogv1.CreatePackRequest]) (*connect.Response[catalogv1.CreatePackResponse], error) {
 	m := req.Msg
 	var p ids
-	ingredientID := p.parse("ingredient_id", m.GetIngredientId())
-	supplierID := p.parse("supplier_id", m.GetSupplierId())
-	if err := p.err(); err != nil {
+	ingredientID := p.Parse("ingredient_id", m.GetIngredientId())
+	supplierID := p.Parse("supplier_id", m.GetSupplierId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	pack, err := h.svc.CreatePack(ctx, ingredientID, catalog.PackInput{
@@ -290,9 +290,9 @@ func (h *Handler) CreatePack(ctx context.Context, req *connect.Request[catalogv1
 func (h *Handler) UpdatePack(ctx context.Context, req *connect.Request[catalogv1.UpdatePackRequest]) (*connect.Response[catalogv1.UpdatePackResponse], error) {
 	m := req.Msg
 	var p ids
-	id := p.parse("id", m.GetId())
-	supplierID := p.parse("supplier_id", m.GetSupplierId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", m.GetId())
+	supplierID := p.Parse("supplier_id", m.GetSupplierId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	pack, err := h.svc.UpdatePack(ctx, id, catalog.PackInput{
@@ -307,8 +307,8 @@ func (h *Handler) UpdatePack(ctx context.Context, req *connect.Request[catalogv1
 // SetDefaultPack implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) SetDefaultPack(ctx context.Context, req *connect.Request[catalogv1.SetDefaultPackRequest]) (*connect.Response[catalogv1.SetDefaultPackResponse], error) {
 	var p ids
-	id := p.parse("id", req.Msg.GetId())
-	if err := p.err(); err != nil {
+	id := p.Parse("id", req.Msg.GetId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	pack, err := h.svc.SetDefaultPack(ctx, id)
@@ -321,8 +321,8 @@ func (h *Handler) SetDefaultPack(ctx context.Context, req *connect.Request[catal
 // ListVariantComponents implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) ListVariantComponents(ctx context.Context, req *connect.Request[catalogv1.ListVariantComponentsRequest]) (*connect.Response[catalogv1.ListVariantComponentsResponse], error) {
 	var p ids
-	variantID := p.parse("variant_id", req.Msg.GetVariantId())
-	if err := p.err(); err != nil {
+	variantID := p.Parse("variant_id", req.Msg.GetVariantId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	uses, err := h.svc.ListVariantComponents(ctx, variantID)
@@ -336,12 +336,12 @@ func (h *Handler) ListVariantComponents(ctx context.Context, req *connect.Reques
 func (h *Handler) SetVariantComponents(ctx context.Context, req *connect.Request[catalogv1.SetVariantComponentsRequest]) (*connect.Response[catalogv1.SetVariantComponentsResponse], error) {
 	m := req.Msg
 	var p ids
-	variantID := p.parse("variant_id", m.GetVariantId())
+	variantID := p.Parse("variant_id", m.GetVariantId())
 	uses := make([]catalog.VariantComponent, len(m.GetComponents()))
 	for i, c := range m.GetComponents() {
-		uses[i] = catalog.VariantComponent{ComponentID: p.parse("components", c.GetComponentId()), UnitsPerItem: c.GetUnitsPerItem()}
+		uses[i] = catalog.VariantComponent{ComponentID: p.Parse("components", c.GetComponentId()), UnitsPerItem: c.GetUnitsPerItem()}
 	}
-	if err := p.err(); err != nil {
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	uses, err := h.svc.SetVariantComponents(ctx, variantID, uses)
@@ -354,8 +354,8 @@ func (h *Handler) SetVariantComponents(ctx context.Context, req *connect.Request
 // ListRecipeLines implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) ListRecipeLines(ctx context.Context, req *connect.Request[catalogv1.ListRecipeLinesRequest]) (*connect.Response[catalogv1.ListRecipeLinesResponse], error) {
 	var p ids
-	componentID := p.parse("component_id", req.Msg.GetComponentId())
-	if err := p.err(); err != nil {
+	componentID := p.Parse("component_id", req.Msg.GetComponentId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	lines, err := h.svc.ListRecipeLines(ctx, componentID)
@@ -369,9 +369,9 @@ func (h *Handler) ListRecipeLines(ctx context.Context, req *connect.Request[cata
 func (h *Handler) SetRecipeLine(ctx context.Context, req *connect.Request[catalogv1.SetRecipeLineRequest]) (*connect.Response[catalogv1.SetRecipeLineResponse], error) {
 	m := req.Msg
 	var p ids
-	componentID := p.parse("component_id", m.GetComponentId())
-	ingredientID := p.parse("ingredient_id", m.GetIngredientId())
-	if err := p.err(); err != nil {
+	componentID := p.Parse("component_id", m.GetComponentId())
+	ingredientID := p.Parse("ingredient_id", m.GetIngredientId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	line, err := h.svc.SetRecipeLine(ctx, componentID, ingredientID, catalog.RecipeLineInput{
@@ -387,9 +387,9 @@ func (h *Handler) SetRecipeLine(ctx context.Context, req *connect.Request[catalo
 // RemoveRecipeLine implements catalogv1connect.CatalogAdminServiceHandler.
 func (h *Handler) RemoveRecipeLine(ctx context.Context, req *connect.Request[catalogv1.RemoveRecipeLineRequest]) (*connect.Response[catalogv1.RemoveRecipeLineResponse], error) {
 	var p ids
-	componentID := p.parse("component_id", req.Msg.GetComponentId())
-	ingredientID := p.parse("ingredient_id", req.Msg.GetIngredientId())
-	if err := p.err(); err != nil {
+	componentID := p.Parse("component_id", req.Msg.GetComponentId())
+	ingredientID := p.Parse("ingredient_id", req.Msg.GetIngredientId())
+	if err := p.Err(); err != nil {
 		return nil, h.fail(ctx, err)
 	}
 	if err := h.svc.RemoveRecipeLine(ctx, componentID, ingredientID); err != nil {

@@ -13,6 +13,8 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+
+	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
 )
 
 // Role is a staff role in a tenant, stored in staff_roles.
@@ -25,8 +27,9 @@ const (
 )
 
 var (
-	// ErrUnauthenticated means the request carries no verified user.
-	ErrUnauthenticated = errors.New("unauthenticated")
+	// ErrUnauthenticated means the request carries no verified user. It is
+	// the shared apperr.ErrUnauthenticated, which every module maps alike.
+	ErrUnauthenticated = apperr.ErrUnauthenticated
 	// ErrInvalidToken means an access token failed verification.
 	ErrInvalidToken = errors.New("invalid access token")
 	// ErrNotFound means the requested record does not exist.
