@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package kuepreorder.orders.v1;
+
+import "kuepreorder/orders/v1/orders.proto";
+
+// OrderAdminService is the CMS's side of orders (docs/architecture.md §13,
+// §14), for staff. The kitchen lists orders and moves them through
+// production; the owner also records money that moves outside the payment
+// provider, and cancels orders. Anyone else gets PermissionDenied.
+//
+// A step the order's status or payments do not allow is FailedPrecondition
+// with a kuepreorder.validation.v1.Precondition detail; its message is for
+// the CMS to show as it is. Reasons: "not_paid_in_full",
+// "illegal_transition", "payments_closed", "nothing_owed",
+// "order_not_open", "balance_not_due", "not_forfeitable",
+// "nothing_to_refund", "already_paid". Money is int64 rupiah.
+service OrderAdminService {
+  // ListOrders lists the orders produced in a range of dates, by pickup
+  // time, at most 200.
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // GetOrder returns an order by its code, with its payments and the proof
+  // of the manual ones.
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // AdvanceOrder moves an order through production. Every step needs the
+  // order paid in full. Asking for the status it already has changes
+  // nothing.
+  rpc AdvanceOrder(AdvanceOrderRequest) returns (AdvanceOrderResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  // RecordManualPayment records money the customer paid outside the
+  // provider, such as a transfer straight to the shop's account. An order
+  // waiting for its DP needs at least the DP and is confirmed by it; a
+  // confirmed order takes its balance, whole or in part. The order's open
+  // invoices expire. Audited. Owner only.
+  rpc RecordManualPayment(RecordManualPaymentRequest) returns (RecordManualPaymentResponse);
+  // CancelOrder ends an order early. Audited. Owner only.
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+}
+
+// StaffOrderSummary is an order as the staff's list shows it.
+message StaffOrderSummary {
+  OrderSummary summary = 1;
+  // Asia/Jakarta date the kitchen makes the order, such as "2026-10-07".
+  string production_date = 2;
+  string customer_name = 3;
+  // E.164, such as "+6281234567890".
+  string customer_phone = 4;
+}
+
+message ListOrdersRequest {
+  // Production dates, such as "2026-10-05", both included; at most 92 days
+  // apart.
+  string from_date = 1;
+  string to_date = 2;
+  // Keeps the orders in any of them; all when empty.
+  repeated OrderStatus statuses = 3;
+  // Keeps the orders whose code is it, or whose customer's phone number or
+  // name contains it. A phone number may be written as 0812-3456-7890.
+  string query = 4;
+}
+
+message ListOrdersResponse {
+  repeated StaffOrderSummary orders = 1;
+}
+
+message GetOrderRequest {
+  string code = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+}
+
+message AdvanceOrderRequest {
+  string code = 1;
+  // IN_PRODUCTION, READY, or COMPLETED (picked up).
+  OrderStatus status = 2;
+}
+
+message AdvanceOrderResponse {
+  Order order = 1;
+}
+
+message RecordManualPaymentRequest {
+  string code = 1;
+  // What arrived; at most what is still owed.
+  int64 amount_idr = 2;
+  // Required, up to 100 characters: the proof, such as the transfer's
+  // reference number.
+  string reference = 3;
+  // Required, up to 500 characters: what happened. It is the audit reason.
+  string note = 4;
+}
+
+message RecordManualPaymentResponse {
+  Order order = 1;
+}
+
+// CancelMode is how an order ends early.
+enum CancelMode {
+  CANCEL_MODE_UNSPECIFIED = 0;
+  // An order still waiting for its DP expires; nothing was paid.
+  CANCEL_MODE_UNPAID = 1;
+  // The balance was not paid by its deadline: the order is cancelled and
+  // the DP kept, as the terms say. Only once the deadline has passed.
+  CANCEL_MODE_FORFEIT = 2;
+  // The order is cancelled and everything paid goes back, such as when the
+  // shop cannot bake it. Transfer the money first, then record it here.
+  CANCEL_MODE_REFUND = 3;
+}
+
+message CancelOrderRequest {
+  string code = 1;
+  CancelMode mode = 2;
+  // Required, up to 500 characters. It is the audit reason.
+  string reason = 3;
+  // Required for CANCEL_MODE_REFUND, up to 100 characters: the reference of
+  // the transfer back to the customer.
+  string refund_reference = 4;
+}
+
+message CancelOrderResponse {
+  Order order = 1;
+}

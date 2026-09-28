@@ -14,7 +14,9 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 )
 
@@ -38,15 +40,18 @@ type Policies interface {
 
 // Customers is what checkout needs from identity; identity.Service implements it.
 type Customers interface {
-	Principal(ctx context.Context) (identity.Principal, error)
+	Principals
 	EnsureCustomer(ctx context.Context, in identity.CustomerInput, at time.Time) (identity.Customer, error)
 }
 
-// Ledger is what checkout needs from the payment ledger; payments.Ledger implements it.
+// Ledger is what orders needs from the payment ledger; payments.Ledger
+// implements it. It works in the caller's transaction.
 type Ledger interface {
 	AddPending(ctx context.Context, tenantID uuid.UUID, p payments.Payment, at time.Time) error
+	AddManual(ctx context.Context, tenantID uuid.UUID, p payments.Payment, at time.Time) error
 	AttachInvoice(ctx context.Context, tenantID, paymentID uuid.UUID, inv payments.Invoice, at time.Time) error
 	OrderPayments(ctx context.Context, tenantID, orderID uuid.UUID) ([]payments.Payment, error)
+	ExpirePending(ctx context.Context, tenantID, orderID uuid.UUID, at time.Time) (int64, error)
 }
 
 // Transactor runs a unit of work across modules in one transaction;
@@ -80,6 +85,20 @@ type Repository interface {
 	// ActiveOrderDays counts, for each day from..to, the orders in statuses
 	// produced or picked up that day.
 	ActiveOrderDays(ctx context.Context, tenantID uuid.UUID, from, to clock.Date, statuses []Status) (map[clock.Date]int, error)
+
+	// LockByCode returns the order with that code and holds its row until
+	// the transaction ends; GetByCode reads it without a lock. Both return
+	// it with its items but not its payments, or apperr.ErrNotFound.
+	LockByCode(ctx context.Context, tenantID uuid.UUID, code string) (Order, error)
+	GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (Order, error)
+	// SetStatus stores an order's status and payment status.
+	SetStatus(ctx context.Context, tenantID, id uuid.UUID, s Status, p payments.Status, at time.Time) error
+	// ListStaff returns the orders matching f, by pickup time.
+	ListStaff(ctx context.Context, tenantID uuid.UUID, f StaffFilter, limit int32) ([]StaffSummary, error)
+	// Audit and Publish write a staff action's audit entry and outbox
+	// events, in the transaction making the change.
+	Audit(ctx context.Context, e audit.Entry) error
+	Publish(ctx context.Context, e outbox.Event) error
 }
 
 // Cart limits.

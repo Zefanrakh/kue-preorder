@@ -177,8 +177,8 @@ func (c *Checkout) MyOrder(ctx context.Context, code string) (Order, error) {
 	if err != nil {
 		return Order{}, err
 	}
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if p.CustomerID == nil || len(code) != 6 {
+	code, ok := normalizeCode(code)
+	if p.CustomerID == nil || !ok {
 		return Order{}, apperr.ErrNotFound
 	}
 	o, err := c.repo.FindCustomerOrder(ctx, p.TenantID, *p.CustomerID, code)

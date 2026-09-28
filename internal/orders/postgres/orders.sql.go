@@ -248,6 +248,54 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 	return i, err
 }
 
+const getOrderByCode = `-- name: GetOrderByCode :one
+select id, tenant_id, customer_id, channel_id, external_order_ref, status, payment_status, fulfillment_type, pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at, subtotal_idr, tax_idr, shipping_idr, total_idr, dp_required_idr, full_payment_required, terms_version, terms_accepted_at, idempotency_key, created_at, updated_at, code, notes, customer_name, customer_phone, customer_email from orders
+where tenant_id = $1 and code = $2
+`
+
+type GetOrderByCodeParams struct {
+	TenantID uuid.UUID
+	Code     string
+}
+
+func (q *Queries) GetOrderByCode(ctx context.Context, arg GetOrderByCodeParams) (Order, error) {
+	row := q.db.QueryRow(ctx, getOrderByCode, arg.TenantID, arg.Code)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.CustomerID,
+		&i.ChannelID,
+		&i.ExternalOrderRef,
+		&i.Status,
+		&i.PaymentStatus,
+		&i.FulfillmentType,
+		&i.PickupAt,
+		&i.ProductionStartAt,
+		&i.ProductionDate,
+		&i.ShoppingCutoffAt,
+		&i.DpDueAt,
+		&i.BalanceDueAt,
+		&i.SubtotalIdr,
+		&i.TaxIdr,
+		&i.ShippingIdr,
+		&i.TotalIdr,
+		&i.DpRequiredIdr,
+		&i.FullPaymentRequired,
+		&i.TermsVersion,
+		&i.TermsAcceptedAt,
+		&i.IdempotencyKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Code,
+		&i.Notes,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CustomerEmail,
+	)
+	return i, err
+}
+
 const insertOrder = `-- name: InsertOrder :one
 insert into orders (id, tenant_id, customer_id, channel_id, code, status, payment_status, fulfillment_type,
                     pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at,
@@ -429,6 +477,90 @@ func (q *Queries) ListCustomerOrders(ctx context.Context, arg ListCustomerOrders
 	return items, nil
 }
 
+const listStaffOrders = `-- name: ListStaffOrders :many
+select o.id, o.code, o.status, o.payment_status, o.pickup_at, o.production_date, o.total_idr,
+       o.customer_name, o.customer_phone, o.created_at,
+       (select count(*) from order_items i where i.order_id = o.id)::int as item_count,
+       coalesce((select i.product_name || ' ' || i.variant_name from order_items i
+                 where i.order_id = o.id order by i.product_name, i.variant_name, i.id limit 1), '')::text as first_item
+from orders o
+where o.tenant_id = $1
+  and o.production_date between $2 and $3
+  and (cardinality($4::text[]) = 0 or o.status = any($4::text[]))
+  and ($5::text = ''
+       or o.code = upper($5::text)
+       or o.customer_phone like '%' || $5::text || '%'
+       or o.customer_name ilike '%' || $5::text || '%')
+order by o.pickup_at, o.code
+limit $6
+`
+
+type ListStaffOrdersParams struct {
+	TenantID uuid.UUID
+	FromDate pgtype.Date
+	ToDate   pgtype.Date
+	Statuses []string
+	Query    string
+	MaxRows  int32
+}
+
+type ListStaffOrdersRow struct {
+	ID             uuid.UUID
+	Code           string
+	Status         string
+	PaymentStatus  string
+	PickupAt       time.Time
+	ProductionDate pgtype.Date
+	TotalIdr       int64
+	CustomerName   string
+	CustomerPhone  string
+	CreatedAt      time.Time
+	ItemCount      int32
+	FirstItem      string
+}
+
+// The kitchen's and the owner's list: orders produced from..to, in any of
+// statuses (all when empty), matching query by code, phone, or name.
+func (q *Queries) ListStaffOrders(ctx context.Context, arg ListStaffOrdersParams) ([]ListStaffOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listStaffOrders,
+		arg.TenantID,
+		arg.FromDate,
+		arg.ToDate,
+		arg.Statuses,
+		arg.Query,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaffOrdersRow{}
+	for rows.Next() {
+		var i ListStaffOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Status,
+			&i.PaymentStatus,
+			&i.PickupAt,
+			&i.ProductionDate,
+			&i.TotalIdr,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CreatedAt,
+			&i.ItemCount,
+			&i.FirstItem,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCustomerOrders = `-- name: LockCustomerOrders :exec
 select pg_advisory_xact_lock(hashtextextended('orders:' || $1::text, 0))
 `
@@ -438,6 +570,57 @@ select pg_advisory_xact_lock(hashtextextended('orders:' || $1::text, 0))
 func (q *Queries) LockCustomerOrders(ctx context.Context, customerID string) error {
 	_, err := q.db.Exec(ctx, lockCustomerOrders, customerID)
 	return err
+}
+
+const lockOrderByCode = `-- name: LockOrderByCode :one
+select id, tenant_id, customer_id, channel_id, external_order_ref, status, payment_status, fulfillment_type, pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at, subtotal_idr, tax_idr, shipping_idr, total_idr, dp_required_idr, full_payment_required, terms_version, terms_accepted_at, idempotency_key, created_at, updated_at, code, notes, customer_name, customer_phone, customer_email from orders
+where tenant_id = $1 and code = $2
+for update
+`
+
+type LockOrderByCodeParams struct {
+	TenantID uuid.UUID
+	Code     string
+}
+
+// Staff actions on an order hold its row until the transaction ends, so two
+// people acting on it at once take turns.
+func (q *Queries) LockOrderByCode(ctx context.Context, arg LockOrderByCodeParams) (Order, error) {
+	row := q.db.QueryRow(ctx, lockOrderByCode, arg.TenantID, arg.Code)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.CustomerID,
+		&i.ChannelID,
+		&i.ExternalOrderRef,
+		&i.Status,
+		&i.PaymentStatus,
+		&i.FulfillmentType,
+		&i.PickupAt,
+		&i.ProductionStartAt,
+		&i.ProductionDate,
+		&i.ShoppingCutoffAt,
+		&i.DpDueAt,
+		&i.BalanceDueAt,
+		&i.SubtotalIdr,
+		&i.TaxIdr,
+		&i.ShippingIdr,
+		&i.TotalIdr,
+		&i.DpRequiredIdr,
+		&i.FullPaymentRequired,
+		&i.TermsVersion,
+		&i.TermsAcceptedAt,
+		&i.IdempotencyKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Code,
+		&i.Notes,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CustomerEmail,
+	)
+	return i, err
 }
 
 const orderItems = `-- name: OrderItems :many
@@ -480,4 +663,29 @@ func (q *Queries) OrderItems(ctx context.Context, arg OrderItemsParams) ([]Order
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateOrderStatus = `-- name: UpdateOrderStatus :exec
+update orders
+set status = $1, payment_status = $2, updated_at = $3
+where tenant_id = $4 and id = $5
+`
+
+type UpdateOrderStatusParams struct {
+	Status        string
+	PaymentStatus string
+	Now           time.Time
+	TenantID      uuid.UUID
+	ID            uuid.UUID
+}
+
+func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error {
+	_, err := q.db.Exec(ctx, updateOrderStatus,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.Now,
+		arg.TenantID,
+		arg.ID,
+	)
+	return err
 }

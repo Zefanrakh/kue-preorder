@@ -14,9 +14,10 @@ import (
 
 const addPayment = `-- name: AddPayment :exec
 insert into payments (id, tenant_id, order_id, kind, provider, method, amount_idr, fee_idr, status,
-                      expires_at, created_at, updated_at)
+                      expires_at, paid_at, raw, created_at, updated_at)
 values ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $11)
+        $7, $8, $9, $10, $11,
+        $12, $13, $13)
 `
 
 type AddPaymentParams struct {
@@ -30,6 +31,8 @@ type AddPaymentParams struct {
 	FeeIdr    int64
 	Status    string
 	ExpiresAt *time.Time
+	PaidAt    *time.Time
+	Raw       []byte
 	Now       time.Time
 }
 
@@ -45,9 +48,33 @@ func (q *Queries) AddPayment(ctx context.Context, arg AddPaymentParams) error {
 		arg.FeeIdr,
 		arg.Status,
 		arg.ExpiresAt,
+		arg.PaidAt,
+		arg.Raw,
 		arg.Now,
 	)
 	return err
+}
+
+const expirePendingPayments = `-- name: ExpirePendingPayments :execrows
+update payments
+set status = 'expired', updated_at = $1
+where tenant_id = $2 and order_id = $3 and status = 'pending'
+`
+
+type ExpirePendingPaymentsParams struct {
+	Now      time.Time
+	TenantID uuid.UUID
+	OrderID  uuid.UUID
+}
+
+// Closes an order's open invoices once they are no longer wanted: paid
+// another way, or the order ended.
+func (q *Queries) ExpirePendingPayments(ctx context.Context, arg ExpirePendingPaymentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expirePendingPayments, arg.Now, arg.TenantID, arg.OrderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getPaymentPolicy = `-- name: GetPaymentPolicy :one

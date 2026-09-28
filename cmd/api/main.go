@@ -150,6 +150,7 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 	schedulingRepo := schedulingpg.NewRepository(database)
 	ordersRepo := orderspg.NewRepository(database)
 	paymentsRepo := paymentspg.NewRepository(database)
+	ledger := payments.NewLedger(paymentsRepo)
 	return handlerDeps{
 		logger:     logger,
 		identity:   identitySvc,
@@ -159,8 +160,11 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 		checkout: orders.NewCheckout(orders.Deps{
 			Catalog: catalog.NewReader(catalogRepo), Schedules: scheduling.NewReader(schedulingRepo),
 			Policies: payments.NewReader(paymentsRepo), Repo: ordersRepo, Customers: identitySvc,
-			Ledger: payments.NewLedger(paymentsRepo), Provider: provider, Tx: database,
+			Ledger: ledger, Provider: provider, Tx: database,
 			Tenants: tenants, Clock: clk, Logger: logger,
+		}),
+		orderAdmin: orders.NewAdmin(orders.AdminDeps{
+			Repo: ordersRepo, Ledger: ledger, Principals: identitySvc, Tx: database, Clock: clk,
 		}),
 		db: database,
 	}
@@ -210,6 +214,7 @@ type handlerDeps struct {
 	storefront     *catalog.Storefront
 	scheduling     *scheduling.Service
 	checkout       *orders.Checkout
+	orderAdmin     *orders.Admin
 	limiter        *ratelimit.Limiter
 	clientIPHeader string
 	sendSMSHook    http.Handler // nil: not served
@@ -268,6 +273,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(schedulingv1connect.NewScheduleAdminServiceHandler(schedulingrpc.NewHandler(d.scheduling, d.logger), connectOpts...))
 	mux.Handle(ordersv1connect.NewCheckoutServiceHandler(ordersrpc.NewCheckoutHandler(d.checkout, d.logger), connectOpts...))
 	mux.Handle(ordersv1connect.NewCustomerOrderServiceHandler(ordersrpc.NewCustomerOrderHandler(d.checkout, d.logger), connectOpts...))
+	mux.Handle(ordersv1connect.NewOrderAdminServiceHandler(ordersrpc.NewAdminHandler(d.orderAdmin, d.logger), connectOpts...))
 
 	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil

@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kuepreorder/orders/v1/orders.proto.
  */
 export const file_kuepreorder_orders_v1_orders: GenFile = /*@__PURE__*/
-  fileDesc("CiJrdWVwcmVvcmRlci9vcmRlcnMvdjEvb3JkZXJzLnByb3RvEhVrdWVwcmVvcmRlci5vcmRlcnMudjEiyQIKB1BheW1lbnQSCgoCaWQYASABKAkSMAoEa2luZBgCIAEoDjIiLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QYXltZW50S2luZBISCgphbW91bnRfaWRyGAMgASgDEg8KB2ZlZV9pZHIYBCABKAMSMgoFc3RhdGUYBSABKA4yIy5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudFN0YXRlEhQKDGNoZWNrb3V0X3VybBgGIAEoCRIuCgpleHBpcmVzX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCgdwYWlkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI0CgZtZXRob2QYCSABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudE1ldGhvZCLTAwoFT3JkZXISCgoCaWQYASABKAkSDAoEY29kZRgCIAEoCRIyCgZzdGF0dXMYAyABKA4yIi5rdWVwcmVvcmRlci5vcmRlcnMudjEuT3JkZXJTdGF0dXMSPAoOcGF5bWVudF9zdGF0dXMYBCABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudFN0YXR1cxIwCgVpdGVtcxgFIAMoCzIhLmt1ZXByZW9yZGVyLm9yZGVycy52MS5RdW90ZWRJdGVtEhQKDHN1YnRvdGFsX2lkchgGIAEoAxIPCgd0YXhfaWRyGAcgASgDEhEKCXRvdGFsX2lkchgIIAEoAxIXCg9kcF9yZXF1aXJlZF9pZHIYCSABKAMSMQoIc2NoZWR1bGUYCiABKAsyHy5rdWVwcmVvcmRlci5vcmRlcnMudjEuU2NoZWR1bGUSDQoFbm90ZXMYCyABKAkSMAoIcGF5bWVudHMYDCADKAsyHi5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudBIVCg1jdXN0b21lcl9uYW1lGA0gASgJEi4KCmNyZWF0ZWRfYXQYDiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIrQCCgxPcmRlclN1bW1hcnkSCgoCaWQYASABKAkSDAoEY29kZRgCIAEoCRIyCgZzdGF0dXMYAyABKA4yIi5rdWVwcmVvcmRlci5vcmRlcnMudjEuT3JkZXJTdGF0dXMSPAoOcGF5bWVudF9zdGF0dXMYBCABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudFN0YXR1cxItCglwaWNrdXBfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhEKCXRvdGFsX2lkchgGIAEoAxISCgpmaXJzdF9pdGVtGAcgASgJEhIKCml0ZW1fY291bnQYCCABKAUSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiswIKEVBsYWNlT3JkZXJSZXF1ZXN0Ei4KBWl0ZW1zGAEgAygLMh8ua3VlcHJlb3JkZXIub3JkZXJzLnYxLkNhcnRJdGVtEi0KCXBpY2t1cF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEwoLcGF5X2luX2Z1bGwYAyABKAgSFQoNdGVybXNfdmVyc2lvbhgEIAEoCRIVCg1jdXN0b21lcl9uYW1lGAUgASgJEhYKDmN1c3RvbWVyX2VtYWlsGAYgASgJEg0KBW5vdGVzGAcgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgIIAEoCRI8Cg5wYXltZW50X21ldGhvZBgJIAEoDjIkLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QYXltZW50TWV0aG9kIkEKElBsYWNlT3JkZXJSZXNwb25zZRIrCgVvcmRlchgBIAEoCzIcLmt1ZXByZW9yZGVyLm9yZGVycy52MS5PcmRlciIVChNMaXN0TXlPcmRlcnNSZXF1ZXN0IksKFExpc3RNeU9yZGVyc1Jlc3BvbnNlEjMKBm9yZGVycxgBIAMoCzIjLmt1ZXByZW9yZGVyLm9yZGVycy52MS5PcmRlclN1bW1hcnkiIQoRR2V0TXlPcmRlclJlcXVlc3QSDAoEY29kZRgBIAEoCSJBChJHZXRNeU9yZGVyUmVzcG9uc2USKwoFb3JkZXIYASABKAsyHC5rdWVwcmVvcmRlci5vcmRlcnMudjEuT3JkZXIqkgIKC09yZGVyU3RhdHVzEhwKGE9SREVSX1NUQVRVU19VTlNQRUNJRklFRBAAEhwKGE9SREVSX1NUQVRVU19BV0FJVElOR19EUBABEhoKFk9SREVSX1NUQVRVU19DT05GSVJNRUQQAhIYChRPUkRFUl9TVEFUVVNfRVhQSVJFRBADEh4KGk9SREVSX1NUQVRVU19JTl9QUk9EVUNUSU9OEAQSFgoST1JERVJfU1RBVFVTX1JFQURZEAUSIQodT1JERVJfU1RBVFVTX09VVF9GT1JfREVMSVZFUlkQBhIaChZPUkRFUl9TVEFUVVNfQ09NUExFVEVEEAcSGgoWT1JERVJfU1RBVFVTX0NBTkNFTExFRBAIKsIBCg1QYXltZW50U3RhdHVzEh4KGlBBWU1FTlRfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGQoVUEFZTUVOVF9TVEFUVVNfVU5QQUlEEAESGgoWUEFZTUVOVF9TVEFUVVNfRFBfUEFJRBACEh8KG1BBWU1FTlRfU1RBVFVTX1BBSURfSU5fRlVMTBADEhwKGFBBWU1FTlRfU1RBVFVTX0ZPUkZFSVRFRBAEEhsKF1BBWU1FTlRfU1RBVFVTX1JFRlVOREVEEAUqigEKC1BheW1lbnRLaW5kEhwKGFBBWU1FTlRfS0lORF9VTlNQRUNJRklFRBAAEhMKD1BBWU1FTlRfS0lORF9EUBABEhgKFFBBWU1FTlRfS0lORF9CQUxBTkNFEAISFQoRUEFZTUVOVF9LSU5EX0ZVTEwQAxIXChNQQVlNRU5UX0tJTkRfUkVGVU5EEAQqlQEKDFBheW1lbnRTdGF0ZRIdChlQQVlNRU5UX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVUEFZTUVOVF9TVEFURV9QRU5ESU5HEAESFgoSUEFZTUVOVF9TVEFURV9QQUlEEAISGQoVUEFZTUVOVF9TVEFURV9FWFBJUkVEEAMSGAoUUEFZTUVOVF9TVEFURV9GQUlMRUQQBDLPAgoUQ3VzdG9tZXJPcmRlclNlcnZpY2USYQoKUGxhY2VPcmRlchIoLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QbGFjZU9yZGVyUmVxdWVzdBopLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QbGFjZU9yZGVyUmVzcG9uc2USbAoMTGlzdE15T3JkZXJzEioua3VlcHJlb3JkZXIub3JkZXJzLnYxLkxpc3RNeU9yZGVyc1JlcXVlc3QaKy5rdWVwcmVvcmRlci5vcmRlcnMudjEuTGlzdE15T3JkZXJzUmVzcG9uc2UiA5ACARJmCgpHZXRNeU9yZGVyEigua3VlcHJlb3JkZXIub3JkZXJzLnYxLkdldE15T3JkZXJSZXF1ZXN0Gikua3VlcHJlb3JkZXIub3JkZXJzLnYxLkdldE15T3JkZXJSZXNwb25zZSIDkAICQusBChljb20ua3VlcHJlb3JkZXIub3JkZXJzLnYxQgtPcmRlcnNQcm90b1ABWktnaXRodWIuY29tL1plZmFucmFraC9rdWUtcHJlb3JkZXIvYXBpL2dlbi9nby9rdWVwcmVvcmRlci9vcmRlcnMvdjE7b3JkZXJzdjGiAgNLT1iqAhVLdWVwcmVvcmRlci5PcmRlcnMuVjHKAhVLdWVwcmVvcmRlclxPcmRlcnNcVjHiAiFLdWVwcmVvcmRlclxPcmRlcnNcVjFcR1BCTWV0YWRhdGHqAhdLdWVwcmVvcmRlcjo6T3JkZXJzOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp, file_kuepreorder_orders_v1_checkout]);
+  fileDesc("CiJrdWVwcmVvcmRlci9vcmRlcnMvdjEvb3JkZXJzLnByb3RvEhVrdWVwcmVvcmRlci5vcmRlcnMudjEi/QIKB1BheW1lbnQSCgoCaWQYASABKAkSMAoEa2luZBgCIAEoDjIiLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QYXltZW50S2luZBISCgphbW91bnRfaWRyGAMgASgDEg8KB2ZlZV9pZHIYBCABKAMSMgoFc3RhdGUYBSABKA4yIy5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudFN0YXRlEhQKDGNoZWNrb3V0X3VybBgGIAEoCRIuCgpleHBpcmVzX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCgdwYWlkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI0CgZtZXRob2QYCSABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudE1ldGhvZBIyCgZtYW51YWwYCiABKAsyIi5rdWVwcmVvcmRlci5vcmRlcnMudjEuTWFudWFsUHJvb2YiQwoLTWFudWFsUHJvb2YSEQoJcmVmZXJlbmNlGAEgASgJEgwKBG5vdGUYAiABKAkSEwoLcmVjb3JkZWRfYnkYAyABKAkigwQKBU9yZGVyEgoKAmlkGAEgASgJEgwKBGNvZGUYAiABKAkSMgoGc3RhdHVzGAMgASgOMiIua3VlcHJlb3JkZXIub3JkZXJzLnYxLk9yZGVyU3RhdHVzEjwKDnBheW1lbnRfc3RhdHVzGAQgASgOMiQua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBheW1lbnRTdGF0dXMSMAoFaXRlbXMYBSADKAsyIS5rdWVwcmVvcmRlci5vcmRlcnMudjEuUXVvdGVkSXRlbRIUCgxzdWJ0b3RhbF9pZHIYBiABKAMSDwoHdGF4X2lkchgHIAEoAxIRCgl0b3RhbF9pZHIYCCABKAMSFwoPZHBfcmVxdWlyZWRfaWRyGAkgASgDEjEKCHNjaGVkdWxlGAogASgLMh8ua3VlcHJlb3JkZXIub3JkZXJzLnYxLlNjaGVkdWxlEg0KBW5vdGVzGAsgASgJEjAKCHBheW1lbnRzGAwgAygLMh4ua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBheW1lbnQSFQoNY3VzdG9tZXJfbmFtZRgNIAEoCRIuCgpjcmVhdGVkX2F0GA4gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIWCg5jdXN0b21lcl9waG9uZRgPIAEoCRIWCg5jdXN0b21lcl9lbWFpbBgQIAEoCSK0AgoMT3JkZXJTdW1tYXJ5EgoKAmlkGAEgASgJEgwKBGNvZGUYAiABKAkSMgoGc3RhdHVzGAMgASgOMiIua3VlcHJlb3JkZXIub3JkZXJzLnYxLk9yZGVyU3RhdHVzEjwKDnBheW1lbnRfc3RhdHVzGAQgASgOMiQua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBheW1lbnRTdGF0dXMSLQoJcGlja3VwX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIRCgl0b3RhbF9pZHIYBiABKAMSEgoKZmlyc3RfaXRlbRgHIAEoCRISCgppdGVtX2NvdW50GAggASgFEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIrMCChFQbGFjZU9yZGVyUmVxdWVzdBIuCgVpdGVtcxgBIAMoCzIfLmt1ZXByZW9yZGVyLm9yZGVycy52MS5DYXJ0SXRlbRItCglwaWNrdXBfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC3BheV9pbl9mdWxsGAMgASgIEhUKDXRlcm1zX3ZlcnNpb24YBCABKAkSFQoNY3VzdG9tZXJfbmFtZRgFIAEoCRIWCg5jdXN0b21lcl9lbWFpbBgGIAEoCRINCgVub3RlcxgHIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYCCABKAkSPAoOcGF5bWVudF9tZXRob2QYCSABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGF5bWVudE1ldGhvZCJBChJQbGFjZU9yZGVyUmVzcG9uc2USKwoFb3JkZXIYASABKAsyHC5rdWVwcmVvcmRlci5vcmRlcnMudjEuT3JkZXIiFQoTTGlzdE15T3JkZXJzUmVxdWVzdCJLChRMaXN0TXlPcmRlcnNSZXNwb25zZRIzCgZvcmRlcnMYASADKAsyIy5rdWVwcmVvcmRlci5vcmRlcnMudjEuT3JkZXJTdW1tYXJ5IiEKEUdldE15T3JkZXJSZXF1ZXN0EgwKBGNvZGUYASABKAkiQQoSR2V0TXlPcmRlclJlc3BvbnNlEisKBW9yZGVyGAEgASgLMhwua3VlcHJlb3JkZXIub3JkZXJzLnYxLk9yZGVyKpICCgtPcmRlclN0YXR1cxIcChhPUkRFUl9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhPUkRFUl9TVEFUVVNfQVdBSVRJTkdfRFAQARIaChZPUkRFUl9TVEFUVVNfQ09ORklSTUVEEAISGAoUT1JERVJfU1RBVFVTX0VYUElSRUQQAxIeChpPUkRFUl9TVEFUVVNfSU5fUFJPRFVDVElPThAEEhYKEk9SREVSX1NUQVRVU19SRUFEWRAFEiEKHU9SREVSX1NUQVRVU19PVVRfRk9SX0RFTElWRVJZEAYSGgoWT1JERVJfU1RBVFVTX0NPTVBMRVRFRBAHEhoKFk9SREVSX1NUQVRVU19DQU5DRUxMRUQQCCrCAQoNUGF5bWVudFN0YXR1cxIeChpQQVlNRU5UX1NUQVRVU19VTlNQRUNJRklFRBAAEhkKFVBBWU1FTlRfU1RBVFVTX1VOUEFJRBABEhoKFlBBWU1FTlRfU1RBVFVTX0RQX1BBSUQQAhIfChtQQVlNRU5UX1NUQVRVU19QQUlEX0lOX0ZVTEwQAxIcChhQQVlNRU5UX1NUQVRVU19GT1JGRUlURUQQBBIbChdQQVlNRU5UX1NUQVRVU19SRUZVTkRFRBAFKooBCgtQYXltZW50S2luZBIcChhQQVlNRU5UX0tJTkRfVU5TUEVDSUZJRUQQABITCg9QQVlNRU5UX0tJTkRfRFAQARIYChRQQVlNRU5UX0tJTkRfQkFMQU5DRRACEhUKEVBBWU1FTlRfS0lORF9GVUxMEAMSFwoTUEFZTUVOVF9LSU5EX1JFRlVORBAEKpUBCgxQYXltZW50U3RhdGUSHQoZUEFZTUVOVF9TVEFURV9VTlNQRUNJRklFRBAAEhkKFVBBWU1FTlRfU1RBVEVfUEVORElORxABEhYKElBBWU1FTlRfU1RBVEVfUEFJRBACEhkKFVBBWU1FTlRfU1RBVEVfRVhQSVJFRBADEhgKFFBBWU1FTlRfU1RBVEVfRkFJTEVEEAQyzwIKFEN1c3RvbWVyT3JkZXJTZXJ2aWNlEmEKClBsYWNlT3JkZXISKC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGxhY2VPcmRlclJlcXVlc3QaKS5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGxhY2VPcmRlclJlc3BvbnNlEmwKDExpc3RNeU9yZGVycxIqLmt1ZXByZW9yZGVyLm9yZGVycy52MS5MaXN0TXlPcmRlcnNSZXF1ZXN0Gisua3VlcHJlb3JkZXIub3JkZXJzLnYxLkxpc3RNeU9yZGVyc1Jlc3BvbnNlIgOQAgESZgoKR2V0TXlPcmRlchIoLmt1ZXByZW9yZGVyLm9yZGVycy52MS5HZXRNeU9yZGVyUmVxdWVzdBopLmt1ZXByZW9yZGVyLm9yZGVycy52MS5HZXRNeU9yZGVyUmVzcG9uc2UiA5ACAkLrAQoZY29tLmt1ZXByZW9yZGVyLm9yZGVycy52MUILT3JkZXJzUHJvdG9QAVpLZ2l0aHViLmNvbS9aZWZhbnJha2gva3VlLXByZW9yZGVyL2FwaS9nZW4vZ28va3VlcHJlb3JkZXIvb3JkZXJzL3YxO29yZGVyc3YxogIDS09YqgIVS3VlcHJlb3JkZXIuT3JkZXJzLlYxygIVS3VlcHJlb3JkZXJcT3JkZXJzXFYx4gIhS3VlcHJlb3JkZXJcT3JkZXJzXFYxXEdQQk1ldGFkYXRh6gIXS3VlcHJlb3JkZXI6Ok9yZGVyczo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_kuepreorder_orders_v1_checkout]);
 
 /**
  * @generated from message kuepreorder.orders.v1.Payment
@@ -72,6 +72,14 @@ export type Payment = Message<"kuepreorder.orders.v1.Payment"> & {
    * @generated from field: kuepreorder.orders.v1.PaymentMethod method = 9;
    */
   method: PaymentMethod;
+
+  /**
+   * The proof of a manual payment or refund. Set for staff only
+   * (OrderAdminService); customers never see the shop's notes.
+   *
+   * @generated from field: kuepreorder.orders.v1.ManualProof manual = 10;
+   */
+  manual?: ManualProof | undefined;
 };
 
 /**
@@ -80,6 +88,40 @@ export type Payment = Message<"kuepreorder.orders.v1.Payment"> & {
  */
 export const PaymentSchema: GenMessage<Payment> = /*@__PURE__*/
   messageDesc(file_kuepreorder_orders_v1_orders, 0);
+
+/**
+ * ManualProof is what the owner recorded of money that moved outside the
+ * payment provider.
+ *
+ * @generated from message kuepreorder.orders.v1.ManualProof
+ */
+export type ManualProof = Message<"kuepreorder.orders.v1.ManualProof"> & {
+  /**
+   * Such as the transfer's reference number.
+   *
+   * @generated from field: string reference = 1;
+   */
+  reference: string;
+
+  /**
+   * @generated from field: string note = 2;
+   */
+  note: string;
+
+  /**
+   * The Supabase Auth user id of the staff member who recorded it.
+   *
+   * @generated from field: string recorded_by = 3;
+   */
+  recordedBy: string;
+};
+
+/**
+ * Describes the message kuepreorder.orders.v1.ManualProof.
+ * Use `create(ManualProofSchema)` to create a new message.
+ */
+export const ManualProofSchema: GenMessage<ManualProof> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_orders_v1_orders, 1);
 
 /**
  * @generated from message kuepreorder.orders.v1.Order
@@ -162,6 +204,20 @@ export type Order = Message<"kuepreorder.orders.v1.Order"> & {
    * @generated from field: google.protobuf.Timestamp created_at = 14;
    */
   createdAt?: Timestamp | undefined;
+
+  /**
+   * The customer's WhatsApp number at checkout, E.164.
+   *
+   * @generated from field: string customer_phone = 15;
+   */
+  customerPhone: string;
+
+  /**
+   * Empty when the customer gave none.
+   *
+   * @generated from field: string customer_email = 16;
+   */
+  customerEmail: string;
 };
 
 /**
@@ -169,7 +225,7 @@ export type Order = Message<"kuepreorder.orders.v1.Order"> & {
  * Use `create(OrderSchema)` to create a new message.
  */
 export const OrderSchema: GenMessage<Order> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 1);
+  messageDesc(file_kuepreorder_orders_v1_orders, 2);
 
 /**
  * @generated from message kuepreorder.orders.v1.OrderSummary
@@ -228,7 +284,7 @@ export type OrderSummary = Message<"kuepreorder.orders.v1.OrderSummary"> & {
  * Use `create(OrderSummarySchema)` to create a new message.
  */
 export const OrderSummarySchema: GenMessage<OrderSummary> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 2);
+  messageDesc(file_kuepreorder_orders_v1_orders, 3);
 
 /**
  * @generated from message kuepreorder.orders.v1.PlaceOrderRequest
@@ -301,7 +357,7 @@ export type PlaceOrderRequest = Message<"kuepreorder.orders.v1.PlaceOrderRequest
  * Use `create(PlaceOrderRequestSchema)` to create a new message.
  */
 export const PlaceOrderRequestSchema: GenMessage<PlaceOrderRequest> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 3);
+  messageDesc(file_kuepreorder_orders_v1_orders, 4);
 
 /**
  * @generated from message kuepreorder.orders.v1.PlaceOrderResponse
@@ -318,7 +374,7 @@ export type PlaceOrderResponse = Message<"kuepreorder.orders.v1.PlaceOrderRespon
  * Use `create(PlaceOrderResponseSchema)` to create a new message.
  */
 export const PlaceOrderResponseSchema: GenMessage<PlaceOrderResponse> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 4);
+  messageDesc(file_kuepreorder_orders_v1_orders, 5);
 
 /**
  * @generated from message kuepreorder.orders.v1.ListMyOrdersRequest
@@ -331,7 +387,7 @@ export type ListMyOrdersRequest = Message<"kuepreorder.orders.v1.ListMyOrdersReq
  * Use `create(ListMyOrdersRequestSchema)` to create a new message.
  */
 export const ListMyOrdersRequestSchema: GenMessage<ListMyOrdersRequest> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 5);
+  messageDesc(file_kuepreorder_orders_v1_orders, 6);
 
 /**
  * @generated from message kuepreorder.orders.v1.ListMyOrdersResponse
@@ -348,7 +404,7 @@ export type ListMyOrdersResponse = Message<"kuepreorder.orders.v1.ListMyOrdersRe
  * Use `create(ListMyOrdersResponseSchema)` to create a new message.
  */
 export const ListMyOrdersResponseSchema: GenMessage<ListMyOrdersResponse> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 6);
+  messageDesc(file_kuepreorder_orders_v1_orders, 7);
 
 /**
  * @generated from message kuepreorder.orders.v1.GetMyOrderRequest
@@ -365,7 +421,7 @@ export type GetMyOrderRequest = Message<"kuepreorder.orders.v1.GetMyOrderRequest
  * Use `create(GetMyOrderRequestSchema)` to create a new message.
  */
 export const GetMyOrderRequestSchema: GenMessage<GetMyOrderRequest> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 7);
+  messageDesc(file_kuepreorder_orders_v1_orders, 8);
 
 /**
  * @generated from message kuepreorder.orders.v1.GetMyOrderResponse
@@ -382,7 +438,7 @@ export type GetMyOrderResponse = Message<"kuepreorder.orders.v1.GetMyOrderRespon
  * Use `create(GetMyOrderResponseSchema)` to create a new message.
  */
 export const GetMyOrderResponseSchema: GenMessage<GetMyOrderResponse> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_orders, 8);
+  messageDesc(file_kuepreorder_orders_v1_orders, 9);
 
 /**
  * OrderStatus is where an order is in its life (§13).
