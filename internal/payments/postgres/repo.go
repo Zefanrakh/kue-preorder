@@ -47,14 +47,33 @@ func (r *Repository) Policy(ctx context.Context, tenantID uuid.UUID) (payments.P
 	return payments.Policy{
 		DPMinPercent: row.DpMinPercent, DPCoversIngredientCost: row.DpCoversIngredientCost,
 		BalanceDueHoursBefore: row.BalanceDueHoursBefore, DPInvoiceValidMinutes: row.DpInvoiceValidMinutes,
-		UpdatedAt: row.UpdatedAt,
+		DPMinTotalIDR: row.DpMinTotalIdr, MinOrderIDR: row.MinOrderIdr, UpdatedAt: row.UpdatedAt,
 	}, nil
+}
+
+// FeeRules implements payments.Repository.
+func (r *Repository) FeeRules(ctx context.Context, tenantID uuid.UUID) (map[payments.Method]payments.FeeRule, error) {
+	rows, err := r.q(ctx).ListPaymentMethodFees(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[payments.Method]payments.FeeRule, len(rows))
+	for _, row := range rows {
+		m := payments.Method(row.Method)
+		out[m] = payments.FeeRule{Method: m, FixedIDR: row.FixedIdr, RateBPS: row.RateBps, VATIncluded: row.VatIncluded, Enabled: row.Enabled}
+	}
+	return out, nil
 }
 
 // AddPayment implements payments.LedgerRepository.
 func (r *Repository) AddPayment(ctx context.Context, tenantID uuid.UUID, p payments.Payment, at time.Time) error {
+	var method *string
+	if p.Method != "" {
+		m := string(p.Method)
+		method = &m
+	}
 	return r.q(ctx).AddPayment(ctx, AddPaymentParams{
-		ID: p.ID, TenantID: tenantID, OrderID: p.OrderID, Kind: string(p.Kind), Provider: p.Provider,
+		ID: p.ID, TenantID: tenantID, OrderID: p.OrderID, Kind: string(p.Kind), Provider: p.Provider, Method: method,
 		AmountIdr: p.AmountIDR, FeeIdr: p.FeeIDR, Status: string(p.State), ExpiresAt: p.ExpiresAt, Now: at,
 	})
 }
@@ -82,7 +101,7 @@ func (r *Repository) OrderPayments(ctx context.Context, tenantID, orderID uuid.U
 	out := make([]payments.Payment, len(rows))
 	for i, row := range rows {
 		out[i] = payments.Payment{
-			ID: row.ID, OrderID: row.OrderID, Kind: payments.Kind(row.Kind), Provider: row.Provider,
+			ID: row.ID, OrderID: row.OrderID, Kind: payments.Kind(row.Kind), Provider: row.Provider, Method: payments.Method(deref(row.Method)),
 			ExternalID: deref(row.ExternalID), AmountIDR: row.AmountIdr, FeeIDR: row.FeeIdr,
 			State: payments.State(row.Status), CheckoutURL: deref(row.CheckoutUrl),
 			ExpiresAt: row.ExpiresAt, PaidAt: row.PaidAt, CreatedAt: row.CreatedAt,

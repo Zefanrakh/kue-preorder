@@ -13,10 +13,10 @@ import (
 )
 
 const addPayment = `-- name: AddPayment :exec
-insert into payments (id, tenant_id, order_id, kind, provider, amount_idr, fee_idr, status,
+insert into payments (id, tenant_id, order_id, kind, provider, method, amount_idr, fee_idr, status,
                       expires_at, created_at, updated_at)
-values ($1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10, $10)
+values ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $11)
 `
 
 type AddPaymentParams struct {
@@ -25,6 +25,7 @@ type AddPaymentParams struct {
 	OrderID   uuid.UUID
 	Kind      string
 	Provider  string
+	Method    *string
 	AmountIdr int64
 	FeeIdr    int64
 	Status    string
@@ -39,6 +40,7 @@ func (q *Queries) AddPayment(ctx context.Context, arg AddPaymentParams) error {
 		arg.OrderID,
 		arg.Kind,
 		arg.Provider,
+		arg.Method,
 		arg.AmountIdr,
 		arg.FeeIdr,
 		arg.Status,
@@ -50,7 +52,7 @@ func (q *Queries) AddPayment(ctx context.Context, arg AddPaymentParams) error {
 
 const getPaymentPolicy = `-- name: GetPaymentPolicy :one
 
-select tenant_id, dp_min_percent, dp_covers_ingredient_cost, balance_due_hours_before, dp_invoice_valid_minutes, updated_at from payment_policies
+select tenant_id, dp_min_percent, dp_covers_ingredient_cost, balance_due_hours_before, dp_invoice_valid_minutes, updated_at, dp_min_total_idr, min_order_idr from payment_policies
 where tenant_id = $1
 `
 
@@ -66,12 +68,48 @@ func (q *Queries) GetPaymentPolicy(ctx context.Context, tenantID uuid.UUID) (Pay
 		&i.BalanceDueHoursBefore,
 		&i.DpInvoiceValidMinutes,
 		&i.UpdatedAt,
+		&i.DpMinTotalIdr,
+		&i.MinOrderIdr,
 	)
 	return i, err
 }
 
+const listPaymentMethodFees = `-- name: ListPaymentMethodFees :many
+select tenant_id, method, fixed_idr, rate_bps, vat_included, enabled, updated_at from payment_method_fees
+where tenant_id = $1
+order by method
+`
+
+func (q *Queries) ListPaymentMethodFees(ctx context.Context, tenantID uuid.UUID) ([]PaymentMethodFee, error) {
+	rows, err := q.db.Query(ctx, listPaymentMethodFees, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentMethodFee{}
+	for rows.Next() {
+		var i PaymentMethodFee
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.Method,
+			&i.FixedIdr,
+			&i.RateBps,
+			&i.VatIncluded,
+			&i.Enabled,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const orderPayments = `-- name: OrderPayments :many
-select id, tenant_id, order_id, kind, provider, external_id, amount_idr, fee_idr, status, expires_at, paid_at, raw, created_at, updated_at, checkout_url from payments
+select id, tenant_id, order_id, kind, provider, external_id, amount_idr, fee_idr, status, expires_at, paid_at, raw, created_at, updated_at, checkout_url, method from payments
 where tenant_id = $1 and order_id = $2
 order by created_at, id
 `
@@ -106,6 +144,7 @@ func (q *Queries) OrderPayments(ctx context.Context, arg OrderPaymentsParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CheckoutUrl,
+			&i.Method,
 		); err != nil {
 			return nil, err
 		}

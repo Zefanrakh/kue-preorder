@@ -270,9 +270,11 @@ type Payment struct {
 	FeeIdr int64        `protobuf:"varint,4,opt,name=fee_idr,json=feeIdr,proto3" json:"fee_idr,omitempty"`
 	State  PaymentState `protobuf:"varint,5,opt,name=state,proto3,enum=kuepreorder.orders.v1.PaymentState" json:"state,omitempty"`
 	// Where to pay; empty until the invoice exists. Try GetMyOrder again.
-	CheckoutUrl   string                 `protobuf:"bytes,6,opt,name=checkout_url,json=checkoutUrl,proto3" json:"checkout_url,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	PaidAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=paid_at,json=paidAt,proto3" json:"paid_at,omitempty"`
+	CheckoutUrl string                 `protobuf:"bytes,6,opt,name=checkout_url,json=checkoutUrl,proto3" json:"checkout_url,omitempty"`
+	ExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	PaidAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=paid_at,json=paidAt,proto3" json:"paid_at,omitempty"`
+	// What the invoice offers; unspecified for manual payments and refunds.
+	Method        PaymentMethod `protobuf:"varint,9,opt,name=method,proto3,enum=kuepreorder.orders.v1.PaymentMethod" json:"method,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -361,6 +363,13 @@ func (x *Payment) GetPaidAt() *timestamppb.Timestamp {
 		return x.PaidAt
 	}
 	return nil
+}
+
+func (x *Payment) GetMethod() PaymentMethod {
+	if x != nil {
+		return x.Method
+	}
+	return PaymentMethod_PAYMENT_METHOD_UNSPECIFIED
 }
 
 type Order struct {
@@ -641,8 +650,11 @@ type PlaceOrderRequest struct {
 	Notes string `protobuf:"bytes,7,opt,name=notes,proto3" json:"notes,omitempty"`
 	// A UUID the client makes once per checkout and sends again on a retry.
 	IdempotencyKey string `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Required: one of QuoteOrderResponse.payment_options. Its "Biaya admin"
+	// is computed on the server.
+	PaymentMethod PaymentMethod `protobuf:"varint,9,opt,name=payment_method,json=paymentMethod,proto3,enum=kuepreorder.orders.v1.PaymentMethod" json:"payment_method,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlaceOrderRequest) Reset() {
@@ -729,6 +741,13 @@ func (x *PlaceOrderRequest) GetIdempotencyKey() string {
 		return x.IdempotencyKey
 	}
 	return ""
+}
+
+func (x *PlaceOrderRequest) GetPaymentMethod() PaymentMethod {
+	if x != nil {
+		return x.PaymentMethod
+	}
+	return PaymentMethod_PAYMENT_METHOD_UNSPECIFIED
 }
 
 type PlaceOrderResponse struct {
@@ -947,7 +966,7 @@ var File_kuepreorder_orders_v1_orders_proto protoreflect.FileDescriptor
 
 const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\n" +
-	"\"kuepreorder/orders/v1/orders.proto\x12\x15kuepreorder.orders.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kuepreorder/orders/v1/checkout.proto\"\xd7\x02\n" +
+	"\"kuepreorder/orders/v1/orders.proto\x12\x15kuepreorder.orders.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kuepreorder/orders/v1/checkout.proto\"\x95\x03\n" +
 	"\aPayment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x126\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\".kuepreorder.orders.v1.PaymentKindR\x04kind\x12\x1d\n" +
@@ -958,7 +977,8 @@ const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\fcheckout_url\x18\x06 \x01(\tR\vcheckoutUrl\x129\n" +
 	"\n" +
 	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x123\n" +
-	"\apaid_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x06paidAt\"\xdd\x04\n" +
+	"\apaid_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x06paidAt\x12<\n" +
+	"\x06method\x18\t \x01(\x0e2$.kuepreorder.orders.v1.PaymentMethodR\x06method\"\xdd\x04\n" +
 	"\x05Order\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12:\n" +
@@ -988,7 +1008,7 @@ const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\n" +
 	"item_count\x18\b \x01(\x05R\titemCount\x129\n" +
 	"\n" +
-	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xd3\x02\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa0\x03\n" +
 	"\x11PlaceOrderRequest\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.kuepreorder.orders.v1.CartItemR\x05items\x127\n" +
 	"\tpickup_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bpickupAt\x12\x1e\n" +
@@ -997,7 +1017,8 @@ const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\rcustomer_name\x18\x05 \x01(\tR\fcustomerName\x12%\n" +
 	"\x0ecustomer_email\x18\x06 \x01(\tR\rcustomerEmail\x12\x14\n" +
 	"\x05notes\x18\a \x01(\tR\x05notes\x12'\n" +
-	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\"H\n" +
+	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\x12K\n" +
+	"\x0epayment_method\x18\t \x01(\x0e2$.kuepreorder.orders.v1.PaymentMethodR\rpaymentMethod\"H\n" +
 	"\x12PlaceOrderResponse\x122\n" +
 	"\x05order\x18\x01 \x01(\v2\x1c.kuepreorder.orders.v1.OrderR\x05order\"\x15\n" +
 	"\x13ListMyOrdersRequest\"S\n" +
@@ -1073,41 +1094,44 @@ var file_kuepreorder_orders_v1_orders_proto_goTypes = []any{
 	(*GetMyOrderRequest)(nil),     // 11: kuepreorder.orders.v1.GetMyOrderRequest
 	(*GetMyOrderResponse)(nil),    // 12: kuepreorder.orders.v1.GetMyOrderResponse
 	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
-	(*QuotedItem)(nil),            // 14: kuepreorder.orders.v1.QuotedItem
-	(*Schedule)(nil),              // 15: kuepreorder.orders.v1.Schedule
-	(*CartItem)(nil),              // 16: kuepreorder.orders.v1.CartItem
+	(PaymentMethod)(0),            // 14: kuepreorder.orders.v1.PaymentMethod
+	(*QuotedItem)(nil),            // 15: kuepreorder.orders.v1.QuotedItem
+	(*Schedule)(nil),              // 16: kuepreorder.orders.v1.Schedule
+	(*CartItem)(nil),              // 17: kuepreorder.orders.v1.CartItem
 }
 var file_kuepreorder_orders_v1_orders_proto_depIdxs = []int32{
 	2,  // 0: kuepreorder.orders.v1.Payment.kind:type_name -> kuepreorder.orders.v1.PaymentKind
 	3,  // 1: kuepreorder.orders.v1.Payment.state:type_name -> kuepreorder.orders.v1.PaymentState
 	13, // 2: kuepreorder.orders.v1.Payment.expires_at:type_name -> google.protobuf.Timestamp
 	13, // 3: kuepreorder.orders.v1.Payment.paid_at:type_name -> google.protobuf.Timestamp
-	0,  // 4: kuepreorder.orders.v1.Order.status:type_name -> kuepreorder.orders.v1.OrderStatus
-	1,  // 5: kuepreorder.orders.v1.Order.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
-	14, // 6: kuepreorder.orders.v1.Order.items:type_name -> kuepreorder.orders.v1.QuotedItem
-	15, // 7: kuepreorder.orders.v1.Order.schedule:type_name -> kuepreorder.orders.v1.Schedule
-	4,  // 8: kuepreorder.orders.v1.Order.payments:type_name -> kuepreorder.orders.v1.Payment
-	13, // 9: kuepreorder.orders.v1.Order.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 10: kuepreorder.orders.v1.OrderSummary.status:type_name -> kuepreorder.orders.v1.OrderStatus
-	1,  // 11: kuepreorder.orders.v1.OrderSummary.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
-	13, // 12: kuepreorder.orders.v1.OrderSummary.pickup_at:type_name -> google.protobuf.Timestamp
-	13, // 13: kuepreorder.orders.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
-	16, // 14: kuepreorder.orders.v1.PlaceOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
-	13, // 15: kuepreorder.orders.v1.PlaceOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
-	5,  // 16: kuepreorder.orders.v1.PlaceOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
-	6,  // 17: kuepreorder.orders.v1.ListMyOrdersResponse.orders:type_name -> kuepreorder.orders.v1.OrderSummary
-	5,  // 18: kuepreorder.orders.v1.GetMyOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
-	7,  // 19: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:input_type -> kuepreorder.orders.v1.PlaceOrderRequest
-	9,  // 20: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:input_type -> kuepreorder.orders.v1.ListMyOrdersRequest
-	11, // 21: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:input_type -> kuepreorder.orders.v1.GetMyOrderRequest
-	8,  // 22: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:output_type -> kuepreorder.orders.v1.PlaceOrderResponse
-	10, // 23: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:output_type -> kuepreorder.orders.v1.ListMyOrdersResponse
-	12, // 24: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:output_type -> kuepreorder.orders.v1.GetMyOrderResponse
-	22, // [22:25] is the sub-list for method output_type
-	19, // [19:22] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	14, // 4: kuepreorder.orders.v1.Payment.method:type_name -> kuepreorder.orders.v1.PaymentMethod
+	0,  // 5: kuepreorder.orders.v1.Order.status:type_name -> kuepreorder.orders.v1.OrderStatus
+	1,  // 6: kuepreorder.orders.v1.Order.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
+	15, // 7: kuepreorder.orders.v1.Order.items:type_name -> kuepreorder.orders.v1.QuotedItem
+	16, // 8: kuepreorder.orders.v1.Order.schedule:type_name -> kuepreorder.orders.v1.Schedule
+	4,  // 9: kuepreorder.orders.v1.Order.payments:type_name -> kuepreorder.orders.v1.Payment
+	13, // 10: kuepreorder.orders.v1.Order.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 11: kuepreorder.orders.v1.OrderSummary.status:type_name -> kuepreorder.orders.v1.OrderStatus
+	1,  // 12: kuepreorder.orders.v1.OrderSummary.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
+	13, // 13: kuepreorder.orders.v1.OrderSummary.pickup_at:type_name -> google.protobuf.Timestamp
+	13, // 14: kuepreorder.orders.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
+	17, // 15: kuepreorder.orders.v1.PlaceOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
+	13, // 16: kuepreorder.orders.v1.PlaceOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
+	14, // 17: kuepreorder.orders.v1.PlaceOrderRequest.payment_method:type_name -> kuepreorder.orders.v1.PaymentMethod
+	5,  // 18: kuepreorder.orders.v1.PlaceOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
+	6,  // 19: kuepreorder.orders.v1.ListMyOrdersResponse.orders:type_name -> kuepreorder.orders.v1.OrderSummary
+	5,  // 20: kuepreorder.orders.v1.GetMyOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
+	7,  // 21: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:input_type -> kuepreorder.orders.v1.PlaceOrderRequest
+	9,  // 22: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:input_type -> kuepreorder.orders.v1.ListMyOrdersRequest
+	11, // 23: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:input_type -> kuepreorder.orders.v1.GetMyOrderRequest
+	8,  // 24: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:output_type -> kuepreorder.orders.v1.PlaceOrderResponse
+	10, // 25: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:output_type -> kuepreorder.orders.v1.ListMyOrdersResponse
+	12, // 26: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:output_type -> kuepreorder.orders.v1.GetMyOrderResponse
+	24, // [24:27] is the sub-list for method output_type
+	21, // [21:24] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_kuepreorder_orders_v1_orders_proto_init() }

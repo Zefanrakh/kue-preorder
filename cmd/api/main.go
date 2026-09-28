@@ -192,12 +192,12 @@ func sendSMSHook(cfg config.Config, database *db.DB, logger *slog.Logger) (http.
 }
 
 // paymentProvider picks who makes invoices. Only development may pretend;
-// Xendit arrives in M2.6, and until then nothing else may take orders.
+// Midtrans arrives in M2.6b, and until then nothing else may take orders.
 func paymentProvider(cfg config.Config) (payments.Provider, error) {
 	if cfg.AppEnv == config.EnvDevelopment {
 		return payments.DevProvider{}, nil
 	}
-	return nil, fmt.Errorf("APP_ENV=%s needs a payment provider, and Xendit arrives in M2.6: run with APP_ENV=development until then", cfg.AppEnv)
+	return nil, fmt.Errorf("APP_ENV=%s needs a payment provider, and Midtrans arrives in M2.6b: run with APP_ENV=development until then", cfg.AppEnv)
 }
 
 // handlerDeps is what the HTTP handler needs; tests pass fakes.

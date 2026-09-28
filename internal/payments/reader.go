@@ -13,6 +13,9 @@ import (
 type Repository interface {
 	// Policy returns apperr.ErrNotFound when the tenant never changed its policy.
 	Policy(ctx context.Context, tenantID uuid.UUID) (Policy, error)
+	// FeeRules returns the rules the tenant set, by method; none when it
+	// set none.
+	FeeRules(ctx context.Context, tenantID uuid.UUID) (map[Method]FeeRule, error)
 }
 
 // Reader lets other modules read payment settings in-process. Checkout acts
@@ -33,4 +36,18 @@ func (r *Reader) Policy(ctx context.Context, tenantID uuid.UUID) (Policy, error)
 		return DefaultPolicy(), nil
 	}
 	return p, err
+}
+
+// FeeRules returns the fee rule of every method: the tenant's own where it
+// set one, the defaults otherwise.
+func (r *Reader) FeeRules(ctx context.Context, tenantID uuid.UUID) (map[Method]FeeRule, error) {
+	own, err := r.repo.FeeRules(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	rules := DefaultFeeRules()
+	for m, rule := range own {
+		rules[m] = rule
+	}
+	return rules, nil
 }

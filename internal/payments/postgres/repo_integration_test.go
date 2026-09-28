@@ -82,7 +82,7 @@ func TestLedger(t *testing.T) {
 	ctx := t.Context()
 	order := newOrder(t, d)
 	expires := now.Add(3 * time.Hour)
-	dp := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", AmountIDR: 8000, ExpiresAt: &expires}
+	dp := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", Method: payments.MethodQRIS, AmountIDR: 8000, ExpiresAt: &expires}
 
 	if err := ledger.AddPending(ctx, dbtest.DefaultTenantID, dp, now); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestLedger_JoinsTheCallersTransaction(t *testing.T) {
 	errBoom := errors.New("boom")
 
 	err := d.Tx(t.Context(), func(ctx context.Context) error {
-		if err := ledger.AddPending(ctx, dbtest.DefaultTenantID, payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", AmountIDR: 8000}, now); err != nil {
+		if err := ledger.AddPending(ctx, dbtest.DefaultTenantID, payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", Method: payments.MethodQRIS, AmountIDR: 8000}, now); err != nil {
 			return err
 		}
 		return errBoom
@@ -142,5 +142,70 @@ func TestLedger_JoinsTheCallersTransaction(t *testing.T) {
 	}
 	if got, _ := ledger.OrderPayments(t.Context(), dbtest.DefaultTenantID, order); len(got) != 0 {
 		t.Errorf("OrderPayments() = %+v, want none after the rollback", got)
+	}
+}
+
+// The SQL defaults of payment_policies are payments.DefaultPolicy's: a row
+// written without the newer columns behaves like no row at all.
+func TestPolicy_SQLDefaultsMatchGo(t *testing.T) {
+	d := dbtest.New(t)
+	_, err := d.Pool().Exec(t.Context(), `insert into payment_policies
+		(tenant_id, dp_min_percent, dp_covers_ingredient_cost, balance_due_hours_before, dp_invoice_valid_minutes, updated_at)
+		values ($1, 50, true, 12, 180, now())`, dbtest.DefaultTenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := postgres.NewRepository(d).Policy(t.Context(), dbtest.DefaultTenantID)
+	want := payments.DefaultPolicy()
+	if err != nil || p.DPMinTotalIDR != want.DPMinTotalIDR || p.MinOrderIDR != want.MinOrderIDR {
+		t.Errorf("Policy() = %+v, %v; want the DP threshold and minimum order of DefaultPolicy", p, err)
+	}
+}
+
+func TestFeeRules(t *testing.T) {
+	d := dbtest.New(t)
+	reader := payments.NewReader(postgres.NewRepository(d))
+	ctx := t.Context()
+
+	rules, err := reader.FeeRules(ctx, dbtest.DefaultTenantID)
+	if err != nil || len(rules) != 4 || rules[payments.MethodBankTransfer] != payments.DefaultFeeRules()[payments.MethodBankTransfer] {
+		t.Fatalf("FeeRules() = %+v, %v; want the defaults", rules, err)
+	}
+
+	_, err = d.Pool().Exec(ctx, `insert into payment_method_fees (tenant_id, method, fixed_idr, rate_bps, vat_included, enabled, updated_at)
+		values ($1, 'bank_transfer', 3500, 0, false, true, now()), ($1, 'minimarket', 5000, 0, false, false, now())`, dbtest.DefaultTenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err = reader.FeeRules(ctx, dbtest.DefaultTenantID)
+	if err != nil || rules[payments.MethodBankTransfer].FixedIDR != 3500 || rules[payments.MethodMinimarket].Enabled || !rules[payments.MethodQRIS].Enabled {
+		t.Errorf("FeeRules() = %+v, %v; want the tenant's rows over the defaults", rules, err)
+	}
+}
+
+func TestLedger_KeepsTheMethodAndRefusesAQRISFee(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ledger := payments.NewLedger(repo)
+	ctx := t.Context()
+	order := newOrder(t, d)
+
+	va := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", Method: payments.MethodBankTransfer, AmountIDR: 8000, FeeIDR: 4440}
+	if err := ledger.AddPending(ctx, dbtest.DefaultTenantID, va, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ledger.OrderPayments(ctx, dbtest.DefaultTenantID, order)
+	if err != nil || len(got) != 1 || got[0].Method != payments.MethodBankTransfer || got[0].FeeIDR != 4440 {
+		t.Errorf("OrderPayments() = %+v, %v", got, err)
+	}
+
+	qris := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", Method: payments.MethodQRIS, AmountIDR: 8000, FeeIDR: 100}
+	if err := ledger.AddPending(ctx, dbtest.DefaultTenantID, qris, now); err == nil {
+		t.Error("the ledger took a QRIS payment with a fee")
+	}
+	// The database refuses it too, whoever writes.
+	qris.State = payments.StatePending
+	if err := repo.AddPayment(ctx, dbtest.DefaultTenantID, qris, now); err == nil {
+		t.Error("the database took a QRIS payment with a fee")
 	}
 }

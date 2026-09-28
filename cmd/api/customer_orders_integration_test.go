@@ -27,9 +27,10 @@ func (w *wired) customer(t *testing.T, phone string) ordersv1connect.CustomerOrd
 
 func (w *wired) placeRequest(day int32, key string) *ordersv1.PlaceOrderRequest {
 	return &ordersv1.PlaceOrderRequest{
-		Items:    []*ordersv1.CartItem{{VariantId: w.donut.ID.String(), Quantity: 3}},
+		Items:    []*ordersv1.CartItem{{VariantId: w.donut.ID.String(), Quantity: 20}},
 		PickupAt: timestamppb.New(wib(int(day), 9, 0)), TermsVersion: orders.TermsVersion,
-		CustomerName: "Sari", CustomerEmail: "sari@contoh.com", Notes: "Tulisan: Selamat ulang tahun Budi",
+		PaymentMethod: ordersv1.PaymentMethod_PAYMENT_METHOD_BANK_TRANSFER,
+		CustomerName:  "Sari", CustomerEmail: "sari@contoh.com", Notes: "Tulisan: Selamat ulang tahun Budi",
 		IdempotencyKey: key,
 	}
 }
@@ -61,12 +62,13 @@ func TestPlaceOrder(t *testing.T) {
 	noErr(t, err)
 	o := res.Msg.GetOrder()
 	if len(o.GetCode()) != 6 || o.GetStatus() != ordersv1.OrderStatus_ORDER_STATUS_AWAITING_DP || o.GetPaymentStatus() != ordersv1.PaymentStatus_PAYMENT_STATUS_UNPAID ||
-		o.GetTotalIdr() != 24000 || o.GetDpRequiredIdr() != 12000 || o.GetNotes() != "Tulisan: Selamat ulang tahun Budi" || o.GetCustomerName() != "Sari" {
+		o.GetTotalIdr() != 160000 || o.GetDpRequiredIdr() != 80000 || o.GetNotes() != "Tulisan: Selamat ulang tahun Budi" || o.GetCustomerName() != "Sari" {
 		t.Errorf("PlaceOrder() = %v", o)
 	}
-	if ps := o.GetPayments(); len(ps) != 1 || ps[0].GetKind() != ordersv1.PaymentKind_PAYMENT_KIND_DP || ps[0].GetAmountIdr() != 12000 ||
+	if ps := o.GetPayments(); len(ps) != 1 || ps[0].GetKind() != ordersv1.PaymentKind_PAYMENT_KIND_DP || ps[0].GetAmountIdr() != 80000 ||
+		ps[0].GetMethod() != ordersv1.PaymentMethod_PAYMENT_METHOD_BANK_TRANSFER || ps[0].GetFeeIdr() != 4440 ||
 		ps[0].GetState() != ordersv1.PaymentState_PAYMENT_STATE_PENDING || !strings.HasPrefix(ps[0].GetCheckoutUrl(), "https://pay.dev.invalid/") {
-		t.Errorf("payments = %v, want a pending DP of 12,000 with a link", ps)
+		t.Errorf("payments = %v, want a pending bank transfer DP of 80,000 plus Rp4.440, with a link", ps)
 	}
 
 	// The phone came from the sign-in, stored in E.164 on the order.

@@ -20,6 +20,7 @@ import (
 func (s *shop) placeRequest(pickup time.Time, lines ...orders.ItemRequest) orders.PlaceRequest {
 	return orders.PlaceRequest{
 		QuoteRequest:   orders.QuoteRequest{Items: lines, PickupAt: pickup},
+		Method:         payments.MethodQRIS,
 		TermsVersion:   orders.TermsVersion,
 		Customer:       identity.CustomerInput{Name: "Sari", Email: "sari@contoh.com"},
 		Notes:          "  Tulisan: Selamat ulang tahun Budi  ",

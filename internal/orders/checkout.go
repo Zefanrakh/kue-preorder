@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,7 @@ type Schedules interface {
 // Policies is what checkout reads from payments; payments.Reader implements it.
 type Policies interface {
 	Policy(ctx context.Context, tenantID uuid.UUID) (payments.Policy, error)
+	FeeRules(ctx context.Context, tenantID uuid.UUID) (map[payments.Method]payments.FeeRule, error)
 }
 
 // Customers is what checkout needs from identity; identity.Service implements it.
@@ -124,11 +126,38 @@ type Quote struct {
 	Rejection  *scheduling.Rejection
 	Suggestion *scheduling.Plan
 	// DPRequiredIDR is the first payment of an order paid with a DP; it is
-	// the total when the schedule requires full payment. Set with Schedule.
+	// the total when full payment is required. Set with Schedule.
 	DPRequiredIDR int64
+	// FullPaymentRequired means the first payment is the total, for
+	// FullPaymentReason. Set with Schedule.
+	FullPaymentRequired bool
+	FullPaymentReason   FullPaymentReason
+	// PaymentOptions are the methods the customer may pay with, each with
+	// its "Biaya admin". Set with Schedule.
+	PaymentOptions []PaymentOption
 	// TermsVersion is the version of the terms the customer accepts by
 	// placing the order.
 	TermsVersion string
+}
+
+// FullPaymentReason says why an order must be paid in full at once.
+type FullPaymentReason string
+
+// Why full payment is required (§14).
+const (
+	// FullPaymentSmallOrder: the total is below the DP threshold, and a DP
+	// would mean two payments and two fees for a small order.
+	FullPaymentSmallOrder FullPaymentReason = "small_order"
+	// FullPaymentSchedule: the balance would fall due before the DP.
+	FullPaymentSchedule FullPaymentReason = "schedule"
+)
+
+// PaymentOption is a method the customer may pay with and its "Biaya
+// admin" on the DP and on the whole total.
+type PaymentOption struct {
+	Method     payments.Method
+	DPFeeIDR   *int64 // nil when the order may not be paid with a DP
+	FullFeeIDR int64
 }
 
 // Deps are what Checkout works with.
@@ -194,6 +223,9 @@ func (c *Checkout) Quote(ctx context.Context, req QuoteRequest) (Quote, error) {
 	if err != nil {
 		return Quote{}, err
 	}
+	if policy.MinOrderIDR > 0 && q.TotalIDR < policy.MinOrderIDR {
+		return Quote{}, &apperr.ValidationError{Fields: map[string]string{"items": "Minimal pesanan " + formatIDR(policy.MinOrderIDR) + "."}}
+	}
 	ingredients, err := c.ingredientCost(ctx, tenant, req.Items)
 	if err != nil {
 		return Quote{}, err
@@ -238,11 +270,58 @@ func (c *Checkout) Quote(ctx context.Context, req QuoteRequest) (Quote, error) {
 	default:
 		q.Schedule = &plan
 		q.DPRequiredIDR = dp
-		if plan.FullPaymentRequired {
+		switch {
+		case !policy.DPAllowed(q.TotalIDR):
+			q.FullPaymentRequired, q.FullPaymentReason = true, FullPaymentSmallOrder
+		case plan.FullPaymentRequired:
+			q.FullPaymentRequired, q.FullPaymentReason = true, FullPaymentSchedule
+		}
+		if q.FullPaymentRequired {
 			q.DPRequiredIDR = q.TotalIDR
+		}
+		if q.PaymentOptions, err = c.paymentOptions(ctx, tenant, q); err != nil {
+			return Quote{}, err
 		}
 	}
 	return q, nil
+}
+
+// paymentOptions prices every enabled method on the DP, when the order may
+// be paid with one, and on the whole total.
+func (c *Checkout) paymentOptions(ctx context.Context, tenant uuid.UUID, q Quote) ([]PaymentOption, error) {
+	rules, err := c.policies.FeeRules(ctx, tenant)
+	if err != nil {
+		return nil, err
+	}
+	var out []PaymentOption
+	for _, m := range payments.Methods {
+		rule, ok := rules[m]
+		if !ok || !rule.Enabled {
+			continue
+		}
+		o := PaymentOption{Method: m}
+		if o.FullFeeIDR, err = rule.Fee(q.TotalIDR); err != nil {
+			return nil, err
+		}
+		if !q.FullPaymentRequired {
+			fee, err := rule.Fee(q.DPRequiredIDR)
+			if err != nil {
+				return nil, err
+			}
+			o.DPFeeIDR = &fee
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+// formatIDR writes rupiah the Indonesian way: Rp150.000.
+func formatIDR(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "." + s[i:]
+	}
+	return "Rp" + s
 }
 
 func validateCart(req QuoteRequest) error {
