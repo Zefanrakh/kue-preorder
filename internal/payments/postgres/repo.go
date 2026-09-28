@@ -15,17 +15,19 @@ import (
 
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 )
 
-// Repository implements payments.Repository and payments.LedgerRepository.
+// Repository implements payments.SettingsRepository and
+// payments.LedgerRepository.
 type Repository struct {
 	db *db.DB
 }
 
 var (
-	_ payments.Repository       = (*Repository)(nil)
-	_ payments.LedgerRepository = (*Repository)(nil)
+	_ payments.SettingsRepository = (*Repository)(nil)
+	_ payments.LedgerRepository   = (*Repository)(nil)
 )
 
 // NewRepository returns a repository over d.
@@ -62,9 +64,45 @@ func (r *Repository) FeeRules(ctx context.Context, tenantID uuid.UUID) (map[paym
 	out := make(map[payments.Method]payments.FeeRule, len(rows))
 	for _, row := range rows {
 		m := payments.Method(row.Method)
-		out[m] = payments.FeeRule{Method: m, FixedIDR: row.FixedIdr, RateBPS: row.RateBps, VATIncluded: row.VatIncluded, Enabled: row.Enabled}
+		out[m] = payments.FeeRule{
+			Method: m, FixedIDR: row.FixedIdr, RateBPS: row.RateBps, VATIncluded: row.VatIncluded, Enabled: row.Enabled,
+			UpdatedAt: row.UpdatedAt,
+		}
 	}
 	return out, nil
+}
+
+// LockSettings implements payments.SettingsRepository.
+func (r *Repository) LockSettings(ctx context.Context, tenantID uuid.UUID) error {
+	return r.q(ctx).LockPaymentSettings(ctx, tenantID.String())
+}
+
+// SavePolicy implements payments.SettingsRepository.
+func (r *Repository) SavePolicy(ctx context.Context, tenantID uuid.UUID, p payments.Policy, at time.Time) error {
+	return r.q(ctx).UpsertPaymentPolicy(ctx, UpsertPaymentPolicyParams{
+		TenantID: tenantID, DpMinPercent: p.DPMinPercent, DpCoversIngredientCost: p.DPCoversIngredientCost,
+		BalanceDueHoursBefore: p.BalanceDueHoursBefore, DpInvoiceValidMinutes: p.DPInvoiceValidMinutes,
+		DpMinTotalIdr: p.DPMinTotalIDR, MinOrderIdr: p.MinOrderIDR, Now: at,
+	})
+}
+
+// SaveFeeRule implements payments.SettingsRepository.
+func (r *Repository) SaveFeeRule(ctx context.Context, tenantID uuid.UUID, rule payments.FeeRule, at time.Time) error {
+	return r.q(ctx).UpsertPaymentMethodFee(ctx, UpsertPaymentMethodFeeParams{
+		TenantID: tenantID, Method: string(rule.Method), FixedIdr: rule.FixedIDR, RateBps: rule.RateBPS,
+		VatIncluded: rule.VATIncluded, Enabled: rule.Enabled, Now: at,
+	})
+}
+
+// DeleteFeeRule implements payments.SettingsRepository.
+func (r *Repository) DeleteFeeRule(ctx context.Context, tenantID uuid.UUID, m payments.Method) (bool, error) {
+	n, err := r.q(ctx).DeletePaymentMethodFee(ctx, DeletePaymentMethodFeeParams{TenantID: tenantID, Method: string(m)})
+	return n > 0, err
+}
+
+// Audit implements payments.SettingsRepository.
+func (r *Repository) Audit(ctx context.Context, e audit.Entry) error {
+	return audit.Record(ctx, r.db.Conn(ctx), e)
 }
 
 // AddPayment implements payments.LedgerRepository.

@@ -55,6 +55,24 @@ func (q *Queries) AddPayment(ctx context.Context, arg AddPaymentParams) error {
 	return err
 }
 
+const deletePaymentMethodFee = `-- name: DeletePaymentMethodFee :execrows
+delete from payment_method_fees
+where tenant_id = $1 and method = $2
+`
+
+type DeletePaymentMethodFeeParams struct {
+	TenantID uuid.UUID
+	Method   string
+}
+
+func (q *Queries) DeletePaymentMethodFee(ctx context.Context, arg DeletePaymentMethodFeeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePaymentMethodFee, arg.TenantID, arg.Method)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const expirePendingPayments = `-- name: ExpirePendingPayments :execrows
 update payments
 set status = 'expired', updated_at = $1
@@ -135,6 +153,18 @@ func (q *Queries) ListPaymentMethodFees(ctx context.Context, tenantID uuid.UUID)
 	return items, nil
 }
 
+const lockPaymentSettings = `-- name: LockPaymentSettings :exec
+select pg_advisory_xact_lock(hashtextextended('payment_settings:' || $1::text, 0))
+`
+
+// Serializes a tenant's changes to its payment settings until the
+// transaction ends: the audit sees the true before-state, and two owners
+// cannot switch off the last two methods at once.
+func (q *Queries) LockPaymentSettings(ctx context.Context, tenantID string) error {
+	_, err := q.db.Exec(ctx, lockPaymentSettings, tenantID)
+	return err
+}
+
 const orderPayments = `-- name: OrderPayments :many
 select id, tenant_id, order_id, kind, provider, external_id, amount_idr, fee_idr, status, expires_at, paid_at, raw, created_at, updated_at, checkout_url, method from payments
 where tenant_id = $1 and order_id = $2
@@ -209,4 +239,74 @@ func (q *Queries) SetPaymentInvoice(ctx context.Context, arg SetPaymentInvoicePa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertPaymentMethodFee = `-- name: UpsertPaymentMethodFee :exec
+insert into payment_method_fees (tenant_id, method, fixed_idr, rate_bps, vat_included, enabled, updated_at)
+values ($1, $2, $3, $4, $5,
+        $6, $7)
+on conflict (tenant_id, method) do update
+set fixed_idr = excluded.fixed_idr, rate_bps = excluded.rate_bps, vat_included = excluded.vat_included,
+    enabled = excluded.enabled, updated_at = excluded.updated_at
+`
+
+type UpsertPaymentMethodFeeParams struct {
+	TenantID    uuid.UUID
+	Method      string
+	FixedIdr    int64
+	RateBps     int32
+	VatIncluded bool
+	Enabled     bool
+	Now         time.Time
+}
+
+func (q *Queries) UpsertPaymentMethodFee(ctx context.Context, arg UpsertPaymentMethodFeeParams) error {
+	_, err := q.db.Exec(ctx, upsertPaymentMethodFee,
+		arg.TenantID,
+		arg.Method,
+		arg.FixedIdr,
+		arg.RateBps,
+		arg.VatIncluded,
+		arg.Enabled,
+		arg.Now,
+	)
+	return err
+}
+
+const upsertPaymentPolicy = `-- name: UpsertPaymentPolicy :exec
+insert into payment_policies (tenant_id, dp_min_percent, dp_covers_ingredient_cost, balance_due_hours_before,
+                              dp_invoice_valid_minutes, dp_min_total_idr, min_order_idr, updated_at)
+values ($1, $2, $3,
+        $4, $5, $6,
+        $7, $8)
+on conflict (tenant_id) do update
+set dp_min_percent = excluded.dp_min_percent, dp_covers_ingredient_cost = excluded.dp_covers_ingredient_cost,
+    balance_due_hours_before = excluded.balance_due_hours_before,
+    dp_invoice_valid_minutes = excluded.dp_invoice_valid_minutes, dp_min_total_idr = excluded.dp_min_total_idr,
+    min_order_idr = excluded.min_order_idr, updated_at = excluded.updated_at
+`
+
+type UpsertPaymentPolicyParams struct {
+	TenantID               uuid.UUID
+	DpMinPercent           int32
+	DpCoversIngredientCost bool
+	BalanceDueHoursBefore  int32
+	DpInvoiceValidMinutes  int32
+	DpMinTotalIdr          int64
+	MinOrderIdr            int64
+	Now                    time.Time
+}
+
+func (q *Queries) UpsertPaymentPolicy(ctx context.Context, arg UpsertPaymentPolicyParams) error {
+	_, err := q.db.Exec(ctx, upsertPaymentPolicy,
+		arg.TenantID,
+		arg.DpMinPercent,
+		arg.DpCoversIngredientCost,
+		arg.BalanceDueHoursBefore,
+		arg.DpInvoiceValidMinutes,
+		arg.DpMinTotalIdr,
+		arg.MinOrderIdr,
+		arg.Now,
+	)
+	return err
 }

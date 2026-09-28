@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package kuepreorder.payments.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kuepreorder/orders/v1/checkout.proto";
+
+// PaymentSettingsService is the CMS's page of payment settings
+// (docs/architecture.md §14): the DP policy and each method's fee, the
+// "Biaya admin" customers pay on top. The owner changes them; the kitchen
+// sees them; anyone else gets PermissionDenied.
+//
+// A change applies to orders placed and invoices made from then on: an
+// order keeps the DP and deadlines locked at its checkout, and an invoice
+// its fee. Every change needs a reason and is audited; saving what is
+// already there changes nothing. Money is int64 rupiah.
+service PaymentSettingsService {
+  rpc GetPaymentSettings(GetPaymentSettingsRequest) returns (GetPaymentSettingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // UpdatePaymentPolicy replaces the DP policy. InvalidArgument with
+  // FieldErrors on the fields out of range.
+  rpc UpdatePaymentPolicy(UpdatePaymentPolicyRequest) returns (UpdatePaymentPolicyResponse);
+  // UpdatePaymentMethod replaces one method's fee and whether it is on
+  // offer. FailedPrecondition "last_method" when it would leave checkout
+  // without any method.
+  rpc UpdatePaymentMethod(UpdatePaymentMethodRequest) returns (UpdatePaymentMethodResponse);
+  // ResetPaymentMethod returns one method to Midtrans' published price, on
+  // offer.
+  rpc ResetPaymentMethod(ResetPaymentMethodRequest) returns (ResetPaymentMethodResponse);
+}
+
+message PaymentPolicy {
+  // The smallest DP as a percentage of the total, 1 to 100.
+  int32 dp_min_percent = 1;
+  // The DP also covers the estimated ingredient cost.
+  bool dp_covers_ingredient_cost = 2;
+  // The balance is due this many hours before production starts, 0 to 168.
+  int32 balance_due_hours_before = 3;
+  // How long a DP invoice stays open, 30 to 10080 minutes; never past the
+  // shopping cutoff.
+  int32 dp_invoice_valid_minutes = 4;
+  // Below this total an order is paid in full at once; 0 allows a DP on any.
+  int64 dp_min_total_idr = 5;
+  // The smallest total accepted; 0 accepts any.
+  int64 min_order_idr = 6;
+  // Unset while the defaults are in use. Ignored in updates.
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// FeeRule is what the provider charges for a method, and so the customer's
+// "Biaya admin": fixed_idr per payment plus rate_bps (200 is 2%) of it, with
+// VAT (PPN 11%) on top unless included. QRIS is never charged to the
+// customer, whatever its rule says: its rule records the shop's own cost.
+message FeeRule {
+  kuepreorder.orders.v1.PaymentMethod method = 1;
+  // 0 to 1,000,000.
+  int64 fixed_idr = 2;
+  // 0 to 5000.
+  int32 rate_bps = 3;
+  bool vat_included = 4;
+  // Offered at checkout.
+  bool enabled = 5;
+  // Unset while Midtrans' published price is in use. Ignored in updates.
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// ExampleFee is the "Biaya admin" on one amount, computed on the server.
+message ExampleFee {
+  int64 amount_idr = 1;
+  int64 fee_idr = 2;
+}
+
+message PaymentMethodSettings {
+  // What applies.
+  FeeRule rule = 1;
+  // Midtrans' published price, which ResetPaymentMethod returns to.
+  FeeRule default_rule = 2;
+  // The fee on a few amounts, so a mistyped rate shows at once.
+  repeated ExampleFee examples = 3;
+}
+
+message PaymentSettings {
+  PaymentPolicy policy = 1;
+  // Every method, in the order checkout shows them: QRIS first.
+  repeated PaymentMethodSettings methods = 2;
+}
+
+message GetPaymentSettingsRequest {}
+
+message GetPaymentSettingsResponse {
+  PaymentSettings settings = 1;
+}
+
+message UpdatePaymentPolicyRequest {
+  PaymentPolicy policy = 1;
+  // Required, up to 500 characters. It is the audit reason.
+  string reason = 2;
+}
+
+message UpdatePaymentPolicyResponse {
+  PaymentSettings settings = 1;
+}
+
+message UpdatePaymentMethodRequest {
+  FeeRule rule = 1;
+  // Required, up to 500 characters. It is the audit reason.
+  string reason = 2;
+}
+
+message UpdatePaymentMethodResponse {
+  PaymentSettings settings = 1;
+}
+
+message ResetPaymentMethodRequest {
+  kuepreorder.orders.v1.PaymentMethod method = 1;
+  // Required, up to 500 characters. It is the audit reason.
+  string reason = 2;
+}
+
+message ResetPaymentMethodResponse {
+  PaymentSettings settings = 1;
+}
