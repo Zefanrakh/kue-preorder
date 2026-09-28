@@ -3,6 +3,7 @@ package orders_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -33,6 +34,7 @@ type fakeRepo struct {
 	staffFilter    orders.StaffFilter
 	audits         []audit.Entry
 	events         []outbox.Event
+	lockErr        map[uuid.UUID]error // LockByID fails for these orders
 }
 
 func newFakeRepo() *fakeRepo {
@@ -182,6 +184,51 @@ func (f *fakeRepo) Publish(_ context.Context, e outbox.Event) error {
 	defer f.mu.Unlock()
 	f.events = append(f.events, e)
 	return nil
+}
+
+func (f *fakeRepo) LockByID(_ context.Context, _, id uuid.UUID) (orders.Order, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.lockErr[id]; err != nil {
+		return orders.Order{}, err
+	}
+	o, ok := f.orders[id]
+	if !ok {
+		return orders.Order{}, apperr.ErrNotFound
+	}
+	return o, nil
+}
+
+func (f *fakeRepo) PastDPDue(_ context.Context, _ uuid.UUID, s orders.Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error) {
+	return f.pastDue(s, p, before, limit, func(o orders.Order) time.Time { return o.DPDueAt })
+}
+
+func (f *fakeRepo) PastBalanceDue(_ context.Context, _ uuid.UUID, s orders.Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error) {
+	return f.pastDue(s, p, before, limit, func(o orders.Order) time.Time { return o.BalanceDueAt })
+}
+
+func (f *fakeRepo) pastDue(s orders.Status, p payments.Status, before time.Time, limit int32, due func(orders.Order) time.Time) ([]uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var hits []orders.Order
+	for _, o := range f.orders {
+		if o.Status == s && o.Payment == p && !due(o).After(before) {
+			hits = append(hits, o)
+		}
+	}
+	slices.SortFunc(hits, func(a, b orders.Order) int {
+		if c := due(a).Compare(due(b)); c != 0 {
+			return c
+		}
+		return slices.Compare(a.ID[:], b.ID[:])
+	})
+	var ids []uuid.UUID
+	for _, o := range hits {
+		if len(ids) < int(limit) {
+			ids = append(ids, o.ID)
+		}
+	}
+	return ids, nil
 }
 
 // eventTypes lists the types of the events published so far.

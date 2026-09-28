@@ -21,6 +21,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/payments/v1/paymentsv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
+	"github.com/Zefanrakh/kue-preorder/cmd/internal/app"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	catalogrpc "github.com/Zefanrakh/kue-preorder/internal/catalog/connect"
 	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
@@ -115,7 +116,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *tel
 		return fmt.Errorf("resolve tenant: %w", err)
 	}
 
-	provider, err := paymentProvider(cfg)
+	provider, err := app.PaymentProvider(cfg)
 	if err != nil {
 		return err
 	}
@@ -198,15 +199,6 @@ func sendSMSHook(cfg config.Config, database *db.DB, logger *slog.Logger) (http.
 	}
 	perPhone := ratelimit.New(clock.Real{}, map[string]ratelimit.Rule{otp.Provider: otp.PerPhone})
 	return otp.NewHook(verifier, webhook.NewEvents(database), sender, perPhone, clock.Real{}, logger), nil
-}
-
-// paymentProvider picks who makes invoices. Only development may pretend;
-// Midtrans arrives in M2.6b, and until then nothing else may take orders.
-func paymentProvider(cfg config.Config) (payments.Provider, error) {
-	if cfg.AppEnv == config.EnvDevelopment {
-		return payments.DevProvider{}, nil
-	}
-	return nil, fmt.Errorf("APP_ENV=%s needs a payment provider, and Midtrans arrives in M2.6b: run with APP_ENV=development until then", cfg.AppEnv)
 }
 
 // handlerDeps is what the HTTP handler needs; tests pass fakes.

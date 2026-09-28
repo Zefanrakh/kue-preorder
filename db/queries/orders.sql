@@ -121,3 +121,25 @@ where o.tenant_id = sqlc.arg(tenant_id)
        or o.customer_name ilike '%' || sqlc.arg(query)::text || '%')
 order by o.pickup_at, o.code
 limit sqlc.arg(max_rows);
+
+-- name: LockOrder :one
+select * from orders
+where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id)
+for update;
+
+-- name: OrdersPastDPDue :many
+-- Orders still in status with payment_status whose DP deadline is at or
+-- before `before`, oldest deadline first: what the worker expires (§14).
+select id from orders
+where tenant_id = sqlc.arg(tenant_id) and status = sqlc.arg(status) and payment_status = sqlc.arg(payment_status)
+  and dp_due_at <= sqlc.arg(before)
+order by dp_due_at, id
+limit sqlc.arg(max_rows);
+
+-- name: OrdersPastBalanceDue :many
+-- The same for the balance deadline: what the worker forfeits (§14).
+select id from orders
+where tenant_id = sqlc.arg(tenant_id) and status = sqlc.arg(status) and payment_status = sqlc.arg(payment_status)
+  and balance_due_at <= sqlc.arg(before)
+order by balance_due_at, id
+limit sqlc.arg(max_rows);

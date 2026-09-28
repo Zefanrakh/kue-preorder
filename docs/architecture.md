@@ -116,6 +116,7 @@ Alur utama: pelanggan bayar DP → webhook Midtrans masuk ke `api` → order jad
 /cmd
   /api                 # server Connect/HTTP
   /worker              # River worker
+  /internal/app        # pilihan wiring yang sama untuk api dan worker (mis. provider pembayaran)
 /internal
   /recipe              # ENGINE MURNI: model, fit, evaluate. TANPA db/http
   /aggregation         # batch → daftar belanja (bergantung ke recipe + port)
@@ -307,8 +308,10 @@ Semua tabel milik tenant punya `tenant_id uuid not null` dan **selalu** di-scope
 webhook_events ( id, provider text, event_id text,
                  received_at timestamptz, processed_at timestamptz null,
                  unique (provider, event_id) )
-outbox ( id, tenant_id, aggregate text, event_type text, payload jsonb,
+outbox ( id, seq bigint identity unique,      -- seq: urutan tulis (M2.7a)
+         tenant_id, aggregate text, event_type text, payload jsonb,
          created_at timestamptz, published_at timestamptz null )
+river.*  -- tabel antrean River di schema sendiri (migrasi 00009), bukan milik tenant
 tenants ( id, name, created_at )
 staff_roles ( id, tenant_id, auth_user_id uuid, role text )   -- 'owner' | 'kitchen'
 audit_log ( id, tenant_id, actor_id uuid, action text, entity text, entity_id uuid,
@@ -838,10 +841,24 @@ stateDiagram-v2
 
 **Alur:**
 1. Checkout → pelanggan memilih **bayar DP** atau **bayar penuh**. Syarat dan ketentuan DP (termasuk DP hangus) wajib dicentang; versi S&K disimpan di order.
-2. DP masuk → order `confirmed` → invoice pelunasan dibuat otomatis dengan tenggat yang sudah dikunci.
-3. Pengingat pelunasan: H-2, H-1, dan 3 jam sebelum tenggat (WA + email, dengan link bayar).
+2. DP masuk → order `confirmed` → invoice pelunasan dibuat otomatis dengan tenggat yang sudah dikunci (worker, sejak M2.7a).
+3. Pengingat pelunasan: H-2, H-1, dan 3 jam sebelum tenggat (WA + email, dengan link bayar). Menyusul di M2.7b.
 4. Lewat tenggat tanpa pelunasan → order `cancelled`, pembayaran `forfeited`, batch dihitung ulang. Bahan yang sudah dibeli masuk stok.
 5. Kalau pembatalan atau jadwal ulang berasal dari **pihak toko**, pelanggan berhak refund penuh (lihat §16).
+
+**Yang dikerjakan worker sendiri** (`orders.Automation`, sejak M2.7a; job di §21):
+- **Order kedaluwarsa.** Order `awaiting_dp` yang belum membayar apa pun menjadi `expired` setelah tenggat DP. Tagihannya ikut ditutup.
+- **DP hangus.** Order `confirmed` yang baru membayar DP menjadi `cancelled` dengan pembayaran `forfeited` setelah tenggat pelunasan. Yang sudah dibayar tetap ditahan. Order yang sudah lunas tidak pernah disentuh.
+- **Jeda 30 menit** (`orders.Grace`) sebelum kedua langkah di atas. Tagihan online sendiri tutup tepat di tenggat, jadi tidak ada pembayaran baru yang bisa dimulai. Jeda ini hanya memberi waktu bagi notifikasi pembayaran yang dilakukan sesaat sebelum tenggat tapi datang terlambat, supaya pelanggan itu tidak kehilangan ordernya.
+- **Tagihan pelunasan**, dibuat saat order terkonfirmasi dan setelah pembayaran manual (event `order.confirmed` dan `order.payment_received`):
+  - satu pembayaran `balance` sebesar sisa tagihan, berlaku sampai tenggat pelunasan;
+  - memakai **metode yang dipilih pelanggan saat checkout** (diputuskan 2026-09-28). Kalau metode itu sudah dimatikan owner, dipakai QRIS; kalau QRIS juga mati, metode pertama yang aktif;
+  - biaya admin dihitung dari tarif yang berlaku saat tagihan dibuat;
+  - tidak dibuat untuk order yang sudah lunas, sudah berakhir, sudah lewat tenggat pelunasan, atau yang masih punya tagihan pelunasan terbuka;
+  - kalau provider gagal, job diulang dengan jeda yang makin panjang, sampai 10 kali (sekitar 7 jam). Idempotensi provider per pembayaran mencegah tagihan ganda.
+- **Semua langkah worker memakai kunci yang sama dengan aksi staf**: baris order dikunci, lalu kondisinya dicek ulang. Jadi DP yang dicatat owner bersamaan dengan pengecekan kedaluwarsa tidak bentrok; yang datang kedua melihat status baru dan tidak mengubah apa pun.
+- **Tidak ada entri audit** untuk langkah worker, karena tidak ada orang yang bertindak. Event outbox-nya ditandai `"automatic": true`.
+- Property test aksi staf (§13) ikut menjalankan langkah-langkah worker secara acak, dan invariantnya tetap berlaku.
 
 **Pembayaran manual** (`RecordManualPayment`, sejak M2.8a, hanya owner). Ini jalur pengecualian, bukan jalur utama, misalnya pelanggan transfer langsung ke rekening toko:
 - **Isian wajib**: nominal, **nomor referensi** sebagai bukti (maksimal 100 karakter), dan **catatan** (menjadi alasan audit). Foto bukti menyusul bersama Storage di M5.
@@ -1027,8 +1044,10 @@ type Adapter interface {
 | `lock-batch` | cutoff belanja per batch | No-op kalau sudah terkunci |
 | `stock-check-reminder` | beberapa jam sebelum cutoff | Satu pengingat per batch |
 | `expire-lots` | harian | Tandai lot kedaluwarsa, idempoten |
+| `expire-unpaid-dp` (M2.7a) | tiap menit: tenggat DP + 30 menit lewat | Baris order dikunci dan status dicek ulang |
+| `create-balance-invoice` (M2.7a) | outbox `order.confirmed`, `order.payment_received` | Tidak dibuat kalau sudah ada tagihan pelunasan terbuka; provider idempoten per pembayaran |
 | `balance-reminder` | H-2, H-1, 3 jam sebelum tenggat | Tandai terkirim per (order, tahap) |
-| `forfeit-unpaid` | tenggat pelunasan lewat | Cek status sebelum membatalkan |
+| `forfeit-unpaid` (M2.7a) | tiap menit: tenggat pelunasan + 30 menit lewat | Baris order dikunci dan status dicek ulang |
 | `reschedule-notify` | outbox `order.rescheduled` | Dedupe per (request, order) |
 | `reschedule-auto-accept` | batas waktu jawaban lewat | Hanya ubah yang masih `pending` |
 | `refund` | pelanggan pilih batal atau toko membatalkan | Kunci idempotensi per order |
@@ -1036,9 +1055,24 @@ type Adapter interface {
 | `send-procurement-order` | admin menekan "Pesan via WA" | Cek status `sent` sebelum kirim |
 | `process-whatsapp-inbound` | webhook WA | Dedupe lewat `webhook_events` |
 | `reconcile-payments` / `reconcile-shipments` | harian | Hanya memperbaiki yang tidak cocok |
-| `publish-outbox` | terus-menerus | Tandai `published_at` |
+| `publish-outbox` (M2.7a) | terus-menerus | Tandai `published_at` dalam transaksi yang sama |
 
 Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River dan mengirim alert ke Sentry. Semua jadwal memakai `Asia/Jakarta`.
+
+**Cara kerjanya** (sejak M2.7a; `platform/jobs`, `platform/outbox`, `cmd/worker`):
+- **River v0.47** berjalan di database yang sama, dengan tabel di schema `river`. Tabelnya dibuat lewat migrasi goose (00009) yang berisi SQL migrasi River 002–007. Migrasi 001 (`river_migration`) sengaja dilewati karena goose yang mencatat versi, dan River mendukung cara ini. Untuk upgrade River, tambahkan migrasi goose baru berisi SQL versi barunya (`river migrate-get --version N --up --schema river`).
+- **Pengirim outbox** (`outbox.Publisher`, bukan job River):
+  - Loop di worker membaca event yang belum terkirim sesuai urutan `seq`, maksimal 100 sekaligus, dan mencari event baru setiap 2 detik.
+  - Untuk setiap event, job pelanggannya dibuat dan event ditandai terkirim, **dalam satu transaksi**. Karena itu setiap event menghasilkan jobnya tepat satu kali.
+  - Hanya satu pengirim yang bekerja pada satu waktu, walaupun worker-nya lebih dari satu (advisory lock), jadi urutannya terjaga.
+  - Kalau pembuatan job gagal, satu batch itu dibatalkan dan dicoba lagi, dan kegagalannya dicatat ERROR.
+  - Pelanggan yang tidak bisa membaca event-nya adalah bug yang tidak akan sembuh dengan dicoba ulang. Kasus itu dicatat ERROR dan dilewati, supaya satu event rusak tidak menahan antrean.
+- **Pelanggan event** didaftarkan per modul (`orders/worker.Subscriptions`). Worker River modul hanya lapisan tipis di atas service domain (`orders.Automation`).
+- **Pengecekan tenggat** memakai periodic job River tiap menit (juga saat start), bukan satu job terjadwal per order. Cara ini tetap benar walaupun tenggat order berubah (jadwal ulang M6). Pengecekan yang gagal tidak diulang, karena menit berikutnya ada pengecekan baru; pengecekan yang masih antre tidak dimasukkan dua kali.
+- **Observability:**
+  - setiap job punya correlation id `job-<id>` dan span `job <kind>`;
+  - River sendiri mencatat kegagalan job di level INFO; error handler kita mencatat WARN selama job masih akan diulang, dan ERROR (alert) saat River menyerah.
+- **Shutdown**: job yang sedang berjalan diberi waktu 20 detik. Sisanya dikembalikan ke antrean untuk dikerjakan lagi.
 
 ---
 
@@ -1047,7 +1081,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 - **Error:** dibungkus dengan konteks (`fmt.Errorf("recompute batch %s: %w", date, err)`), sentinel error di domain, tidak ada `panic` di jalur normal.
 - **Observability:** `slog` JSON; span OpenTelemetry di webhook, job, dan agregasi; Sentry; `/healthz` dan `/readyz`. Setiap request dan job membawa correlation id. Detail (`internal/platform/telemetry`):
   - Tracing dan Sentry **mati kalau env-nya kosong**; tanpa akun apa pun aplikasi tetap jalan.
-  - **Tracing:** OTLP/HTTP ke `OTEL_EXPORTER_OTLP_ENDPOINT`. Resource membawa `service.name` (`api`/`worker`), `service.version` (commit git), dan `deployment.environment.name` (`APP_ENV`). Span otomatis: setiap RPC Connect (`otelconnect`, dipasang *sebelum* interceptor auth agar penolakan token ikut tercatat) dan setiap query DB yang berjalan di dalam request atau job yang di-trace (`otelpgx`, sebagai anak span RPC/job; teks SQL dicatat, nilai parameter tidak; query saat startup tidak di-trace). `/healthz` dan `/readyz` tidak di-trace. Propagasi W3C `traceparent` selalu aktif. Webhook (`otelhttp`) dan job River menyusul di M2.
+  - **Tracing:** OTLP/HTTP ke `OTEL_EXPORTER_OTLP_ENDPOINT`. Resource membawa `service.name` (`api`/`worker`), `service.version` (commit git), dan `deployment.environment.name` (`APP_ENV`). Span otomatis: setiap RPC Connect (`otelconnect`, dipasang *sebelum* interceptor auth agar penolakan token ikut tercatat) dan setiap query DB yang berjalan di dalam request atau job yang di-trace (`otelpgx`, sebagai anak span RPC/job; teks SQL dicatat, nilai parameter tidak; query saat startup tidak di-trace). `/healthz` dan `/readyz` tidak di-trace. Propagasi W3C `traceparent` selalu aktif. Setiap job River punya span sendiri sejak M2.7a (§21). Webhook (`otelhttp`) menyusul di M2.6b.
   - **Log ↔ trace:** setiap baris log di dalam span membawa `trace_id` dan `span_id`, di samping `correlation_id`.
   - **Sentry:** setiap log level **ERROR** menjadi event (tag `correlation_id`, `trace_id`, lokasi kode; dikelompokkan per pesan + lokasi kode). Jadi "alert ke Sentry" cukup dengan `logger.ErrorContext(...)`; gangguan yang lumrah (token kedaluwarsa, collector tak terjangkau) di-log di bawah ERROR agar tidak membanjiri Sentry. Semua pengumpulan data otomatis Sentry dimatikan (user, cookie, header, body, query).
   - **Panic:** middleware `Recover` mengubah panic HTTP menjadi 500 dan `ConnectRecover` mengubah panic RPC menjadi `Internal`; keduanya me-log ERROR dengan stack. Kegagalan fatal saat start juga di-log ERROR sebelum proses keluar.
@@ -1127,7 +1161,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 |---|---|---|
 | **M0 Fondasi** | Skeleton repo, `platform`, verifikasi JWT Supabase, migrasi awal, CI | `/healthz` hijau, pipeline CI lengkap |
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
-| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7 worker | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
+| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.7a worker (outbox, kedaluwarsa, DP hangus, tagihan pelunasan), M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7b notifikasi WA dan email serta pengingat pelunasan (setelah template WA disetujui Meta dan API key Resend ada), M2.7c rekonsiliasi Midtrans (setelah M2.6b) | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
@@ -1218,6 +1252,8 @@ Diputuskan 2026-09-28:
 | Operasional order | Ibu (`kitchen`) melihat order dan mengubah status produksi. Urusan uang (pembayaran manual, pembatalan, DP hangus, refund) hanya owner (§8, §13) |
 | Bukti pembayaran manual | Nomor referensi dan catatan dulu; foto bukti bersama Storage di M5 (§14) |
 | DP hangus | Hanya setelah tenggat pelunasan lewat. Pembatalan sebelum tenggat, termasuk atas permintaan pelanggan, berarti refund penuh (§13, §14) |
+| Cara bayar pelunasan | Otomatis sama dengan metode yang dipilih saat checkout; QRIS kalau metode itu sudah dimatikan. Tombol "ganti cara bayar" menyusul (M2.6b atau M5) (§14) |
+| Pemecahan M2.7 | M2.7a mesin worker dan tenggat; M2.7b notifikasi dan pengingat; M2.7c rekonsiliasi Midtrans (§26) |
 
 ### Masih terbuka
 

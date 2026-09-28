@@ -323,3 +323,48 @@ func TestStaffWrites(t *testing.T) {
 		t.Errorf("LockByCode(unknown) error = %v, want ErrNotFound", err)
 	}
 }
+
+// The sweeps see only the orders past the deadline in the asked statuses,
+// oldest deadline first, and never another tenant's.
+func TestPastDue(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	customer := newCustomer(t, d, tenant)
+	late := order(customer, orders.AwaitingDP, 7, wib(6, 19, 30))
+	late.DPDueAt = wib(5, 12, 0)
+	late = insert(t, d, repo, tenant, late)
+	later := order(customer, orders.AwaitingDP, 8, wib(7, 19, 30))
+	later.DPDueAt = wib(5, 13, 0)
+	later = insert(t, d, repo, tenant, later)
+	onTime := order(customer, orders.AwaitingDP, 9, wib(8, 19, 30))
+	onTime.DPDueAt = wib(5, 15, 0)
+	insert(t, d, repo, tenant, onTime)
+	confirmed := order(customer, orders.Confirmed, 7, wib(6, 19, 30))
+	confirmed.Payment, confirmed.DPDueAt, confirmed.BalanceDueAt = payments.DPPaid, wib(5, 11, 0), wib(6, 19, 30)
+	confirmed = insert(t, d, repo, tenant, confirmed)
+	other := dbtest.CreateTenant(t, d, "Toko Lain")
+	foreign := order(newCustomer(t, d, other), orders.AwaitingDP, 7, wib(6, 19, 30))
+	foreign.DPDueAt = wib(5, 12, 0)
+	insert(t, d, repo, other, foreign)
+
+	ids, err := repo.PastDPDue(ctx, tenant, orders.AwaitingDP, payments.Unpaid, wib(5, 13, 0), 10)
+	if err != nil || !slices.Equal(ids, []uuid.UUID{late.ID, later.ID}) {
+		t.Errorf("PastDPDue() = %v, %v; want the two late ones, oldest first", ids, err)
+	}
+	if ids, _ := repo.PastDPDue(ctx, tenant, orders.AwaitingDP, payments.Unpaid, wib(5, 13, 0), 1); !slices.Equal(ids, []uuid.UUID{late.ID}) {
+		t.Errorf("PastDPDue(limit 1) = %v, want the oldest", ids)
+	}
+	ids, err = repo.PastBalanceDue(ctx, tenant, orders.Confirmed, payments.DPPaid, wib(6, 19, 30), 10)
+	if err != nil || !slices.Equal(ids, []uuid.UUID{confirmed.ID}) {
+		t.Errorf("PastBalanceDue() = %v, %v; want the confirmed order", ids, err)
+	}
+
+	if got, err := repo.LockByID(ctx, tenant, late.ID); err != nil || got.Code != late.Code || len(got.Items) != 1 {
+		t.Errorf("LockByID() = %+v, %v", got, err)
+	}
+	if _, err := repo.LockByID(ctx, other, late.ID); !errors.Is(err, apperr.ErrNotFound) {
+		t.Errorf("LockByID(another tenant) error = %v, want ErrNotFound", err)
+	}
+}

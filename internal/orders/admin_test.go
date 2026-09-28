@@ -21,6 +21,7 @@ type office struct {
 	*shop
 	staff *fakeCustomers
 	admin *orders.Admin
+	auto  *orders.Automation
 	order orders.Order // placed for Wednesday: 99,000, a DP of 49,500
 }
 
@@ -30,6 +31,9 @@ func newOffice(t *testing.T, roles ...identity.Role) *office {
 	o := &office{shop: s, staff: &fakeCustomers{roles: roles, user: uuid.New()}}
 	o.admin = orders.NewAdmin(orders.AdminDeps{
 		Repo: s.repo, Ledger: payments.NewLedger(s.ledger), Principals: o.staff, Tx: fakeTx{}, Clock: s.clock,
+	})
+	o.auto = orders.NewAutomation(orders.AutomationDeps{
+		Repo: s.repo, Ledger: payments.NewLedger(s.ledger), Policies: s.policies, Provider: s.provider, Tx: fakeTx{}, Clock: s.clock,
 	})
 	o.order = s.place(t, s.placeRequest(wib(7, 9, 0), line(s.chocolate, 6), line(s.cheese, 6)))
 	return o
@@ -453,14 +457,14 @@ func TestAdmin_List(t *testing.T) {
 	}
 }
 
-// Whatever staff do, in any order and at any time, an order never reaches
-// production or the customer unpaid, never holds more than its total, and
-// its payment status always agrees with its ledger (§13, §14).
+// Whatever staff and the worker do, in any order and at any time, an order
+// never reaches production or the customer unpaid, never holds more than its
+// total, and its payment status always agrees with its ledger (§13, §14).
 func TestAdmin_Invariants(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		o := newOffice(t, identity.RoleOwner)
 		for range rapid.IntRange(1, 12).Draw(rt, "steps") {
-			switch rapid.IntRange(0, 3).Draw(rt, "action") {
+			switch rapid.IntRange(0, 4).Draw(rt, "action") {
 			case 0:
 				amount := rapid.Int64Range(1, 120000).Draw(rt, "amount")
 				_, _ = o.admin.RecordPayment(t.Context(), o.order.Code, orders.ManualPayment{AmountIDR: amount, Reference: "r", Note: "n"})
@@ -472,6 +476,10 @@ func TestAdmin_Invariants(t *testing.T) {
 				_, _ = o.admin.Cancel(t.Context(), o.order.Code, orders.CancelRequest{Mode: mode, Reason: "r", RefundReference: "r"})
 			case 3:
 				o.clock.Advance(rapid.SampledFrom([]time.Duration{time.Hour, 12 * time.Hour, 36 * time.Hour}).Draw(rt, "wait"))
+			case 4: // the worker's turn
+				_, _ = o.auto.ExpireUnpaid(t.Context(), tenant)
+				_, _ = o.auto.ForfeitUnpaid(t.Context(), tenant)
+				_ = o.auto.EnsureBalanceInvoice(t.Context(), tenant, o.order.ID)
 			}
 
 			got, err := o.admin.Get(t.Context(), o.order.Code)
