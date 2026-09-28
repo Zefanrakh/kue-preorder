@@ -78,10 +78,17 @@ func (f *fakeSchedules) ClosedDates(_ context.Context, _ uuid.UUID, from, to clo
 	return out, nil
 }
 
-type fakePolicies struct{ policy payments.Policy }
+type fakePolicies struct {
+	policy payments.Policy
+	rules  map[payments.Method]payments.FeeRule
+}
 
 func (f *fakePolicies) Policy(context.Context, uuid.UUID) (payments.Policy, error) {
 	return f.policy, nil
+}
+
+func (f *fakePolicies) FeeRules(context.Context, uuid.UUID) (map[payments.Method]payments.FeeRule, error) {
+	return f.rules, nil
 }
 
 // shop sells donuts: chocolate at 8,000 and cheese at 8,500, 90 minutes of
@@ -110,7 +117,10 @@ func newShop() *shop {
 		costs:    map[uuid.UUID]catalog.IngredientCost{s.chocolate: {PerItemIDR: 1530}, s.cheese: {PerItemIDR: 1530}},
 	}
 	s.schedules = &fakeSchedules{settings: scheduling.DefaultSettings()}
-	s.policies = &fakePolicies{policy: payments.DefaultPolicy()}
+	// Most tests look at DPs on small carts; the DP threshold has tests of its own.
+	policy := payments.DefaultPolicy()
+	policy.DPMinTotalIDR = 0
+	s.policies = &fakePolicies{policy: policy, rules: payments.DefaultFeeRules()}
 	s.repo = newFakeRepo()
 	s.customers = &fakeCustomers{customer: identity.Customer{Phone: "+6281234567890"}}
 	s.ledger = &fakeLedger{}

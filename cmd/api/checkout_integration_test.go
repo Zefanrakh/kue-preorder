@@ -122,23 +122,44 @@ func quote(t *testing.T, client ordersv1connect.CheckoutServiceClient, variant s
 }
 
 // Sent as GET, as the storefront does: through the rate limit, the cache
-// headers, and every real repository.
+// headers, and every real repository. 20 donuts, Rp160.000, may be paid with
+// a DP.
 func TestQuoteOrder_Schedule(t *testing.T) {
 	client, donut := wiredCheckout(t, connect.WithHTTPGet())
 
-	res, err := quote(t, client, donut.ID.String(), 3, wib(8, 9, 0))
+	res, err := quote(t, client, donut.ID.String(), 20, wib(8, 9, 0))
 
 	noErr(t, err)
 	got, s := res.Msg, res.Msg.GetSchedule()
-	if got.GetTotalIdr() != 24000 || got.GetDpRequiredIdr() != 12000 || len(got.GetItems()) != 1 || got.GetItems()[0].GetProductName() != "Donut" {
-		t.Errorf("QuoteOrder() = %v, want 3 × 8,000 with a DP of 12,000", got)
+	if got.GetTotalIdr() != 160000 || got.GetDpRequiredIdr() != 80000 || len(got.GetItems()) != 1 || got.GetItems()[0].GetProductName() != "Donut" ||
+		got.GetFullPaymentReason() != ordersv1.FullPaymentReason_FULL_PAYMENT_REASON_UNSPECIFIED {
+		t.Errorf("QuoteOrder() = %v, want 20 × 8,000 with a DP of 80,000", got)
 	}
 	if s == nil || s.GetProductionDate() != "2026-10-08" || !s.GetDpDueAt().AsTime().Equal(wib(5, 13, 0)) ||
 		!s.GetBalanceDueAt().AsTime().Equal(wib(7, 19, 30)) || s.GetFullPaymentRequired() {
 		t.Errorf("schedule = %v, want Thursday's batch, the DP within 3 hours, the balance Wednesday 19.30", s)
 	}
+	opts := got.GetPaymentOptions()
+	if len(opts) != 4 || opts[0].GetMethod() != ordersv1.PaymentMethod_PAYMENT_METHOD_QRIS || opts[0].GetDpFeeIdr() != 0 ||
+		opts[1].GetDpFeeIdr() != 4440 || opts[1].GetFullFeeIdr() != 4440 {
+		t.Errorf("payment options = %v, want QRIS free first and bank transfer at Rp4.440", opts)
+	}
 	if cc := res.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q, want no-store: a quote depends on the moment", cc)
+	}
+}
+
+// Three donuts, Rp24.000, are below the DP threshold: paid in full at once.
+func TestQuoteOrder_SmallOrderPaysInFull(t *testing.T) {
+	client, donut := wiredCheckout(t)
+
+	res, err := quote(t, client, donut.ID.String(), 3, wib(8, 9, 0))
+
+	noErr(t, err)
+	got := res.Msg
+	if !got.GetSchedule().GetFullPaymentRequired() || got.GetFullPaymentReason() != ordersv1.FullPaymentReason_FULL_PAYMENT_REASON_SMALL_ORDER ||
+		got.GetDpRequiredIdr() != 24000 || got.GetPaymentOptions()[1].DpFeeIdr != nil {
+		t.Errorf("QuoteOrder() = %v, want full payment for a small order and no DP fees", got)
 	}
 }
 

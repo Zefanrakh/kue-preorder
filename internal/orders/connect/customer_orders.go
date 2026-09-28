@@ -34,6 +34,7 @@ func (h *CustomerOrderHandler) PlaceOrder(ctx context.Context, req *connect.Requ
 	var ids rpcerr.IDs
 	in := orders.PlaceRequest{
 		PayInFull: m.GetPayInFull(), TermsVersion: m.GetTermsVersion(), Notes: m.GetNotes(),
+		Method:         methodFromProto(m.GetPaymentMethod()),
 		Customer:       identity.CustomerInput{Name: m.GetCustomerName(), Email: m.GetCustomerEmail()},
 		IdempotencyKey: ids.Parse("idempotency_key", m.GetIdempotencyKey()),
 	}
@@ -98,6 +99,24 @@ var paymentStatuses = map[payments.Status]ordersv1.PaymentStatus{
 	payments.Refunded:   ordersv1.PaymentStatus_PAYMENT_STATUS_REFUNDED,
 }
 
+var paymentMethods = map[payments.Method]ordersv1.PaymentMethod{
+	payments.MethodQRIS:         ordersv1.PaymentMethod_PAYMENT_METHOD_QRIS,
+	payments.MethodBankTransfer: ordersv1.PaymentMethod_PAYMENT_METHOD_BANK_TRANSFER,
+	payments.MethodEWallet:      ordersv1.PaymentMethod_PAYMENT_METHOD_EWALLET,
+	payments.MethodMinimarket:   ordersv1.PaymentMethod_PAYMENT_METHOD_MINIMARKET,
+}
+
+// methodFromProto maps an unspecified or unknown method to "", which
+// PlaceOrder refuses in its own words.
+func methodFromProto(m ordersv1.PaymentMethod) payments.Method {
+	for d, p := range paymentMethods {
+		if p == m {
+			return d
+		}
+	}
+	return ""
+}
+
 var paymentKinds = map[payments.Kind]ordersv1.PaymentKind{
 	payments.KindDP:      ordersv1.PaymentKind_PAYMENT_KIND_DP,
 	payments.KindBalance: ordersv1.PaymentKind_PAYMENT_KIND_BALANCE,
@@ -127,7 +146,7 @@ func orderToProto(o orders.Order) *ordersv1.Order {
 	for _, p := range o.Payments {
 		pp := &ordersv1.Payment{
 			Id: p.ID.String(), Kind: paymentKinds[p.Kind], AmountIdr: p.AmountIDR, FeeIdr: p.FeeIDR,
-			State: paymentStates[p.State], CheckoutUrl: p.CheckoutURL,
+			State: paymentStates[p.State], CheckoutUrl: p.CheckoutURL, Method: paymentMethods[p.Method],
 		}
 		if p.ExpiresAt != nil {
 			pp.ExpiresAt = timestamppb.New(*p.ExpiresAt)

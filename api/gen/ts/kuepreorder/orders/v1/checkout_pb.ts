@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kuepreorder/orders/v1/checkout.proto.
  */
 export const file_kuepreorder_orders_v1_checkout: GenFile = /*@__PURE__*/
-  fileDesc("CiRrdWVwcmVvcmRlci9vcmRlcnMvdjEvY2hlY2tvdXQucHJvdG8SFWt1ZXByZW9yZGVyLm9yZGVycy52MSIwCghDYXJ0SXRlbRISCgp2YXJpYW50X2lkGAEgASgJEhAKCHF1YW50aXR5GAIgASgFInIKEVF1b3RlT3JkZXJSZXF1ZXN0Ei4KBWl0ZW1zGAEgAygLMh8ua3VlcHJlb3JkZXIub3JkZXJzLnYxLkNhcnRJdGVtEi0KCXBpY2t1cF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAijgEKClF1b3RlZEl0ZW0SEgoKdmFyaWFudF9pZBgBIAEoCRIUCgxwcm9kdWN0X25hbWUYAiABKAkSFAoMdmFyaWFudF9uYW1lGAMgASgJEhAKCHF1YW50aXR5GAQgASgFEhYKDnVuaXRfcHJpY2VfaWRyGAUgASgDEhYKDmxpbmVfdG90YWxfaWRyGAYgASgDItQBCghTY2hlZHVsZRItCglwaWNrdXBfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhcKD3Byb2R1Y3Rpb25fZGF0ZRgCIAEoCRItCglkcF9kdWVfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjIKDmJhbGFuY2VfZHVlX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIdChVmdWxsX3BheW1lbnRfcmVxdWlyZWQYBSABKAgikgEKD1BpY2t1cFJlamVjdGlvbhI1Cgdwcm9ibGVtGAEgASgOMiQua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBpY2t1cFByb2JsZW0SDwoHbWVzc2FnZRgCIAEoCRI3ChNzdWdnZXN0ZWRfcGlja3VwX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKsAgoSUXVvdGVPcmRlclJlc3BvbnNlEjAKBWl0ZW1zGAEgAygLMiEua3VlcHJlb3JkZXIub3JkZXJzLnYxLlF1b3RlZEl0ZW0SFAoMc3VidG90YWxfaWRyGAIgASgDEg8KB3RheF9pZHIYAyABKAMSEQoJdG90YWxfaWRyGAQgASgDEhcKD2RwX3JlcXVpcmVkX2lkchgFIAEoAxIzCghzY2hlZHVsZRgGIAEoCzIfLmt1ZXByZW9yZGVyLm9yZGVycy52MS5TY2hlZHVsZUgAEjsKCXJlamVjdGlvbhgHIAEoCzImLmt1ZXByZW9yZGVyLm9yZGVycy52MS5QaWNrdXBSZWplY3Rpb25IABIVCg10ZXJtc192ZXJzaW9uGAggASgJQggKBnBpY2t1cCriAQoNUGlja3VwUHJvYmxlbRIeChpQSUNLVVBfUFJPQkxFTV9VTlNQRUNJRklFRBAAEhoKFlBJQ0tVUF9QUk9CTEVNX1RPT19GQVIQARIbChdQSUNLVVBfUFJPQkxFTV9UT09fU09PThACEiAKHFBJQ0tVUF9QUk9CTEVNX09VVFNJREVfSE9VUlMQAxIZChVQSUNLVVBfUFJPQkxFTV9DTE9TRUQQBBIiCh5QSUNLVVBfUFJPQkxFTV9TSE9QUElOR19DTE9TRUQQBRIXChNQSUNLVVBfUFJPQkxFTV9GVUxMEAYyeQoPQ2hlY2tvdXRTZXJ2aWNlEmYKClF1b3RlT3JkZXISKC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUXVvdGVPcmRlclJlcXVlc3QaKS5rdWVwcmVvcmRlci5vcmRlcnMudjEuUXVvdGVPcmRlclJlc3BvbnNlIgOQAgFC7QEKGWNvbS5rdWVwcmVvcmRlci5vcmRlcnMudjFCDUNoZWNrb3V0UHJvdG9QAVpLZ2l0aHViLmNvbS9aZWZhbnJha2gva3VlLXByZW9yZGVyL2FwaS9nZW4vZ28va3VlcHJlb3JkZXIvb3JkZXJzL3YxO29yZGVyc3YxogIDS09YqgIVS3VlcHJlb3JkZXIuT3JkZXJzLlYxygIVS3VlcHJlb3JkZXJcT3JkZXJzXFYx4gIhS3VlcHJlb3JkZXJcT3JkZXJzXFYxXEdQQk1ldGFkYXRh6gIXS3VlcHJlb3JkZXI6Ok9yZGVyczo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("CiRrdWVwcmVvcmRlci9vcmRlcnMvdjEvY2hlY2tvdXQucHJvdG8SFWt1ZXByZW9yZGVyLm9yZGVycy52MSIwCghDYXJ0SXRlbRISCgp2YXJpYW50X2lkGAEgASgJEhAKCHF1YW50aXR5GAIgASgFInIKEVF1b3RlT3JkZXJSZXF1ZXN0Ei4KBWl0ZW1zGAEgAygLMh8ua3VlcHJlb3JkZXIub3JkZXJzLnYxLkNhcnRJdGVtEi0KCXBpY2t1cF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAigwEKDVBheW1lbnRPcHRpb24SNAoGbWV0aG9kGAEgASgOMiQua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBheW1lbnRNZXRob2QSFwoKZHBfZmVlX2lkchgCIAEoA0gAiAEBEhQKDGZ1bGxfZmVlX2lkchgDIAEoA0INCgtfZHBfZmVlX2lkciKOAQoKUXVvdGVkSXRlbRISCgp2YXJpYW50X2lkGAEgASgJEhQKDHByb2R1Y3RfbmFtZRgCIAEoCRIUCgx2YXJpYW50X25hbWUYAyABKAkSEAoIcXVhbnRpdHkYBCABKAUSFgoOdW5pdF9wcmljZV9pZHIYBSABKAMSFgoObGluZV90b3RhbF9pZHIYBiABKAMi1AEKCFNjaGVkdWxlEi0KCXBpY2t1cF9hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFwoPcHJvZHVjdGlvbl9kYXRlGAIgASgJEi0KCWRwX2R1ZV9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoOYmFsYW5jZV9kdWVfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEh0KFWZ1bGxfcGF5bWVudF9yZXF1aXJlZBgFIAEoCCKSAQoPUGlja3VwUmVqZWN0aW9uEjUKB3Byb2JsZW0YASABKA4yJC5rdWVwcmVvcmRlci5vcmRlcnMudjEuUGlja3VwUHJvYmxlbRIPCgdtZXNzYWdlGAIgASgJEjcKE3N1Z2dlc3RlZF9waWNrdXBfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIrIDChJRdW90ZU9yZGVyUmVzcG9uc2USMAoFaXRlbXMYASADKAsyIS5rdWVwcmVvcmRlci5vcmRlcnMudjEuUXVvdGVkSXRlbRIUCgxzdWJ0b3RhbF9pZHIYAiABKAMSDwoHdGF4X2lkchgDIAEoAxIRCgl0b3RhbF9pZHIYBCABKAMSFwoPZHBfcmVxdWlyZWRfaWRyGAUgASgDEjMKCHNjaGVkdWxlGAYgASgLMh8ua3VlcHJlb3JkZXIub3JkZXJzLnYxLlNjaGVkdWxlSAASOwoJcmVqZWN0aW9uGAcgASgLMiYua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBpY2t1cFJlamVjdGlvbkgAEhUKDXRlcm1zX3ZlcnNpb24YCCABKAkSPQoPcGF5bWVudF9vcHRpb25zGAkgAygLMiQua3VlcHJlb3JkZXIub3JkZXJzLnYxLlBheW1lbnRPcHRpb24SRQoTZnVsbF9wYXltZW50X3JlYXNvbhgKIAEoDjIoLmt1ZXByZW9yZGVyLm9yZGVycy52MS5GdWxsUGF5bWVudFJlYXNvbkIICgZwaWNrdXAqpQEKDVBheW1lbnRNZXRob2QSHgoaUEFZTUVOVF9NRVRIT0RfVU5TUEVDSUZJRUQQABIXChNQQVlNRU5UX01FVEhPRF9RUklTEAESIAocUEFZTUVOVF9NRVRIT0RfQkFOS19UUkFOU0ZFUhACEhoKFlBBWU1FTlRfTUVUSE9EX0VXQUxMRVQQAxIdChlQQVlNRU5UX01FVEhPRF9NSU5JTUFSS0VUEAQqfwoRRnVsbFBheW1lbnRSZWFzb24SIwofRlVMTF9QQVlNRU5UX1JFQVNPTl9VTlNQRUNJRklFRBAAEiMKH0ZVTExfUEFZTUVOVF9SRUFTT05fU01BTExfT1JERVIQARIgChxGVUxMX1BBWU1FTlRfUkVBU09OX1NDSEVEVUxFEAIq4gEKDVBpY2t1cFByb2JsZW0SHgoaUElDS1VQX1BST0JMRU1fVU5TUEVDSUZJRUQQABIaChZQSUNLVVBfUFJPQkxFTV9UT09fRkFSEAESGwoXUElDS1VQX1BST0JMRU1fVE9PX1NPT04QAhIgChxQSUNLVVBfUFJPQkxFTV9PVVRTSURFX0hPVVJTEAMSGQoVUElDS1VQX1BST0JMRU1fQ0xPU0VEEAQSIgoeUElDS1VQX1BST0JMRU1fU0hPUFBJTkdfQ0xPU0VEEAUSFwoTUElDS1VQX1BST0JMRU1fRlVMTBAGMnkKD0NoZWNrb3V0U2VydmljZRJmCgpRdW90ZU9yZGVyEigua3VlcHJlb3JkZXIub3JkZXJzLnYxLlF1b3RlT3JkZXJSZXF1ZXN0Gikua3VlcHJlb3JkZXIub3JkZXJzLnYxLlF1b3RlT3JkZXJSZXNwb25zZSIDkAIBQu0BChljb20ua3VlcHJlb3JkZXIub3JkZXJzLnYxQg1DaGVja291dFByb3RvUAFaS2dpdGh1Yi5jb20vWmVmYW5yYWtoL2t1ZS1wcmVvcmRlci9hcGkvZ2VuL2dvL2t1ZXByZW9yZGVyL29yZGVycy92MTtvcmRlcnN2MaICA0tPWKoCFUt1ZXByZW9yZGVyLk9yZGVycy5WMcoCFUt1ZXByZW9yZGVyXE9yZGVyc1xWMeICIUt1ZXByZW9yZGVyXE9yZGVyc1xWMVxHUEJNZXRhZGF0YeoCF0t1ZXByZW9yZGVyOjpPcmRlcnM6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message kuepreorder.orders.v1.CartItem
@@ -63,6 +63,40 @@ export const QuoteOrderRequestSchema: GenMessage<QuoteOrderRequest> = /*@__PURE_
   messageDesc(file_kuepreorder_orders_v1_checkout, 1);
 
 /**
+ * PaymentOption is a method the customer may pay with, and its "Biaya
+ * admin" on top of the payment.
+ *
+ * @generated from message kuepreorder.orders.v1.PaymentOption
+ */
+export type PaymentOption = Message<"kuepreorder.orders.v1.PaymentOption"> & {
+  /**
+   * @generated from field: kuepreorder.orders.v1.PaymentMethod method = 1;
+   */
+  method: PaymentMethod;
+
+  /**
+   * On the DP; unset when the order must be paid in full.
+   *
+   * @generated from field: optional int64 dp_fee_idr = 2;
+   */
+  dpFeeIdr?: bigint | undefined;
+
+  /**
+   * On the whole total.
+   *
+   * @generated from field: int64 full_fee_idr = 3;
+   */
+  fullFeeIdr: bigint;
+};
+
+/**
+ * Describes the message kuepreorder.orders.v1.PaymentOption.
+ * Use `create(PaymentOptionSchema)` to create a new message.
+ */
+export const PaymentOptionSchema: GenMessage<PaymentOption> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_orders_v1_checkout, 2);
+
+/**
  * @generated from message kuepreorder.orders.v1.QuotedItem
  */
 export type QuotedItem = Message<"kuepreorder.orders.v1.QuotedItem"> & {
@@ -102,7 +136,7 @@ export type QuotedItem = Message<"kuepreorder.orders.v1.QuotedItem"> & {
  * Use `create(QuotedItemSchema)` to create a new message.
  */
 export const QuotedItemSchema: GenMessage<QuotedItem> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_checkout, 2);
+  messageDesc(file_kuepreorder_orders_v1_checkout, 3);
 
 /**
  * Schedule is the order's timetable, locked when it is placed.
@@ -151,7 +185,7 @@ export type Schedule = Message<"kuepreorder.orders.v1.Schedule"> & {
  * Use `create(ScheduleSchema)` to create a new message.
  */
 export const ScheduleSchema: GenMessage<Schedule> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_checkout, 3);
+  messageDesc(file_kuepreorder_orders_v1_checkout, 4);
 
 /**
  * @generated from message kuepreorder.orders.v1.PickupRejection
@@ -182,7 +216,7 @@ export type PickupRejection = Message<"kuepreorder.orders.v1.PickupRejection"> &
  * Use `create(PickupRejectionSchema)` to create a new message.
  */
 export const PickupRejectionSchema: GenMessage<PickupRejection> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_checkout, 4);
+  messageDesc(file_kuepreorder_orders_v1_checkout, 5);
 
 /**
  * @generated from message kuepreorder.orders.v1.QuoteOrderResponse
@@ -242,6 +276,20 @@ export type QuoteOrderResponse = Message<"kuepreorder.orders.v1.QuoteOrderRespon
    * @generated from field: string terms_version = 8;
    */
   termsVersion: string;
+
+  /**
+   * The methods on offer, QRIS first. Set only with a schedule.
+   *
+   * @generated from field: repeated kuepreorder.orders.v1.PaymentOption payment_options = 9;
+   */
+  paymentOptions: PaymentOption[];
+
+  /**
+   * Why schedule.full_payment_required is set, when it is.
+   *
+   * @generated from field: kuepreorder.orders.v1.FullPaymentReason full_payment_reason = 10;
+   */
+  fullPaymentReason: FullPaymentReason;
 };
 
 /**
@@ -249,7 +297,89 @@ export type QuoteOrderResponse = Message<"kuepreorder.orders.v1.QuoteOrderRespon
  * Use `create(QuoteOrderResponseSchema)` to create a new message.
  */
 export const QuoteOrderResponseSchema: GenMessage<QuoteOrderResponse> = /*@__PURE__*/
-  messageDesc(file_kuepreorder_orders_v1_checkout, 5);
+  messageDesc(file_kuepreorder_orders_v1_checkout, 6);
+
+/**
+ * PaymentMethod is how a customer pays one payment, chosen at checkout
+ * (§14). The invoice offers only that method.
+ *
+ * @generated from enum kuepreorder.orders.v1.PaymentMethod
+ */
+export enum PaymentMethod {
+  /**
+   * @generated from enum value: PAYMENT_METHOD_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * No "Biaya admin", ever.
+   *
+   * @generated from enum value: PAYMENT_METHOD_QRIS = 1;
+   */
+  QRIS = 1,
+
+  /**
+   * Virtual account of any bank.
+   *
+   * @generated from enum value: PAYMENT_METHOD_BANK_TRANSFER = 2;
+   */
+  BANK_TRANSFER = 2,
+
+  /**
+   * GoPay, ShopeePay.
+   *
+   * @generated from enum value: PAYMENT_METHOD_EWALLET = 3;
+   */
+  EWALLET = 3,
+
+  /**
+   * Indomaret, Alfamart.
+   *
+   * @generated from enum value: PAYMENT_METHOD_MINIMARKET = 4;
+   */
+  MINIMARKET = 4,
+}
+
+/**
+ * Describes the enum kuepreorder.orders.v1.PaymentMethod.
+ */
+export const PaymentMethodSchema: GenEnum<PaymentMethod> = /*@__PURE__*/
+  enumDesc(file_kuepreorder_orders_v1_checkout, 0);
+
+/**
+ * FullPaymentReason says why the first payment must be the whole total.
+ *
+ * @generated from enum kuepreorder.orders.v1.FullPaymentReason
+ */
+export enum FullPaymentReason {
+  /**
+   * A DP is allowed.
+   *
+   * @generated from enum value: FULL_PAYMENT_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The total is below the shop's DP threshold: a DP would mean two
+   * payments and two fees.
+   *
+   * @generated from enum value: FULL_PAYMENT_REASON_SMALL_ORDER = 1;
+   */
+  SMALL_ORDER = 1,
+
+  /**
+   * The pickup is too close: the balance would fall due before the DP.
+   *
+   * @generated from enum value: FULL_PAYMENT_REASON_SCHEDULE = 2;
+   */
+  SCHEDULE = 2,
+}
+
+/**
+ * Describes the enum kuepreorder.orders.v1.FullPaymentReason.
+ */
+export const FullPaymentReasonSchema: GenEnum<FullPaymentReason> = /*@__PURE__*/
+  enumDesc(file_kuepreorder_orders_v1_checkout, 1);
 
 /**
  * PickupProblem is why a pickup time does not work.
@@ -309,14 +439,15 @@ export enum PickupProblem {
  * Describes the enum kuepreorder.orders.v1.PickupProblem.
  */
 export const PickupProblemSchema: GenEnum<PickupProblem> = /*@__PURE__*/
-  enumDesc(file_kuepreorder_orders_v1_checkout, 0);
+  enumDesc(file_kuepreorder_orders_v1_checkout, 2);
 
 /**
  * CheckoutService is where a customer turns a cart into an order
  * (docs/architecture.md §14, §15). Every amount is computed on the server
  * from the catalog; nothing the client says about money is used. Money is
- * int64 rupiah. The Xendit fee, shown as "Biaya admin", comes on top of the
- * order total when paying and is not part of these amounts.
+ * int64 rupiah. The payment provider's fee, shown as "Biaya admin", comes on
+ * top of the order total when paying and is not part of these amounts; it
+ * depends on the payment method, and QRIS has none (Bank Indonesia forbids it).
  *
  * @generated from service kuepreorder.orders.v1.CheckoutService
  */

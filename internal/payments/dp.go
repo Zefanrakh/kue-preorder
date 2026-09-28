@@ -27,16 +27,26 @@ type Policy struct {
 	// DPInvoiceValidMinutes is how long a DP invoice stays open, 30 to
 	// 10080; never past the shopping cutoff (§15).
 	DPInvoiceValidMinutes int32
+	// DPMinTotalIDR is the smallest total that may be paid with a DP; below
+	// it an order is paid in full at once, since a DP means two payments and
+	// two fees (§27). 0 allows a DP on any total.
+	DPMinTotalIDR int64
+	// MinOrderIDR is the smallest total accepted; 0 accepts any (§27).
+	MinOrderIDR int64
 	// UpdatedAt is zero while the defaults are in use.
 	UpdatedAt time.Time
 }
 
 // DefaultPolicy is the policy of a tenant that has not changed it (§27): a
-// DP of half the total that also covers the ingredients, the balance 12
-// hours before production, and 3 hours to pay the DP.
+// DP of half the total that also covers the ingredients, only from
+// Rp150.000; the balance 12 hours before production; 3 hours to pay the DP;
+// no minimum order. The SQL defaults of payment_policies match these.
 func DefaultPolicy() Policy {
-	return Policy{DPMinPercent: 50, DPCoversIngredientCost: true, BalanceDueHoursBefore: 12, DPInvoiceValidMinutes: 180}
+	return Policy{DPMinPercent: 50, DPCoversIngredientCost: true, BalanceDueHoursBefore: 12, DPInvoiceValidMinutes: 180, DPMinTotalIDR: 150_000}
 }
+
+// DPAllowed reports whether an order of totalIDR may be paid with a DP.
+func (p Policy) DPAllowed(totalIDR int64) bool { return totalIDR >= p.DPMinTotalIDR }
 
 // DPInvoiceValidFor is how long a DP invoice stays open.
 func (p Policy) DPInvoiceValidFor() time.Duration {
@@ -52,6 +62,8 @@ func (p Policy) Validate() error {
 	f.Check(p.DPMinPercent >= 1 && p.DPMinPercent <= 100, "dp_min_percent", "DP minimal 1 sampai 100 persen dari total.")
 	f.Check(p.BalanceDueHoursBefore >= 0 && p.BalanceDueHoursBefore <= 168, "balance_due_hours_before", "Tenggat pelunasan 0 sampai 168 jam sebelum produksi.")
 	f.Check(p.DPInvoiceValidMinutes >= 30 && p.DPInvoiceValidMinutes <= 10080, "dp_invoice_valid_minutes", "Masa berlaku tagihan DP 30 menit sampai 7 hari.")
+	f.Check(p.DPMinTotalIDR >= 0 && p.DPMinTotalIDR <= MaxOrderTotalIDR, "dp_min_total_idr", "Batas DP tidak boleh negatif.")
+	f.Check(p.MinOrderIDR >= 0 && p.MinOrderIDR <= MaxOrderTotalIDR, "min_order_idr", "Minimum pesanan tidak boleh negatif.")
 	return f.Err()
 }
 

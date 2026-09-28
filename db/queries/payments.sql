@@ -6,9 +6,9 @@ select * from payment_policies
 where tenant_id = sqlc.arg(tenant_id);
 
 -- name: AddPayment :exec
-insert into payments (id, tenant_id, order_id, kind, provider, amount_idr, fee_idr, status,
+insert into payments (id, tenant_id, order_id, kind, provider, method, amount_idr, fee_idr, status,
                       expires_at, created_at, updated_at)
-values (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(order_id), sqlc.arg(kind), sqlc.arg(provider),
+values (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(order_id), sqlc.arg(kind), sqlc.arg(provider), sqlc.narg(method),
         sqlc.arg(amount_idr), sqlc.arg(fee_idr), sqlc.arg(status), sqlc.narg(expires_at), sqlc.arg(now), sqlc.arg(now));
 
 -- name: SetPaymentInvoice :execrows
@@ -20,3 +20,8 @@ where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id) and status = 'pendin
 select * from payments
 where tenant_id = sqlc.arg(tenant_id) and order_id = sqlc.arg(order_id)
 order by created_at, id;
+
+-- name: ListPaymentMethodFees :many
+select * from payment_method_fees
+where tenant_id = sqlc.arg(tenant_id)
+order by method;

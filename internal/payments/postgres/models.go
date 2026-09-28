@@ -26,6 +26,17 @@ type Payment struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CheckoutUrl *string
+	Method      *string
+}
+
+type PaymentMethodFee struct {
+	TenantID    uuid.UUID
+	Method      string
+	FixedIdr    int64
+	RateBps     int32
+	VatIncluded bool
+	Enabled     bool
+	UpdatedAt   time.Time
 }
 
 type PaymentPolicy struct {
@@ -35,4 +46,6 @@ type PaymentPolicy struct {
 	BalanceDueHoursBefore  int32
 	DpInvoiceValidMinutes  int32
 	UpdatedAt              time.Time
+	DpMinTotalIdr          int64
+	MinOrderIdr            int64
 }

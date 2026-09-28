@@ -53,7 +53,7 @@ pelanggan, dan pengiriman lewat Biteship.
 | Job queue | **River** | Antrean job berbasis Postgres. Enqueue bisa ikut transaksi data |
 | Rumus dari user | **expr-lang/expr** | Evaluator ekspresi yang bisa di-sandbox |
 | Database, Auth, Storage | **Supabase** | Postgres + Auth (JWT) + Storage foto produk |
-| Pembayaran | Xendit Go SDK | Invoice DP dan pelunasan, native Indonesia |
+| Pembayaran | **Midtrans** (Snap), lewat klien HTTP tipis di balik port `payments.Provider` (diputuskan 2026-09-27, §27.2) | Tagihan DP dan pelunasan; QRIS, VA, e-wallet, minimarket |
 | Pengiriman | **Biteship API** | Ongkir multi-kurir, draft order, kurir instan, tracking |
 | Email | Resend (REST) | Struk, tagihan, notifikasi |
 | WhatsApp | Meta Cloud API atau BSP (Qiscus, Mekari Qontak) | Notifikasi pelanggan + adapter procurement |
@@ -87,7 +87,7 @@ flowchart TD
       STORE[Storage - foto]
     end
 
-    XENDIT[Xendit]
+    MIDTRANS[Midtrans]
     BITESHIP[Biteship]
     WA[WhatsApp API]
     RESEND[Resend]
@@ -97,16 +97,16 @@ flowchart TD
     API -->|verifikasi JWT via JWKS| AUTH
     API --> DB
     WORKER --> DB
-    XENDIT -->|webhook| API
+    MIDTRANS -->|webhook| API
     BITESHIP -->|webhook| API
     WA -->|pesan masuk| API
-    WORKER --> XENDIT
+    WORKER --> MIDTRANS
     WORKER --> BITESHIP
     WORKER --> WA
     WORKER --> RESEND
 ```
 
-Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi `confirmed` dan event ditulis ke outbox dalam transaksi yang sama → `worker` menghitung ulang batch → daftar belanja di dashboard ibu ter-update → ibu belanja → pelunasan masuk → produksi → kurir Biteship dipanggil di hari pengambilan.
+Alur utama: pelanggan bayar DP → webhook Midtrans masuk ke `api` → order jadi `confirmed` dan event ditulis ke outbox dalam transaksi yang sama → `worker` menghitung ulang batch → daftar belanja di dashboard ibu ter-update → ibu belanja → pelunasan masuk → produksi → kurir Biteship dipanggil di hari pengambilan.
 
 ---
 
@@ -126,7 +126,7 @@ Alur utama: pelanggan bayar DP → webhook Xendit masuk ke `api` → order jadi 
   /inventory           # lot stok, ledger pergerakan, cek stok, bahan rusak
   /orders              # lifecycle order, jadwal ulang
   /scheduling          # cutoff, slot pengambilan, hari libur, kapasitas
-  /payments            # DP, pelunasan, refund, Xendit, ledger pembayaran
+  /payments            # DP, pelunasan, refund, metode bayar dan biayanya, Midtrans, ledger pembayaran
   /shipping            # Biteship: ongkir, draft order, konfirmasi, tracking
   /procurement         # port Adapter + manual + whatsapp
   /channels            # port Adapter + web + tokopedia
@@ -503,15 +503,21 @@ payment_policies ( tenant_id primary key,          -- tanpa baris: payments.Defa
                    dp_covers_ingredient_cost bool,  -- default true
                    balance_due_hours_before int,    -- 0..168, default 12 (dari mulai produksi)
                    dp_invoice_valid_minutes int,    -- 30..10080, default 180
-                   updated_at )
+                   dp_min_total_idr bigint,         -- default 150000; di bawahnya wajib lunas (0 = DP untuk semua)
+                   min_order_idr bigint,            -- default 0 = tanpa minimum
+                   updated_at )                     -- default SQL sama dengan payments.DefaultPolicy (diuji)
+payment_method_fees ( tenant_id, method,            -- tanpa baris: payments.DefaultFeeRules()
+                      fixed_idr bigint, rate_bps int, vat_included bool, enabled bool,
+                      updated_at, primary key (tenant_id, method) )
 payments (
   id, tenant_id, order_id,
   kind text,                          -- 'dp' | 'balance' | 'full' | 'refund'
-  provider text,                      -- 'xendit' | 'manual' | 'dev' (provider palsu, hanya development)
+  provider text,                      -- 'midtrans' (M2.6b) | 'manual' | 'dev' (provider palsu, hanya development)
+  method text null,                   -- 'qris' | 'bank_transfer' | 'ewallet' | 'minimarket'; kosong untuk manual dan refund
   external_id text,                   -- unique per provider
   checkout_url text,                  -- link bayar dari provider; kosong sampai tagihannya ada
   amount_idr bigint,                  -- bagian untuk order; refund bernilai negatif
-  fee_idr bigint,                     -- "Biaya admin" Xendit yang dibayar pelanggan di atasnya
+  fee_idr bigint,                     -- "Biaya admin" yang dibayar pelanggan di atasnya; check: 0 untuk QRIS
   status text,                        -- 'pending' | 'paid' | 'expired' | 'failed'
   expires_at, paid_at,                -- check: paid_at terisi tepat saat status 'paid'
   raw jsonb, created_at, updated_at
@@ -754,7 +760,15 @@ dp_required = min( total,
 Estimasi biaya bahan memakai biaya per unit pada `u = 1` (batas atas, karena efek skala hanya bisa menurunkan biaya). Artinya, kalau pelanggan menghilang, DP sudah menutup bahan yang terlanjur dibeli.
 - Cara menghitungnya (`catalog.Reader.IngredientCosts`): setiap resep di `u = 1` dikali waste factor, lalu dihargai dengan kemasan default (harga kemasan ÷ isi kemasan). Hasilnya dibulatkan ke atas ke rupiah per buah. Jumlah bahan tidak dibulatkan ke unit utuh, karena yang dihitung adalah bagian satu buah.
 - Bahan tanpa kemasan default, atau kemasan tanpa harga, dilewati dan dicatat WARN, supaya owner tahu harga mana yang belum diisi. DP tetap minimal persentasenya.
-- **Biaya transaksi Xendit ditanggung pelanggan** dan ditampilkan sebagai **"Biaya admin"**, di atas total order (`payments.fee_idr`). Biaya ini tidak pernah dihitung sebagai pembayaran order. Cara menghitungnya diputuskan di M2.6.
+- **DP hanya untuk pesanan besar** (diputuskan 2026-09-27). Di bawah `dp_min_total_idr` (default Rp150.000), pesanan wajib lunas sekali bayar, karena DP berarti dua kali transaksi dan dua kali biaya. `QuoteOrder` menyebut alasannya (`FullPaymentReason`): pesanan kecil (`small_order`) atau jadwal terlalu mepet (`schedule`).
+- **Minimum order** (`min_order_idr`) disiapkan tapi tidak dipakai (default 0). Kalau diisi, keranjang di bawahnya ditolak dengan pesan "Minimal pesanan Rp…".
+- **Metode bayar dipilih di checkout** (pendekatan B, diputuskan 2026-09-27), dari empat kelompok: **QRIS**, **transfer bank (VA)**, **e-wallet** (GoPay, ShopeePay), dan **minimarket** (Indomaret, Alfamart). Kartu kredit tidak disertakan. `QuoteOrder` menampilkan setiap metode yang aktif beserta "Biaya admin"-nya untuk DP dan untuk bayar penuh. `PlaceOrder` wajib menyebut metodenya, lalu tagihannya hanya menawarkan metode itu.
+- **Biaya transaksi ditanggung pelanggan** sebagai **"Biaya admin"**, di atas total order (`payments.fee_idr`), dan tidak pernah dihitung sebagai pembayaran order. **QRIS selalu Rp0**: Bank Indonesia melarang biaya QRIS dibebankan ke pelanggan dengan nama apa pun. Aturan ini dikunci di kode dan di database (check constraint). Biaya QRIS menjadi beban toko (0,7%, atau 0% sampai Rp100.000 mulai 1 Oktober 2026).
+- **Cara menghitung biaya** (`payments.FeeRule.Fee`):
+  - Tarif tetap ditambah PPN 11%: VA Rp4.000 → **Rp4.440**, minimarket Rp5.000 → **Rp5.550**.
+  - Tarif persen **dihitung ke atas**. Provider memotong persen dari seluruh yang dibayar, termasuk biaya admin itu sendiri. Biayanya adalah angka terkecil yang membuat toko tetap menerima jumlah pesanan secara utuh, dengan pembulatan provider yang paling merugikan. Contoh: e-wallet 2% atas Rp100.000 → **Rp2.041**.
+  - Semua hitungan memakai bilangan bulat (`math/big` untuk hasil kali besar), tanpa float. Property test memastikan toko tidak pernah menerima kurang, dan biayanya tidak pernah lebih 1 rupiah pun dari yang perlu.
+- **Tarif per metode** disimpan per tenant (`payment_method_fees`). Tanpa baris, dipakai tarif Midtrans yang tercantum (`payments.DefaultFeeRules`, dicek 27 September 2026). Metode bisa dimatikan. Tarif diubah lewat CMS (M2.8) kalau Midtrans mengubah harga.
 - Sebelum membayar, pelanggan melihat semua angka ini lewat `QuoteOrder`: harga dari server, pajak (0), total, DP, tenggat DP, tenggat pelunasan, dan apakah harus lunas.
 
 **Tenggat pelunasan** dikunci saat checkout: default sebelum produksi dimulai (`balance_due_hours_before` dari jam mulai produksi). Pelanggan melihat tanggal dan jam pastinya sebelum membayar.
@@ -783,7 +797,7 @@ stateDiagram-v2
 - Satu transaksi (`db.Tx`) menulis: order `awaiting_dp`, itemnya, pembayaran pertama (`pending`, berakhir di tenggat DP), dan event outbox `order.placed`. Kode order acak diambil ulang kalau bentrok, tanpa membatalkan transaksi.
 - **Klik ganda aman.** Idempotency key dari client dicek dua kali: sebelum menghitung dan di dalam transaksi, setelah lock per pelanggan. Checkout yang terkirim dua kali mengembalikan order yang sama.
 - **Paling banyak 2 order menunggu DP per pelanggan** (§27). Order ketiga ditolak dengan `FailedPrecondition` `too_many_unpaid`. Lock per pelanggan menjaga batas ini dari dua checkout yang bersamaan.
-- **Tagihan dibuat setelah transaksi selesai**, lewat port `payments.Provider`. Kalau provider gagal, order tetap ada, kegagalannya dicatat ERROR, dan link bayar dibuat lagi saat pelanggan membuka ordernya (`GetMyOrder`). Provider wajib idempoten per pembayaran, jadi percobaan ulang tidak menagih dua kali. Sampai Xendit hadir (M2.6), `api` hanya bisa jalan dengan `APP_ENV=development` dan provider palsu (`dev`).
+- **Tagihan dibuat setelah transaksi selesai**, lewat port `payments.Provider`. Kalau provider gagal, order tetap ada, kegagalannya dicatat ERROR, dan link bayar dibuat lagi saat pelanggan membuka ordernya (`GetMyOrder`). Provider wajib idempoten per pembayaran, jadi percobaan ulang tidak menagih dua kali. Sampai adapter Midtrans hadir (M2.6b), `api` hanya bisa jalan dengan `APP_ENV=development` dan provider palsu (`dev`). Tagihan membawa metode dan biaya admin-nya (`InvoiceRequest.Method`, `FeeIDR`), supaya provider hanya menawarkan metode itu dan menampilkan biayanya sebagai baris terpisah.
 - **Kasus tepi untuk M2.6.** Cutoff batch bisa maju setelah tagihan DP dibuat, kalau order lain untuk hari yang sama terkonfirmasi dengan cutoff lebih awal. DP yang masuk setelah ibu berbelanja untuk hari itu harus ditangani saat DP dikonfirmasi.
 
 **Alur:**
@@ -893,16 +907,16 @@ Semua aksi tercatat (siapa, kapan, alasan, order mana), jadi riwayat jadwal ulan
 
 ## 18. Webhook (idempoten)
 
-Setiap webhook (Xendit, WhatsApp, Biteship, Tokopedia) melewati jalur yang sama:
+Setiap webhook (Midtrans, WhatsApp, Biteship, Tokopedia) melewati jalur yang sama:
 
 1. Verifikasi signature atau token. Tolak kalau gagal.
 2. `INSERT INTO webhook_events (provider, event_id)`. Kalau bentrok unique, balas 200 dan **berhenti**.
 3. Jalankan efeknya dalam transaksi, tulis outbox bila perlu.
 4. Isi `processed_at`.
 
-Langkah 2–4 dalam satu transaksi. Untuk provider tanpa signature (Biteship), tambahkan pengambilan ulang data dari API provider sebelum langkah 3.
+Langkah 2–4 dalam satu transaksi. Untuk provider tanpa signature (Biteship), tambahkan pengambilan ulang data dari API provider sebelum langkah 3. Midtrans punya signature (`signature_key` = SHA512(`order_id` + `status_code` + `gross_amount` + server key)); tetap diikuti pengambilan ulang status lewat Get Status API, sesuai saran Midtrans, sebelum efeknya dijalankan (M2.6b).
 
-Tambahan: job rekonsiliasi harian mencocokkan status invoice Xendit dan status pengiriman Biteship dengan data lokal, untuk menangkap webhook yang hilang.
+Tambahan: job rekonsiliasi harian mencocokkan status tagihan Midtrans dan status pengiriman Biteship dengan data lokal, untuk menangkap webhook yang hilang.
 
 Bagian bersama ada di `platform/webhook`: `StandardVerifier` untuk tanda tangan Standard Webhooks (Supabase Auth, dan nanti Resend) serta `Events` untuk `webhook_events` (`Claim`, `Done`, `Release`). Kalau efek sebuah webhook berada di luar database, misalnya mengirim pesan, catatannya diklaim dulu. Kalau efek itu gagal, catatannya dilepas lagi (`Release`), supaya percobaan ulang provider bisa mengulanginya tanpa efek ganda.
 
@@ -1056,7 +1070,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 |---|---|---|
 | **M0 Fondasi** | Skeleton repo, `platform`, verifikasi JWT Supabase, migrasi awal, CI | `/healthz` hijau, pipeline CI lengkap |
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
-| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Xendit, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6 Xendit, M2.7 worker, M2.8 operasional admin | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
+| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8 operasional admin, M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7 worker | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
@@ -1104,7 +1118,10 @@ Tautan desain yang disetujui:
 | Cutoff | Berbeda per varian; produksi maks. 4 jam; jadwal ulang massal + permintaan maaf (§15, §16) |
 | Pengiriman | Biteship, draft order saat DP, konfirmasi di hari pengambilan (§17). Sampai M6 hanya ambil sendiri (§13) |
 | Refund | Manual: admin mentransfer lalu mencatatnya dengan bukti; tercatat di ledger dengan nama admin (sama seperti pelunasan manual, §14) |
-| Biaya transaksi Xendit | Dibebankan ke pelanggan, ditampilkan terpisah dari total order (detail di M2.4) |
+| Payment gateway | **Midtrans**, menggantikan Xendit (diputuskan 2026-09-27, §27.2) |
+| Biaya transaksi | Dibebankan ke pelanggan sebagai "Biaya admin" sesuai tarif provider plus PPN, dihitung ke atas; **QRIS selalu Rp0** (aturan BI). Pelanggan memilih metode dulu (§14) |
+| DP | Hanya untuk pesanan mulai Rp150.000; di bawahnya wajib lunas sekali bayar |
+| Minimum order | Belum dipakai, tapi setelannya disiapkan (`min_order_idr`) |
 | Pembulatan bahan | Per komponen: `g`/`ml` ke terdekat, `pcs` ke atas (§10) |
 | Email transaksional | Resend (paket gratis) di balik port `Notifier`; WhatsApp tetap kanal utama (§27.1) |
 
@@ -1147,12 +1164,13 @@ Diputuskan 2026-09-26:
 
    Dari sana: total adonan per hari → jumlah loyang → putaran panggang per oven → muat atau tidak. `daily_capacity_minutes` diganti model ini.
 2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order.
+3. **Akun Midtrans atas nama siapa** (ibu atau Zefan). Rekening pencairan harus atas nama yang sama dengan KTP. Didaftarkan pemilik pada 30 September 2026, bersama domain dan Cloudflare.
 
 ### 27.1 Pertimbangan: email transaksional
 
 **Peran email.** Kanal utama pelanggan adalah WhatsApp. Email hanya cadangan dan arsip:
-konfirmasi order, tagihan DP/pelunasan, permintaan maaf jadwal ulang. Xendit sudah mengirim
-email invoice sendiri. Perkiraan volume single-tenant: 3–6 email per order, ±300–600 email per
+konfirmasi order, tagihan DP/pelunasan, permintaan maaf jadwal ulang. Provider pembayaran bisa
+mengirim email tagihan sendiri. Perkiraan volume single-tenant: 3–6 email per order, ±300–600 email per
 bulan untuk 100 order.
 
 **Perbandingan (per September 2026):**
@@ -1178,6 +1196,75 @@ webhook bounce tersedia.
 - Webhook bounce/complaint menandai email pelanggan tidak valid; notifikasi berikutnya hanya lewat WhatsApp.
 - Domain wajib SPF, DKIM, dan DMARC; kirim dari subdomain khusus (mis. `notif.<domain>`).
 
+### 27.2 Pertimbangan: biaya payment gateway dan pesanan kecil
+
+**Masalah.** Biaya **tetap** per transaksi membuat pesanan kecil tidak masuk akal. Pada pesanan
+Rp10.000, potongan tetap Rp4.000 sudah 40% dari harga kue.
+
+**Tarif yang tercantum di halaman harga (dicek 27 September 2026):**
+
+| Metode | Xendit | Midtrans |
+|---|---|---|
+| QRIS | 0,7% + biaya proses Rp4.000 | 0,7% |
+| Virtual Account | Rp9.000 + biaya proses Rp4.000 | Rp4.000 |
+| E-wallet (GoPay/OVO, non-digital) | 3% + biaya proses Rp4.000 | 1,5–2% |
+| Minimarket | Rp9.000 + biaya proses Rp4.000 | Rp5.000 |
+
+Tarif Xendit ini lebih tinggi dari tarif lama yang banyak dikutip (VA ±Rp4.500). Konfirmasi tarif
+yang berlaku untuk akun sebelum M2.6.
+
+**Simulasi potongan:**
+
+| Pesanan | Xendit QRIS | Xendit VA | Midtrans QRIS | Midtrans VA |
+|---|---|---|---|---|
+| Rp10.000 | Rp4.070 (41%) | Rp13.000 (lebih dari harga kue) | Rp70 (0,7%) | Rp4.000 (40%) |
+| Rp150.000 | Rp5.050 (3,4%) | Rp13.000 (8,7%) | Rp1.050 (0,7%) | Rp4.000 (2,7%) |
+
+**Regulasi QRIS (Bank Indonesia):**
+- MDR QRIS **tidak boleh dibebankan ke konsumen** dalam bentuk biaya tambahan, biaya administrasi,
+  atau istilah lain (PADG 21/18/PADG/2019; PADG 32/2025). Akibatnya `payments.fee_idr` wajib 0
+  untuk pembayaran QRIS.
+- Mulai 1 Oktober 2026: MDR 0% untuk transaksi QRIS sampai Rp100.000 (semua merchant) dan sampai
+  Rp500.000 (usaha mikro). Di atas ambang, seluruh nilai transaksi kena tarif (0,7% atau 0,3% untuk
+  usaha mikro). Perlu dikonfirmasi ke provider apakah ini juga berlaku untuk QRIS dinamis online.
+
+**Pertimbangan Midtrans selain tarif:**
+
+| Aspek | Midtrans | Dampak ke sistem |
+|---|---|---|
+| Pendaftaran perorangan | Wajib KTP pemilik **dan NPWP** | NPWP atas nama pemilik usaha (ibu atau Zefan) harus ada sebelum go-live |
+| SDK Go | Resmi: `github.com/midtrans/midtrans-go` (Snap, Core API, Iris), lisensi MIT. Rilis yang tercantum di pkg.go.dev: v1.3.8 (Maret 2024) | Rilisnya jarang. Adapter cukup memakai klien HTTP tipis sendiri untuk beberapa endpoint yang dipakai, supaya tidak bergantung pada SDK |
+| Checkout | **Snap** (halaman atau popup Midtrans) atau **Core API** (UI sendiri) | Mulai dengan Snap: paling cepat, dan data pembayaran tidak lewat server kita. URL Snap disimpan di `payments.checkout_url` |
+| Webhook | Notifikasi HTTP dengan `signature_key` = SHA512(`order_id` + `status_code` + `gross_amount` + server key). Midtrans menyarankan cek ulang status lewat Get Status API | Sama dengan pola §18: verifikasi signature, ambil ulang status dari API, dedupe lewat `webhook_events` |
+| `order_id` | Satu `order_id` hanya untuk satu transaksi | Pakai ID baris `payments`, bukan ID order, karena satu order bisa punya tagihan DP dan pelunasan |
+| Refund | Bisa lewat Midtrans untuk kartu, e-wallet, QRIS, ShopeePay, Akulaku. VA dan minimarket harus direfund sendiri oleh merchant | Sejalan dengan keputusan refund manual (§27). Refund otomatis untuk QRIS bisa jadi peningkatan nanti |
+| Ekosistem | Bagian dari GoTo (Gojek); QRIS dan GoPay dari ekosistem yang sama | Tidak ada dampak teknis khusus |
+
+**Hasil pengecekan (27 September 2026):**
+- **Biaya proses Xendit terkonfirmasi.** Dokumentasi Xendit menyebut biaya proses tetap per transaksi mulai **1 Oktober 2026**, berlaku untuk penerimaan pembayaran, payout, dan refund. Nominal Rp4.000 dari halaman harga.
+- **Tarif Midtrans terkonfirmasi** dari halaman harga resmi:
+  - QRIS 0,7%; GoPay 2%; ShopeePay 2%; DANA dan OVO 1,5%
+  - VA semua bank Rp4.000; Indomaret dan Alfamart Rp5.000
+  - Kartu kredit 2,9% + Rp2.000
+  - Tarif QRIS, GoPay, dan ShopeePay **sudah termasuk PPN**; tarif lainnya belum.
+  - Tanpa biaya pendaftaran atau bulanan.
+- **Larangan biaya QRIS ke pelanggan terkonfirmasi** (penegasan BI: tidak boleh ada surcharge, biaya layanan, atau biaya administrasi QRIS kepada pembeli).
+- **MDR QRIS 0% mulai 1 Oktober 2026 terkonfirmasi** (diumumkan BI 17 Agustus 2026): sampai Rp100.000 untuk semua merchant, sampai Rp500.000 untuk usaha mikro. Masih perlu dikonfirmasi ke Midtrans bahwa ini berlaku untuk QRIS dinamis online.
+- **Midtrans mengizinkan biaya dibebankan ke pelanggan** untuk metode selain QRIS, dengan memasukkannya ke `gross_amount` sebagai item terpisah.
+- **Pencairan dana Midtrans**: bisa ditarik setelah 2–3 hari kerja, tanpa biaya penarikan.
+- **Syarat daftar perorangan**:
+  - Midtrans: KTP dan halaman depan buku tabungan dengan nama yang sama; NPWP disebut untuk kartu kredit. Siapkan NPWP juga.
+  - Xendit: KTP, swafoto, dan nomor NPWP.
+
+**Keputusan (27 September 2026):**
+1. **Provider: Midtrans**, di balik port `payments.Provider`. Biaya proses baru Xendit membuat pesanan kecil tidak masuk akal. Xendit tetap bisa ditambahkan lewat adapter lain kalau suatu hari perlu.
+2. **Pelanggan memilih jenis pembayaran dulu** (§14), dengan biaya admin sesuai tarif provider plus PPN, dihitung ke atas. **QRIS selalu Rp0.**
+3. **DP hanya untuk pesanan mulai Rp150.000** (`dp_min_total_idr`).
+4. **Minimum order belum dipakai**, tapi setelannya disiapkan (`min_order_idr`).
+5. **VA dan minimarket tidak disembunyikan untuk pesanan kecil.** Usulan `min_total_for_va_idr` tidak dipakai, karena biayanya ditanggung pelanggan yang memilihnya. QRIS ditampilkan paling atas sebagai pilihan tanpa biaya admin.
+
+**Sumber:** [Midtrans pricing](https://midtrans.com/pricing), [Midtrans: membebankan biaya ke konsumen](https://docs.midtrans.com/docs/apakah-saya-dapat-membebankan-biaya-layanan-ke-konsumen-saya), [Midtrans: webhook](https://docs.midtrans.com/docs/https-notification-webhooks), [Midtrans: pencairan dana](https://docs.midtrans.com/docs/kapan-saya-menerima-dana-transaksi-dari-midtrans), [Midtrans: dokumen registrasi](https://docs.midtrans.com/docs/apa-saja-dokumen-legalitas-yang-diperlukan-untuk-registrasi-akun-midtrans), [Xendit: biaya & PPN](https://docs.xendit.co/id/fees-and-vat), [BI: MDR QRIS](https://www.bi.go.id/id/publikasi/ruang-media/cerita-bi/Pages/mdr-qris.aspx), [MDR 0% mulai 1 Oktober 2026](https://infobanknews.com/bi-bebaskan-tarif-mdr-qris-transaksi-rp100-ribu-mulai-1-oktober-2026), [biaya QRIS tidak boleh dibebankan ke konsumen](https://sulteng.antaranews.com/berita/391111/bank-indonesia-biaya-jasa-qris-tidak-boleh-dibebankan-kepada-konsumen).
+
 ---
 
 ## 28. Environment variables
@@ -1190,8 +1277,8 @@ SUPABASE_URL=                    # wajib; issuer token = <SUPABASE_URL>/auth/v1
 SUPABASE_JWKS_URL=               # opsional; default <SUPABASE_URL>/auth/v1/.well-known/jwks.json
 SUPABASE_SERVICE_ROLE_KEY=       # hanya server, untuk Storage (M5; akan memakai secret key sb_secret_…)
 CLIENT_IP_HEADER=                # wajib di production: header IP klien dari proxy, mis. CF-Connecting-IP (§22)
-XENDIT_SECRET_KEY=
-XENDIT_WEBHOOK_TOKEN=
+MIDTRANS_SERVER_KEY=             # M2.6b; hanya server. Juga kunci verifikasi signature webhook
+MIDTRANS_ENVIRONMENT=            # M2.6b; sandbox | production
 BITESHIP_API_KEY=
 BITESHIP_WEBHOOK_PATH_TOKEN=     # token rahasia di URL webhook
 SUPABASE_SEND_SMS_HOOK_SECRET=   # wajib di production: "v1,whsec_..." dari Supabase Auth → Hooks (§8)

@@ -7,8 +7,9 @@ import "google/protobuf/timestamp.proto";
 // CheckoutService is where a customer turns a cart into an order
 // (docs/architecture.md §14, §15). Every amount is computed on the server
 // from the catalog; nothing the client says about money is used. Money is
-// int64 rupiah. The Xendit fee, shown as "Biaya admin", comes on top of the
-// order total when paying and is not part of these amounts.
+// int64 rupiah. The payment provider's fee, shown as "Biaya admin", comes on
+// top of the order total when paying and is not part of these amounts; it
+// depends on the payment method, and QRIS has none (Bank Indonesia forbids it).
 service CheckoutService {
   // QuoteOrder prices a cart and checks a pickup time without saving
   // anything: what the customer sees before paying. Open to everyone, signed
@@ -31,6 +32,41 @@ message QuoteOrderRequest {
   // 1 to 30 lines, each variant at most once.
   repeated CartItem items = 1;
   google.protobuf.Timestamp pickup_at = 2;
+}
+
+// PaymentMethod is how a customer pays one payment, chosen at checkout
+// (§14). The invoice offers only that method.
+enum PaymentMethod {
+  PAYMENT_METHOD_UNSPECIFIED = 0;
+  // No "Biaya admin", ever.
+  PAYMENT_METHOD_QRIS = 1;
+  // Virtual account of any bank.
+  PAYMENT_METHOD_BANK_TRANSFER = 2;
+  // GoPay, ShopeePay.
+  PAYMENT_METHOD_EWALLET = 3;
+  // Indomaret, Alfamart.
+  PAYMENT_METHOD_MINIMARKET = 4;
+}
+
+// FullPaymentReason says why the first payment must be the whole total.
+enum FullPaymentReason {
+  // A DP is allowed.
+  FULL_PAYMENT_REASON_UNSPECIFIED = 0;
+  // The total is below the shop's DP threshold: a DP would mean two
+  // payments and two fees.
+  FULL_PAYMENT_REASON_SMALL_ORDER = 1;
+  // The pickup is too close: the balance would fall due before the DP.
+  FULL_PAYMENT_REASON_SCHEDULE = 2;
+}
+
+// PaymentOption is a method the customer may pay with, and its "Biaya
+// admin" on top of the payment.
+message PaymentOption {
+  PaymentMethod method = 1;
+  // On the DP; unset when the order must be paid in full.
+  optional int64 dp_fee_idr = 2;
+  // On the whole total.
+  int64 full_fee_idr = 3;
 }
 
 message QuotedItem {
@@ -98,4 +134,8 @@ message QuoteOrderResponse {
   // The version of the DP terms placing the order accepts; send it back in
   // PlaceOrderRequest.terms_version.
   string terms_version = 8;
+  // The methods on offer, QRIS first. Set only with a schedule.
+  repeated PaymentOption payment_options = 9;
+  // Why schedule.full_payment_required is set, when it is.
+  FullPaymentReason full_payment_reason = 10;
 }

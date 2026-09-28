@@ -22,6 +22,121 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PaymentMethod is how a customer pays one payment, chosen at checkout
+// (§14). The invoice offers only that method.
+type PaymentMethod int32
+
+const (
+	PaymentMethod_PAYMENT_METHOD_UNSPECIFIED PaymentMethod = 0
+	// No "Biaya admin", ever.
+	PaymentMethod_PAYMENT_METHOD_QRIS PaymentMethod = 1
+	// Virtual account of any bank.
+	PaymentMethod_PAYMENT_METHOD_BANK_TRANSFER PaymentMethod = 2
+	// GoPay, ShopeePay.
+	PaymentMethod_PAYMENT_METHOD_EWALLET PaymentMethod = 3
+	// Indomaret, Alfamart.
+	PaymentMethod_PAYMENT_METHOD_MINIMARKET PaymentMethod = 4
+)
+
+// Enum value maps for PaymentMethod.
+var (
+	PaymentMethod_name = map[int32]string{
+		0: "PAYMENT_METHOD_UNSPECIFIED",
+		1: "PAYMENT_METHOD_QRIS",
+		2: "PAYMENT_METHOD_BANK_TRANSFER",
+		3: "PAYMENT_METHOD_EWALLET",
+		4: "PAYMENT_METHOD_MINIMARKET",
+	}
+	PaymentMethod_value = map[string]int32{
+		"PAYMENT_METHOD_UNSPECIFIED":   0,
+		"PAYMENT_METHOD_QRIS":          1,
+		"PAYMENT_METHOD_BANK_TRANSFER": 2,
+		"PAYMENT_METHOD_EWALLET":       3,
+		"PAYMENT_METHOD_MINIMARKET":    4,
+	}
+)
+
+func (x PaymentMethod) Enum() *PaymentMethod {
+	p := new(PaymentMethod)
+	*p = x
+	return p
+}
+
+func (x PaymentMethod) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PaymentMethod) Descriptor() protoreflect.EnumDescriptor {
+	return file_kuepreorder_orders_v1_checkout_proto_enumTypes[0].Descriptor()
+}
+
+func (PaymentMethod) Type() protoreflect.EnumType {
+	return &file_kuepreorder_orders_v1_checkout_proto_enumTypes[0]
+}
+
+func (x PaymentMethod) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PaymentMethod.Descriptor instead.
+func (PaymentMethod) EnumDescriptor() ([]byte, []int) {
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{0}
+}
+
+// FullPaymentReason says why the first payment must be the whole total.
+type FullPaymentReason int32
+
+const (
+	// A DP is allowed.
+	FullPaymentReason_FULL_PAYMENT_REASON_UNSPECIFIED FullPaymentReason = 0
+	// The total is below the shop's DP threshold: a DP would mean two
+	// payments and two fees.
+	FullPaymentReason_FULL_PAYMENT_REASON_SMALL_ORDER FullPaymentReason = 1
+	// The pickup is too close: the balance would fall due before the DP.
+	FullPaymentReason_FULL_PAYMENT_REASON_SCHEDULE FullPaymentReason = 2
+)
+
+// Enum value maps for FullPaymentReason.
+var (
+	FullPaymentReason_name = map[int32]string{
+		0: "FULL_PAYMENT_REASON_UNSPECIFIED",
+		1: "FULL_PAYMENT_REASON_SMALL_ORDER",
+		2: "FULL_PAYMENT_REASON_SCHEDULE",
+	}
+	FullPaymentReason_value = map[string]int32{
+		"FULL_PAYMENT_REASON_UNSPECIFIED": 0,
+		"FULL_PAYMENT_REASON_SMALL_ORDER": 1,
+		"FULL_PAYMENT_REASON_SCHEDULE":    2,
+	}
+)
+
+func (x FullPaymentReason) Enum() *FullPaymentReason {
+	p := new(FullPaymentReason)
+	*p = x
+	return p
+}
+
+func (x FullPaymentReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FullPaymentReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_kuepreorder_orders_v1_checkout_proto_enumTypes[1].Descriptor()
+}
+
+func (FullPaymentReason) Type() protoreflect.EnumType {
+	return &file_kuepreorder_orders_v1_checkout_proto_enumTypes[1]
+}
+
+func (x FullPaymentReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FullPaymentReason.Descriptor instead.
+func (FullPaymentReason) EnumDescriptor() ([]byte, []int) {
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{1}
+}
+
 // PickupProblem is why a pickup time does not work.
 type PickupProblem int32
 
@@ -74,11 +189,11 @@ func (x PickupProblem) String() string {
 }
 
 func (PickupProblem) Descriptor() protoreflect.EnumDescriptor {
-	return file_kuepreorder_orders_v1_checkout_proto_enumTypes[0].Descriptor()
+	return file_kuepreorder_orders_v1_checkout_proto_enumTypes[2].Descriptor()
 }
 
 func (PickupProblem) Type() protoreflect.EnumType {
-	return &file_kuepreorder_orders_v1_checkout_proto_enumTypes[0]
+	return &file_kuepreorder_orders_v1_checkout_proto_enumTypes[2]
 }
 
 func (x PickupProblem) Number() protoreflect.EnumNumber {
@@ -87,7 +202,7 @@ func (x PickupProblem) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PickupProblem.Descriptor instead.
 func (PickupProblem) EnumDescriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{0}
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{2}
 }
 
 type CartItem struct {
@@ -196,6 +311,70 @@ func (x *QuoteOrderRequest) GetPickupAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// PaymentOption is a method the customer may pay with, and its "Biaya
+// admin" on top of the payment.
+type PaymentOption struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Method PaymentMethod          `protobuf:"varint,1,opt,name=method,proto3,enum=kuepreorder.orders.v1.PaymentMethod" json:"method,omitempty"`
+	// On the DP; unset when the order must be paid in full.
+	DpFeeIdr *int64 `protobuf:"varint,2,opt,name=dp_fee_idr,json=dpFeeIdr,proto3,oneof" json:"dp_fee_idr,omitempty"`
+	// On the whole total.
+	FullFeeIdr    int64 `protobuf:"varint,3,opt,name=full_fee_idr,json=fullFeeIdr,proto3" json:"full_fee_idr,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PaymentOption) Reset() {
+	*x = PaymentOption{}
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PaymentOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PaymentOption) ProtoMessage() {}
+
+func (x *PaymentOption) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PaymentOption.ProtoReflect.Descriptor instead.
+func (*PaymentOption) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PaymentOption) GetMethod() PaymentMethod {
+	if x != nil {
+		return x.Method
+	}
+	return PaymentMethod_PAYMENT_METHOD_UNSPECIFIED
+}
+
+func (x *PaymentOption) GetDpFeeIdr() int64 {
+	if x != nil && x.DpFeeIdr != nil {
+		return *x.DpFeeIdr
+	}
+	return 0
+}
+
+func (x *PaymentOption) GetFullFeeIdr() int64 {
+	if x != nil {
+		return x.FullFeeIdr
+	}
+	return 0
+}
+
 type QuotedItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	VariantId     string                 `protobuf:"bytes,1,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
@@ -210,7 +389,7 @@ type QuotedItem struct {
 
 func (x *QuotedItem) Reset() {
 	*x = QuotedItem{}
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[2]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -222,7 +401,7 @@ func (x *QuotedItem) String() string {
 func (*QuotedItem) ProtoMessage() {}
 
 func (x *QuotedItem) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[2]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -235,7 +414,7 @@ func (x *QuotedItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotedItem.ProtoReflect.Descriptor instead.
 func (*QuotedItem) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{2}
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *QuotedItem) GetVariantId() string {
@@ -300,7 +479,7 @@ type Schedule struct {
 
 func (x *Schedule) Reset() {
 	*x = Schedule{}
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[3]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -312,7 +491,7 @@ func (x *Schedule) String() string {
 func (*Schedule) ProtoMessage() {}
 
 func (x *Schedule) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[3]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -325,7 +504,7 @@ func (x *Schedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Schedule.ProtoReflect.Descriptor instead.
 func (*Schedule) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{3}
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Schedule) GetPickupAt() *timestamppb.Timestamp {
@@ -376,7 +555,7 @@ type PickupRejection struct {
 
 func (x *PickupRejection) Reset() {
 	*x = PickupRejection{}
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[4]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +567,7 @@ func (x *PickupRejection) String() string {
 func (*PickupRejection) ProtoMessage() {}
 
 func (x *PickupRejection) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[4]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +580,7 @@ func (x *PickupRejection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PickupRejection.ProtoReflect.Descriptor instead.
 func (*PickupRejection) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{4}
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PickupRejection) GetProblem() PickupProblem {
@@ -442,14 +621,18 @@ type QuoteOrderResponse struct {
 	Pickup isQuoteOrderResponse_Pickup `protobuf_oneof:"pickup"`
 	// The version of the DP terms placing the order accepts; send it back in
 	// PlaceOrderRequest.terms_version.
-	TermsVersion  string `protobuf:"bytes,8,opt,name=terms_version,json=termsVersion,proto3" json:"terms_version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TermsVersion string `protobuf:"bytes,8,opt,name=terms_version,json=termsVersion,proto3" json:"terms_version,omitempty"`
+	// The methods on offer, QRIS first. Set only with a schedule.
+	PaymentOptions []*PaymentOption `protobuf:"bytes,9,rep,name=payment_options,json=paymentOptions,proto3" json:"payment_options,omitempty"`
+	// Why schedule.full_payment_required is set, when it is.
+	FullPaymentReason FullPaymentReason `protobuf:"varint,10,opt,name=full_payment_reason,json=fullPaymentReason,proto3,enum=kuepreorder.orders.v1.FullPaymentReason" json:"full_payment_reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *QuoteOrderResponse) Reset() {
 	*x = QuoteOrderResponse{}
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[5]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +644,7 @@ func (x *QuoteOrderResponse) String() string {
 func (*QuoteOrderResponse) ProtoMessage() {}
 
 func (x *QuoteOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[5]
+	mi := &file_kuepreorder_orders_v1_checkout_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +657,7 @@ func (x *QuoteOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuoteOrderResponse.ProtoReflect.Descriptor instead.
 func (*QuoteOrderResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{5}
+	return file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *QuoteOrderResponse) GetItems() []*QuotedItem {
@@ -544,6 +727,20 @@ func (x *QuoteOrderResponse) GetTermsVersion() string {
 	return ""
 }
 
+func (x *QuoteOrderResponse) GetPaymentOptions() []*PaymentOption {
+	if x != nil {
+		return x.PaymentOptions
+	}
+	return nil
+}
+
+func (x *QuoteOrderResponse) GetFullPaymentReason() FullPaymentReason {
+	if x != nil {
+		return x.FullPaymentReason
+	}
+	return FullPaymentReason_FULL_PAYMENT_REASON_UNSPECIFIED
+}
+
 type isQuoteOrderResponse_Pickup interface {
 	isQuoteOrderResponse_Pickup()
 }
@@ -571,7 +768,14 @@ const file_kuepreorder_orders_v1_checkout_proto_rawDesc = "" +
 	"\bquantity\x18\x02 \x01(\x05R\bquantity\"\x83\x01\n" +
 	"\x11QuoteOrderRequest\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.kuepreorder.orders.v1.CartItemR\x05items\x127\n" +
-	"\tpickup_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bpickupAt\"\xd9\x01\n" +
+	"\tpickup_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bpickupAt\"\xa1\x01\n" +
+	"\rPaymentOption\x12<\n" +
+	"\x06method\x18\x01 \x01(\x0e2$.kuepreorder.orders.v1.PaymentMethodR\x06method\x12!\n" +
+	"\n" +
+	"dp_fee_idr\x18\x02 \x01(\x03H\x00R\bdpFeeIdr\x88\x01\x01\x12 \n" +
+	"\ffull_fee_idr\x18\x03 \x01(\x03R\n" +
+	"fullFeeIdrB\r\n" +
+	"\v_dp_fee_idr\"\xd9\x01\n" +
 	"\n" +
 	"QuotedItem\x12\x1d\n" +
 	"\n" +
@@ -590,7 +794,7 @@ const file_kuepreorder_orders_v1_checkout_proto_rawDesc = "" +
 	"\x0fPickupRejection\x12>\n" +
 	"\aproblem\x18\x01 \x01(\x0e2$.kuepreorder.orders.v1.PickupProblemR\aproblem\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12J\n" +
-	"\x13suggested_pickup_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x11suggestedPickupAt\"\x84\x03\n" +
+	"\x13suggested_pickup_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x11suggestedPickupAt\"\xad\x04\n" +
 	"\x12QuoteOrderResponse\x127\n" +
 	"\x05items\x18\x01 \x03(\v2!.kuepreorder.orders.v1.QuotedItemR\x05items\x12!\n" +
 	"\fsubtotal_idr\x18\x02 \x01(\x03R\vsubtotalIdr\x12\x17\n" +
@@ -599,8 +803,21 @@ const file_kuepreorder_orders_v1_checkout_proto_rawDesc = "" +
 	"\x0fdp_required_idr\x18\x05 \x01(\x03R\rdpRequiredIdr\x12=\n" +
 	"\bschedule\x18\x06 \x01(\v2\x1f.kuepreorder.orders.v1.ScheduleH\x00R\bschedule\x12F\n" +
 	"\trejection\x18\a \x01(\v2&.kuepreorder.orders.v1.PickupRejectionH\x00R\trejection\x12#\n" +
-	"\rterms_version\x18\b \x01(\tR\ftermsVersionB\b\n" +
-	"\x06pickup*\xe2\x01\n" +
+	"\rterms_version\x18\b \x01(\tR\ftermsVersion\x12M\n" +
+	"\x0fpayment_options\x18\t \x03(\v2$.kuepreorder.orders.v1.PaymentOptionR\x0epaymentOptions\x12X\n" +
+	"\x13full_payment_reason\x18\n" +
+	" \x01(\x0e2(.kuepreorder.orders.v1.FullPaymentReasonR\x11fullPaymentReasonB\b\n" +
+	"\x06pickup*\xa5\x01\n" +
+	"\rPaymentMethod\x12\x1e\n" +
+	"\x1aPAYMENT_METHOD_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13PAYMENT_METHOD_QRIS\x10\x01\x12 \n" +
+	"\x1cPAYMENT_METHOD_BANK_TRANSFER\x10\x02\x12\x1a\n" +
+	"\x16PAYMENT_METHOD_EWALLET\x10\x03\x12\x1d\n" +
+	"\x19PAYMENT_METHOD_MINIMARKET\x10\x04*\x7f\n" +
+	"\x11FullPaymentReason\x12#\n" +
+	"\x1fFULL_PAYMENT_REASON_UNSPECIFIED\x10\x00\x12#\n" +
+	"\x1fFULL_PAYMENT_REASON_SMALL_ORDER\x10\x01\x12 \n" +
+	"\x1cFULL_PAYMENT_REASON_SCHEDULE\x10\x02*\xe2\x01\n" +
 	"\rPickupProblem\x12\x1e\n" +
 	"\x1aPICKUP_PROBLEM_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PICKUP_PROBLEM_TOO_FAR\x10\x01\x12\x1b\n" +
@@ -626,36 +843,42 @@ func file_kuepreorder_orders_v1_checkout_proto_rawDescGZIP() []byte {
 	return file_kuepreorder_orders_v1_checkout_proto_rawDescData
 }
 
-var file_kuepreorder_orders_v1_checkout_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kuepreorder_orders_v1_checkout_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_kuepreorder_orders_v1_checkout_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_kuepreorder_orders_v1_checkout_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kuepreorder_orders_v1_checkout_proto_goTypes = []any{
-	(PickupProblem)(0),            // 0: kuepreorder.orders.v1.PickupProblem
-	(*CartItem)(nil),              // 1: kuepreorder.orders.v1.CartItem
-	(*QuoteOrderRequest)(nil),     // 2: kuepreorder.orders.v1.QuoteOrderRequest
-	(*QuotedItem)(nil),            // 3: kuepreorder.orders.v1.QuotedItem
-	(*Schedule)(nil),              // 4: kuepreorder.orders.v1.Schedule
-	(*PickupRejection)(nil),       // 5: kuepreorder.orders.v1.PickupRejection
-	(*QuoteOrderResponse)(nil),    // 6: kuepreorder.orders.v1.QuoteOrderResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(PaymentMethod)(0),            // 0: kuepreorder.orders.v1.PaymentMethod
+	(FullPaymentReason)(0),        // 1: kuepreorder.orders.v1.FullPaymentReason
+	(PickupProblem)(0),            // 2: kuepreorder.orders.v1.PickupProblem
+	(*CartItem)(nil),              // 3: kuepreorder.orders.v1.CartItem
+	(*QuoteOrderRequest)(nil),     // 4: kuepreorder.orders.v1.QuoteOrderRequest
+	(*PaymentOption)(nil),         // 5: kuepreorder.orders.v1.PaymentOption
+	(*QuotedItem)(nil),            // 6: kuepreorder.orders.v1.QuotedItem
+	(*Schedule)(nil),              // 7: kuepreorder.orders.v1.Schedule
+	(*PickupRejection)(nil),       // 8: kuepreorder.orders.v1.PickupRejection
+	(*QuoteOrderResponse)(nil),    // 9: kuepreorder.orders.v1.QuoteOrderResponse
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_kuepreorder_orders_v1_checkout_proto_depIdxs = []int32{
-	1,  // 0: kuepreorder.orders.v1.QuoteOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
-	7,  // 1: kuepreorder.orders.v1.QuoteOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
-	7,  // 2: kuepreorder.orders.v1.Schedule.pickup_at:type_name -> google.protobuf.Timestamp
-	7,  // 3: kuepreorder.orders.v1.Schedule.dp_due_at:type_name -> google.protobuf.Timestamp
-	7,  // 4: kuepreorder.orders.v1.Schedule.balance_due_at:type_name -> google.protobuf.Timestamp
-	0,  // 5: kuepreorder.orders.v1.PickupRejection.problem:type_name -> kuepreorder.orders.v1.PickupProblem
-	7,  // 6: kuepreorder.orders.v1.PickupRejection.suggested_pickup_at:type_name -> google.protobuf.Timestamp
-	3,  // 7: kuepreorder.orders.v1.QuoteOrderResponse.items:type_name -> kuepreorder.orders.v1.QuotedItem
-	4,  // 8: kuepreorder.orders.v1.QuoteOrderResponse.schedule:type_name -> kuepreorder.orders.v1.Schedule
-	5,  // 9: kuepreorder.orders.v1.QuoteOrderResponse.rejection:type_name -> kuepreorder.orders.v1.PickupRejection
-	2,  // 10: kuepreorder.orders.v1.CheckoutService.QuoteOrder:input_type -> kuepreorder.orders.v1.QuoteOrderRequest
-	6,  // 11: kuepreorder.orders.v1.CheckoutService.QuoteOrder:output_type -> kuepreorder.orders.v1.QuoteOrderResponse
-	11, // [11:12] is the sub-list for method output_type
-	10, // [10:11] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	3,  // 0: kuepreorder.orders.v1.QuoteOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
+	10, // 1: kuepreorder.orders.v1.QuoteOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
+	0,  // 2: kuepreorder.orders.v1.PaymentOption.method:type_name -> kuepreorder.orders.v1.PaymentMethod
+	10, // 3: kuepreorder.orders.v1.Schedule.pickup_at:type_name -> google.protobuf.Timestamp
+	10, // 4: kuepreorder.orders.v1.Schedule.dp_due_at:type_name -> google.protobuf.Timestamp
+	10, // 5: kuepreorder.orders.v1.Schedule.balance_due_at:type_name -> google.protobuf.Timestamp
+	2,  // 6: kuepreorder.orders.v1.PickupRejection.problem:type_name -> kuepreorder.orders.v1.PickupProblem
+	10, // 7: kuepreorder.orders.v1.PickupRejection.suggested_pickup_at:type_name -> google.protobuf.Timestamp
+	6,  // 8: kuepreorder.orders.v1.QuoteOrderResponse.items:type_name -> kuepreorder.orders.v1.QuotedItem
+	7,  // 9: kuepreorder.orders.v1.QuoteOrderResponse.schedule:type_name -> kuepreorder.orders.v1.Schedule
+	8,  // 10: kuepreorder.orders.v1.QuoteOrderResponse.rejection:type_name -> kuepreorder.orders.v1.PickupRejection
+	5,  // 11: kuepreorder.orders.v1.QuoteOrderResponse.payment_options:type_name -> kuepreorder.orders.v1.PaymentOption
+	1,  // 12: kuepreorder.orders.v1.QuoteOrderResponse.full_payment_reason:type_name -> kuepreorder.orders.v1.FullPaymentReason
+	4,  // 13: kuepreorder.orders.v1.CheckoutService.QuoteOrder:input_type -> kuepreorder.orders.v1.QuoteOrderRequest
+	9,  // 14: kuepreorder.orders.v1.CheckoutService.QuoteOrder:output_type -> kuepreorder.orders.v1.QuoteOrderResponse
+	14, // [14:15] is the sub-list for method output_type
+	13, // [13:14] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_kuepreorder_orders_v1_checkout_proto_init() }
@@ -663,7 +886,8 @@ func file_kuepreorder_orders_v1_checkout_proto_init() {
 	if File_kuepreorder_orders_v1_checkout_proto != nil {
 		return
 	}
-	file_kuepreorder_orders_v1_checkout_proto_msgTypes[5].OneofWrappers = []any{
+	file_kuepreorder_orders_v1_checkout_proto_msgTypes[2].OneofWrappers = []any{}
+	file_kuepreorder_orders_v1_checkout_proto_msgTypes[6].OneofWrappers = []any{
 		(*QuoteOrderResponse_Schedule)(nil),
 		(*QuoteOrderResponse_Rejection)(nil),
 	}
@@ -672,8 +896,8 @@ func file_kuepreorder_orders_v1_checkout_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kuepreorder_orders_v1_checkout_proto_rawDesc), len(file_kuepreorder_orders_v1_checkout_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   6,
+			NumEnums:      3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

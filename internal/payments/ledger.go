@@ -35,10 +35,12 @@ const (
 // sum of AmountIDR over its paid payments; FeeIDR, the "biaya admin", is
 // paid on top and never counts towards the order (§14).
 type Payment struct {
-	ID          uuid.UUID
-	OrderID     uuid.UUID
-	Kind        Kind
-	Provider    string // "xendit", "manual", or "dev"
+	ID       uuid.UUID
+	OrderID  uuid.UUID
+	Kind     Kind
+	Provider string // "midtrans", "manual", or "dev"
+	// Method is what the invoice offers; empty for manual payments and refunds.
+	Method      Method
 	ExternalID  string // the provider's id; empty until the invoice exists
 	AmountIDR   int64  // negative for a refund
 	FeeIDR      int64
@@ -51,10 +53,15 @@ type Payment struct {
 
 // InvoiceRequest asks a provider for an invoice the customer pays online.
 type InvoiceRequest struct {
-	PaymentID     uuid.UUID
-	OrderCode     string
-	Description   string // shown on the payment page, in Indonesian
+	PaymentID   uuid.UUID
+	OrderCode   string
+	Description string // shown on the payment page, in Indonesian
+	// Method is the only method the invoice offers (§14: chosen at checkout).
+	Method Method
+	// AmountIDR goes towards the order; FeeIDR, the "Biaya admin", is a
+	// separate line on top.
 	AmountIDR     int64
+	FeeIDR        int64
 	ExpiresAt     time.Time
 	CustomerName  string
 	CustomerPhone string
@@ -67,8 +74,8 @@ type Invoice struct {
 	URL        string
 }
 
-// Provider creates invoices customers pay online (§14); Xendit arrives in
-// M2.6. CreateInvoice must be idempotent per PaymentID: asking again, after
+// Provider creates invoices customers pay online (§14); Midtrans arrives in
+// M2.6b. CreateInvoice must be idempotent per PaymentID: asking again, after
 // a timeout for example, returns the same invoice rather than a second one,
 // so a customer is never billed twice.
 type Provider interface {
@@ -116,8 +123,11 @@ func (l *Ledger) AddPending(ctx context.Context, tenantID uuid.UUID, p Payment, 
 	if p.Kind == KindRefund || p.AmountIDR <= 0 || p.AmountIDR > MaxOrderTotalIDR {
 		return fmt.Errorf("%w: pending %s payment of %d", ErrInvalidAmount, p.Kind, p.AmountIDR)
 	}
-	if p.ID == uuid.Nil || p.OrderID == uuid.Nil || p.Provider == "" {
-		return errors.New("pending payment without an id, an order, or a provider")
+	if p.ID == uuid.Nil || p.OrderID == uuid.Nil || p.Provider == "" || !p.Method.valid() {
+		return errors.New("pending payment without an id, an order, a provider, or a method")
+	}
+	if p.FeeIDR < 0 || (p.Method == MethodQRIS && p.FeeIDR != 0) {
+		return fmt.Errorf("%w: fee %d on %s", ErrInvalidAmount, p.FeeIDR, p.Method)
 	}
 	p.State = StatePending
 	return l.repo.AddPayment(ctx, tenantID, p, at)

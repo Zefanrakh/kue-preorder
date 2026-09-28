@@ -6,6 +6,7 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
+import { PaymentMethod } from "../gen/ts/kuepreorder/orders/v1/checkout_pb";
 import { CustomerOrderService, PaymentState, type Order } from "../gen/ts/kuepreorder/orders/v1/orders_pb";
 import { FieldErrorsSchema, PreconditionSchema } from "../gen/ts/kuepreorder/validation/v1/validation_pb";
 
@@ -25,10 +26,11 @@ export async function placeOrder(
   termsVersion: string,
   name: string,
   notes: string,
+  paymentMethod: PaymentMethod = PaymentMethod.QRIS,
 ): Promise<Placed> {
   try {
     const res = await orders.placeOrder(
-      { items: cart, pickupAt: timestampFromDate(pickup), termsVersion, customerName: name, notes, idempotencyKey: checkoutKey },
+      { items: cart, pickupAt: timestampFromDate(pickup), termsVersion, customerName: name, notes, idempotencyKey: checkoutKey, paymentMethod },
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     const order = res.order;

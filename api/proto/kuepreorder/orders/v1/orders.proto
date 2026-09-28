@@ -81,6 +81,8 @@ message Payment {
   string checkout_url = 6;
   google.protobuf.Timestamp expires_at = 7;
   google.protobuf.Timestamp paid_at = 8;
+  // What the invoice offers; unspecified for manual payments and refunds.
+  PaymentMethod method = 9;
 }
 
 message Order {
@@ -133,6 +135,9 @@ message PlaceOrderRequest {
   string notes = 7;
   // A UUID the client makes once per checkout and sends again on a retry.
   string idempotency_key = 8;
+  // Required: one of QuoteOrderResponse.payment_options. Its "Biaya admin"
+  // is computed on the server.
+  PaymentMethod payment_method = 9;
 }
 
 message PlaceOrderResponse {

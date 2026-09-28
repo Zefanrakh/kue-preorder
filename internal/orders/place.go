@@ -45,9 +45,12 @@ var ErrTooManyUnpaid = &apperr.PreconditionError{
 // customer chose and typed.
 type PlaceRequest struct {
 	QuoteRequest
-	// PayInFull pays the whole total at once instead of a DP. A schedule
-	// that requires full payment ignores it.
-	PayInFull    bool
+	// PayInFull pays the whole total at once instead of a DP. An order that
+	// must be paid in full ignores it.
+	PayInFull bool
+	// Method is how the customer pays the first payment; its "Biaya admin"
+	// comes from the server's fee rules, never from the client.
+	Method       payments.Method
 	TermsVersion string
 	Customer     identity.CustomerInput
 	Notes        string
@@ -91,21 +94,25 @@ func (c *Checkout) Place(ctx context.Context, req PlaceRequest) (Order, error) {
 		return Order{}, &apperr.ValidationError{Fields: map[string]string{"pickup_at": q.Rejection.Message}}
 	}
 	p := q.Schedule
+	option, ok := optionFor(q.PaymentOptions, req.Method)
+	if !ok {
+		return Order{}, &apperr.ValidationError{Fields: map[string]string{"payment_method": "Pilih cara bayar yang tersedia."}}
+	}
 	o := Order{
 		ID: uuid.New(), CustomerID: customer.ID, Status: AwaitingDP, Payment: payments.Unpaid, Fulfillment: Pickup,
 		Items: q.Items, SubtotalIDR: q.SubtotalIDR, TaxIDR: q.TaxIDR, TotalIDR: q.TotalIDR,
-		DPRequiredIDR: q.DPRequiredIDR, FullPaymentRequired: p.FullPaymentRequired,
+		DPRequiredIDR: q.DPRequiredIDR, FullPaymentRequired: q.FullPaymentRequired,
 		PickupAt: p.PickupAt, ProductionStart: p.ProductionStart, ProductionDate: p.ProductionDate,
 		ShoppingCutoffAt: p.Cutoff, DPDueAt: p.DPDeadline, BalanceDueAt: p.BalanceDue,
 		Notes: req.Notes, CustomerName: customer.Name, CustomerPhone: customer.Phone, CustomerEmail: customer.Email,
 		TermsVersion: TermsVersion,
 	}
 	first := payments.Payment{
-		ID: uuid.New(), OrderID: o.ID, Kind: payments.KindDP, Provider: c.provider.Name(),
-		AmountIDR: o.DPRequiredIDR, ExpiresAt: &o.DPDueAt,
+		ID: uuid.New(), OrderID: o.ID, Kind: payments.KindFull, Provider: c.provider.Name(), Method: req.Method,
+		AmountIDR: o.TotalIDR, FeeIDR: option.FullFeeIDR, ExpiresAt: &o.DPDueAt,
 	}
-	if o.FullPaymentRequired || req.PayInFull {
-		first.Kind, first.AmountIDR = payments.KindFull, o.TotalIDR
+	if !o.FullPaymentRequired && !req.PayInFull {
+		first.Kind, first.AmountIDR, first.FeeIDR = payments.KindDP, o.DPRequiredIDR, *option.DPFeeIDR
 	}
 
 	placed := o.ID
@@ -213,8 +220,8 @@ func (c *Checkout) ensureInvoices(ctx context.Context, tenant uuid.UUID, o *Orde
 			continue
 		}
 		inv, err := c.provider.CreateInvoice(ctx, payments.InvoiceRequest{
-			PaymentID: p.ID, OrderCode: o.Code, Description: invoiceDescription(p.Kind, o.Code),
-			AmountIDR: p.AmountIDR, ExpiresAt: derefTime(p.ExpiresAt),
+			PaymentID: p.ID, OrderCode: o.Code, Description: invoiceDescription(p.Kind, o.Code), Method: p.Method,
+			AmountIDR: p.AmountIDR, FeeIDR: p.FeeIDR, ExpiresAt: derefTime(p.ExpiresAt),
 			CustomerName: o.CustomerName, CustomerPhone: o.CustomerPhone, CustomerEmail: o.CustomerEmail,
 		})
 		if err != nil {
@@ -227,6 +234,15 @@ func (c *Checkout) ensureInvoices(ctx context.Context, tenant uuid.UUID, o *Orde
 		}
 		p.ExternalID, p.CheckoutURL = inv.ExternalID, inv.URL
 	}
+}
+
+func optionFor(options []PaymentOption, m payments.Method) (PaymentOption, bool) {
+	for _, o := range options {
+		if o.Method == m {
+			return o, true
+		}
+	}
+	return PaymentOption{}, false
 }
 
 func invoiceDescription(kind payments.Kind, code string) string {

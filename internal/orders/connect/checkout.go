@@ -54,7 +54,12 @@ func (h *CheckoutHandler) QuoteOrder(ctx context.Context, req *connect.Request[o
 func quoteToProto(q orders.Quote) *ordersv1.QuoteOrderResponse {
 	out := &ordersv1.QuoteOrderResponse{
 		Items: itemsToProto(q.Items), SubtotalIdr: q.SubtotalIDR, TaxIdr: q.TaxIDR, TotalIdr: q.TotalIDR,
-		DpRequiredIdr: q.DPRequiredIDR, TermsVersion: q.TermsVersion,
+		DpRequiredIdr: q.DPRequiredIDR, TermsVersion: q.TermsVersion, FullPaymentReason: fullPaymentReasons[q.FullPaymentReason],
+	}
+	for _, o := range q.PaymentOptions {
+		out.PaymentOptions = append(out.PaymentOptions, &ordersv1.PaymentOption{
+			Method: paymentMethods[o.Method], DpFeeIdr: o.DPFeeIDR, FullFeeIdr: o.FullFeeIDR,
+		})
 	}
 	switch {
 	case q.Schedule != nil:
@@ -62,7 +67,7 @@ func quoteToProto(q orders.Quote) *ordersv1.QuoteOrderResponse {
 		out.Pickup = &ordersv1.QuoteOrderResponse_Schedule{Schedule: &ordersv1.Schedule{
 			PickupAt: timestamppb.New(p.PickupAt), ProductionDate: p.ProductionDate.String(),
 			DpDueAt: timestamppb.New(p.DPDeadline), BalanceDueAt: timestamppb.New(p.BalanceDue),
-			FullPaymentRequired: p.FullPaymentRequired,
+			FullPaymentRequired: q.FullPaymentRequired,
 		}}
 	case q.Rejection != nil:
 		r := &ordersv1.PickupRejection{Problem: problemToProto(q.Rejection), Message: q.Rejection.Message}
@@ -72,6 +77,11 @@ func quoteToProto(q orders.Quote) *ordersv1.QuoteOrderResponse {
 		out.Pickup = &ordersv1.QuoteOrderResponse_Rejection{Rejection: r}
 	}
 	return out
+}
+
+var fullPaymentReasons = map[orders.FullPaymentReason]ordersv1.FullPaymentReason{
+	orders.FullPaymentSmallOrder: ordersv1.FullPaymentReason_FULL_PAYMENT_REASON_SMALL_ORDER,
+	orders.FullPaymentSchedule:   ordersv1.FullPaymentReason_FULL_PAYMENT_REASON_SCHEDULE,
 }
 
 var problems = []struct {

@@ -21,7 +21,7 @@ di commit yang sama.
 - Job: River. Rumus user: expr-lang/expr (sandbox).
 - Auth: Supabase Auth; Go memverifikasi JWT lewat JWKS. Peran di tabel `staff_roles`.
 - Frontend: Next.js di `web/`, memakai client TS hasil codegen.
-- Integrasi: Xendit, Biteship, WhatsApp Cloud API, Resend.
+- Integrasi: Midtrans, Biteship, WhatsApp Cloud API, Resend.
 - Observability: slog (JSON), OpenTelemetry, Sentry.
 
 ## Aturan yang tidak boleh dilanggar

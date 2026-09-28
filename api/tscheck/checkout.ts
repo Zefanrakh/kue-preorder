@@ -5,12 +5,18 @@ import { timestampDate, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
-import { CheckoutService, PickupProblem } from "../gen/ts/kuepreorder/orders/v1/checkout_pb";
+import {
+  CheckoutService,
+  FullPaymentReason,
+  PaymentMethod,
+  PickupProblem,
+  type PaymentOption,
+} from "../gen/ts/kuepreorder/orders/v1/checkout_pb";
 
 const checkout = createClient(CheckoutService, createConnectTransport({ baseUrl: "http://localhost:8080", useHttpGet: true }));
 
 type CartView =
-  | { kind: "ok"; total: bigint; firstPayment: bigint; payInFull: boolean; balanceDue?: Date }
+  | { kind: "ok"; total: bigint; firstPayment: bigint; payInFull: boolean; smallOrder: boolean; balanceDue?: Date; options: PaymentOption[] }
   | { kind: "pickup"; message: string; closed: boolean; suggestion?: Date }
   | { kind: "busy" };
 
@@ -25,7 +31,9 @@ export async function viewCart(lines: { variantId: string; quantity: number }[],
           total: q.totalIdr,
           firstPayment: q.dpRequiredIdr,
           payInFull: s.fullPaymentRequired,
+          smallOrder: q.fullPaymentReason === FullPaymentReason.SMALL_ORDER,
           balanceDue: s.balanceDueAt ? timestampDate(s.balanceDueAt) : undefined,
+          options: q.paymentOptions,
         };
       }
       case "rejection": {
@@ -46,4 +54,13 @@ export async function viewCart(lines: { variantId: string; quantity: number }[],
     }
     throw err;
   }
+}
+
+// adminFee is what the customer pays on top for a method: nothing for QRIS,
+// the DP fee when paying a DP, the full fee otherwise.
+export function adminFee(option: PaymentOption, payingDP: boolean): bigint {
+  if (option.method === PaymentMethod.QRIS) {
+    return 0n;
+  }
+  return payingDP && option.dpFeeIdr !== undefined ? option.dpFeeIdr : option.fullFeeIdr;
 }
