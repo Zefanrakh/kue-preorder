@@ -86,6 +86,15 @@ type Repository interface {
 	// produced or picked up that day.
 	ActiveOrderDays(ctx context.Context, tenantID uuid.UUID, from, to clock.Date, statuses []Status) (map[clock.Date]int, error)
 
+	// LockByID returns the order with its items and holds its row until the
+	// transaction ends, or apperr.ErrNotFound.
+	LockByID(ctx context.Context, tenantID, id uuid.UUID) (Order, error)
+	// PastDPDue and PastBalanceDue return up to limit orders in status s
+	// with payment status p whose DP or balance deadline is at or before
+	// before, oldest deadline first.
+	PastDPDue(ctx context.Context, tenantID uuid.UUID, s Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error)
+	PastBalanceDue(ctx context.Context, tenantID uuid.UUID, s Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error)
+
 	// LockByCode returns the order with that code and holds its row until
 	// the transaction ends; GetByCode reads it without a lock. Both return
 	// it with its items but not its payments, or apperr.ErrNotFound.

@@ -207,33 +207,50 @@ func (c *Checkout) withPayments(ctx context.Context, tenant uuid.UUID, o Order) 
 	return o, nil
 }
 
-// ensureInvoices asks the provider for the invoice of every pending payment
-// that has none yet and is still open. A failure is logged at ERROR, since a
-// customer who cannot pay is lost revenue, and the order is returned without
-// the link; the next read tries again. The provider's idempotency per payment
-// keeps retries from billing twice.
+// ensureInvoices makes the missing invoices of o. A failure is logged at
+// ERROR, since a customer who cannot pay is lost revenue, and the order is
+// returned without the link; the next read tries again.
 func (c *Checkout) ensureInvoices(ctx context.Context, tenant uuid.UUID, o *Order) {
-	now := c.clock.Now()
+	v := invoicer{provider: c.provider, ledger: c.ledger, clock: c.clock}
+	if err := v.ensure(ctx, tenant, o); err != nil {
+		c.logger.ErrorContext(ctx, "create invoice", slog.String("order", o.Code), slog.Any("error", err))
+	}
+}
+
+// invoicer asks the provider for the invoice of every pending payment of an
+// order that has none yet and is still open. The provider's idempotency per
+// payment keeps retries from billing twice.
+type invoicer struct {
+	provider payments.Provider
+	ledger   Ledger
+	clock    clock.Clock
+}
+
+// ensure fills in the links it makes on o, and returns every failure.
+func (v invoicer) ensure(ctx context.Context, tenant uuid.UUID, o *Order) error {
+	now := v.clock.Now()
+	var errs []error
 	for i := range o.Payments {
 		p := &o.Payments[i]
 		if p.State != payments.StatePending || p.CheckoutURL != "" || (p.ExpiresAt != nil && !p.ExpiresAt.After(now)) {
 			continue
 		}
-		inv, err := c.provider.CreateInvoice(ctx, payments.InvoiceRequest{
+		inv, err := v.provider.CreateInvoice(ctx, payments.InvoiceRequest{
 			PaymentID: p.ID, OrderCode: o.Code, Description: invoiceDescription(p.Kind, o.Code), Method: p.Method,
 			AmountIDR: p.AmountIDR, FeeIDR: p.FeeIDR, ExpiresAt: derefTime(p.ExpiresAt),
 			CustomerName: o.CustomerName, CustomerPhone: o.CustomerPhone, CustomerEmail: o.CustomerEmail,
 		})
 		if err != nil {
-			c.logger.ErrorContext(ctx, "create invoice", slog.String("order", o.Code), slog.String("payment_id", p.ID.String()), slog.Any("error", err))
+			errs = append(errs, fmt.Errorf("create invoice for payment %s: %w", p.ID, err))
 			continue
 		}
-		if err := c.ledger.AttachInvoice(ctx, tenant, p.ID, inv, now); err != nil {
-			c.logger.ErrorContext(ctx, "record invoice", slog.String("order", o.Code), slog.String("payment_id", p.ID.String()), slog.Any("error", err))
+		if err := v.ledger.AttachInvoice(ctx, tenant, p.ID, inv, now); err != nil {
+			errs = append(errs, fmt.Errorf("record invoice of payment %s: %w", p.ID, err))
 			continue
 		}
 		p.ExternalID, p.CheckoutURL = inv.ExternalID, inv.URL
 	}
+	return errors.Join(errs...)
 }
 
 func optionFor(options []PaymentOption, m payments.Method) (PaymentOption, bool) {

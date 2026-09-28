@@ -249,3 +249,23 @@ func (r *Repository) Audit(ctx context.Context, e audit.Entry) error {
 func (r *Repository) Publish(ctx context.Context, e outbox.Event) error {
 	return outbox.Append(ctx, r.db.Conn(ctx), e)
 }
+
+// LockByID implements orders.Repository.
+func (r *Repository) LockByID(ctx context.Context, tenantID, id uuid.UUID) (orders.Order, error) {
+	row, err := r.q(ctx).LockOrder(ctx, LockOrderParams{TenantID: tenantID, ID: id})
+	return r.withItems(ctx, tenantID, row, err)
+}
+
+// PastDPDue implements orders.Repository.
+func (r *Repository) PastDPDue(ctx context.Context, tenantID uuid.UUID, s orders.Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error) {
+	return r.q(ctx).OrdersPastDPDue(ctx, OrdersPastDPDueParams{
+		TenantID: tenantID, Status: string(s), PaymentStatus: string(p), Before: before, MaxRows: limit,
+	})
+}
+
+// PastBalanceDue implements orders.Repository.
+func (r *Repository) PastBalanceDue(ctx context.Context, tenantID uuid.UUID, s orders.Status, p payments.Status, before time.Time, limit int32) ([]uuid.UUID, error) {
+	return r.q(ctx).OrdersPastBalanceDue(ctx, OrdersPastBalanceDueParams{
+		TenantID: tenantID, Status: string(s), PaymentStatus: string(p), Before: before, MaxRows: limit,
+	})
+}

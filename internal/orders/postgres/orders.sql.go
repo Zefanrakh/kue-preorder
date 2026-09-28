@@ -572,6 +572,55 @@ func (q *Queries) LockCustomerOrders(ctx context.Context, customerID string) err
 	return err
 }
 
+const lockOrder = `-- name: LockOrder :one
+select id, tenant_id, customer_id, channel_id, external_order_ref, status, payment_status, fulfillment_type, pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at, subtotal_idr, tax_idr, shipping_idr, total_idr, dp_required_idr, full_payment_required, terms_version, terms_accepted_at, idempotency_key, created_at, updated_at, code, notes, customer_name, customer_phone, customer_email from orders
+where tenant_id = $1 and id = $2
+for update
+`
+
+type LockOrderParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) LockOrder(ctx context.Context, arg LockOrderParams) (Order, error) {
+	row := q.db.QueryRow(ctx, lockOrder, arg.TenantID, arg.ID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.CustomerID,
+		&i.ChannelID,
+		&i.ExternalOrderRef,
+		&i.Status,
+		&i.PaymentStatus,
+		&i.FulfillmentType,
+		&i.PickupAt,
+		&i.ProductionStartAt,
+		&i.ProductionDate,
+		&i.ShoppingCutoffAt,
+		&i.DpDueAt,
+		&i.BalanceDueAt,
+		&i.SubtotalIdr,
+		&i.TaxIdr,
+		&i.ShippingIdr,
+		&i.TotalIdr,
+		&i.DpRequiredIdr,
+		&i.FullPaymentRequired,
+		&i.TermsVersion,
+		&i.TermsAcceptedAt,
+		&i.IdempotencyKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Code,
+		&i.Notes,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CustomerEmail,
+	)
+	return i, err
+}
+
 const lockOrderByCode = `-- name: LockOrderByCode :one
 select id, tenant_id, customer_id, channel_id, external_order_ref, status, payment_status, fulfillment_type, pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at, subtotal_idr, tax_idr, shipping_idr, total_idr, dp_required_idr, full_payment_required, terms_version, terms_accepted_at, idempotency_key, created_at, updated_at, code, notes, customer_name, customer_phone, customer_email from orders
 where tenant_id = $1 and code = $2
@@ -658,6 +707,93 @@ func (q *Queries) OrderItems(ctx context.Context, arg OrderItemsParams) ([]Order
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ordersPastBalanceDue = `-- name: OrdersPastBalanceDue :many
+select id from orders
+where tenant_id = $1 and status = $2 and payment_status = $3
+  and balance_due_at <= $4
+order by balance_due_at, id
+limit $5
+`
+
+type OrdersPastBalanceDueParams struct {
+	TenantID      uuid.UUID
+	Status        string
+	PaymentStatus string
+	Before        time.Time
+	MaxRows       int32
+}
+
+// The same for the balance deadline: what the worker forfeits (§14).
+func (q *Queries) OrdersPastBalanceDue(ctx context.Context, arg OrdersPastBalanceDueParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, ordersPastBalanceDue,
+		arg.TenantID,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.Before,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ordersPastDPDue = `-- name: OrdersPastDPDue :many
+select id from orders
+where tenant_id = $1 and status = $2 and payment_status = $3
+  and dp_due_at <= $4
+order by dp_due_at, id
+limit $5
+`
+
+type OrdersPastDPDueParams struct {
+	TenantID      uuid.UUID
+	Status        string
+	PaymentStatus string
+	Before        time.Time
+	MaxRows       int32
+}
+
+// Orders still in status with payment_status whose DP deadline is at or
+// before `before`, oldest deadline first: what the worker expires (§14).
+func (q *Queries) OrdersPastDPDue(ctx context.Context, arg OrdersPastDPDueParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, ordersPastDPDue,
+		arg.TenantID,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.Before,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

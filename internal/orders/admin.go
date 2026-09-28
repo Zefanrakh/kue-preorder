@@ -494,12 +494,16 @@ func (a *Admin) settle(ctx context.Context, tenant uuid.UUID, o Order, status St
 	return err
 }
 
-// publish appends an order event carrying what every consumer needs: the
-// order and its batch.
 func (a *Admin) publish(ctx context.Context, tenant uuid.UUID, o Order, typ string, at time.Time, extra map[string]any) error {
+	return a.repo.Publish(ctx, orderEvent(tenant, o, typ, at, extra))
+}
+
+// orderEvent is an order event carrying what every consumer needs: the order
+// and its batch.
+func orderEvent(tenant uuid.UUID, o Order, typ string, at time.Time, extra map[string]any) outbox.Event {
 	payload := map[string]any{"order_id": o.ID, "code": o.Code, "production_date": o.ProductionDate.String()}
 	maps.Copy(payload, extra)
-	return a.repo.Publish(ctx, outbox.Event{TenantID: tenant, Aggregate: "order", Type: typ, Payload: payload, At: at})
+	return outbox.Event{TenantID: tenant, Aggregate: "order", Type: typ, Payload: payload, At: at}
 }
 
 // lock reads the order with that code and holds its row until the
