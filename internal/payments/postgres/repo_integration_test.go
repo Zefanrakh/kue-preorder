@@ -13,6 +13,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/payments/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db/dbtest"
 )
@@ -237,12 +238,13 @@ func TestLedger_ManualPaymentsAndExpiry(t *testing.T) {
 		Manual: &payments.ManualProof{Reference: "BCA 0412", Note: "Transfer langsung", RecordedBy: staff}}
 	refund := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindRefund, AmountIDR: -8000,
 		Manual: &payments.ManualProof{Reference: "BCA balik", Note: "Oven rusak", RecordedBy: staff}}
-	later := now.Add(time.Minute)
+	// Each step at its own time: the ledger lists payments by when they were made.
+	paid, later := now.Add(time.Minute), now.Add(2*time.Minute)
 
-	if err := ledger.AddManual(ctx, tenant, dp, now); err != nil {
+	if err := ledger.AddManual(ctx, tenant, dp, paid); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := ledger.ExpirePending(ctx, tenant, order, now); err != nil || n != 1 {
+	if n, err := ledger.ExpirePending(ctx, tenant, order, paid); err != nil || n != 1 {
 		t.Errorf("ExpirePending() = %d, %v; want the one pending invoice", n, err)
 	}
 	if err := ledger.AddManual(ctx, tenant, refund, later); err != nil {
@@ -256,7 +258,7 @@ func TestLedger_ManualPaymentsAndExpiry(t *testing.T) {
 	if got[0].State != payments.StateExpired || got[0].Manual != nil {
 		t.Errorf("invoice = %+v, want expired", got[0])
 	}
-	if p := got[1]; p.State != payments.StatePaid || p.Provider != payments.ProviderManual || !p.PaidAt.Equal(now) || p.Method != "" ||
+	if p := got[1]; p.State != payments.StatePaid || p.Provider != payments.ProviderManual || !p.PaidAt.Equal(paid) || p.Method != "" ||
 		p.Manual == nil || *p.Manual != *dp.Manual {
 		t.Errorf("manual DP = %+v (proof %+v), want paid with its proof", p, p.Manual)
 	}
@@ -268,5 +270,103 @@ func TestLedger_ManualPaymentsAndExpiry(t *testing.T) {
 	}
 	if theirs, _ := ledger.OrderPayments(ctx, tenant, other); theirs[0].State != payments.StatePending {
 		t.Errorf("another order's invoice = %s, want still pending", theirs[0].State)
+	}
+}
+
+// The settings are saved over the defaults, replaced in place, and reset by
+// removing the tenant's row; another tenant never sees them.
+func TestSettingsWrites(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	reader := payments.NewReader(repo)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	policy := payments.DefaultPolicy()
+	policy.DPMinTotalIDR, policy.DPMinPercent, policy.MinOrderIDR = 100_000, 40, 25_000
+	va := payments.FeeRule{Method: payments.MethodBankTransfer, FixedIDR: 3500, RateBPS: 10, VATIncluded: true}
+
+	for i, at := range []time.Time{now, now.Add(time.Hour)} {
+		va.Enabled = i == 1
+		if err := repo.SavePolicy(ctx, tenant, policy, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.SaveFeeRule(ctx, tenant, va, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := reader.Policy(ctx, tenant)
+	policy.UpdatedAt = now.Add(time.Hour)
+	if err != nil || !got.UpdatedAt.Equal(policy.UpdatedAt) {
+		t.Fatalf("Policy() = %+v, %v", got, err)
+	}
+	got.UpdatedAt = policy.UpdatedAt
+	if got != policy {
+		t.Errorf("Policy() = %+v, want %+v", got, policy)
+	}
+	rules, err := reader.FeeRules(ctx, tenant)
+	if r := rules[payments.MethodBankTransfer]; err != nil || r.FixedIDR != 3500 || r.RateBPS != 10 || !r.VATIncluded || !r.Enabled ||
+		!r.UpdatedAt.Equal(now.Add(time.Hour)) || !rules[payments.MethodQRIS].UpdatedAt.IsZero() {
+		t.Errorf("FeeRules() = %+v, %v; want the saved rule, replaced in place", rules, err)
+	}
+	other := dbtest.CreateTenant(t, d, "Toko Lain")
+	if p, _ := reader.Policy(ctx, other); p != payments.DefaultPolicy() {
+		t.Errorf("another tenant's policy = %+v, want the defaults", p)
+	}
+
+	if had, err := repo.DeleteFeeRule(ctx, tenant, payments.MethodBankTransfer); err != nil || !had {
+		t.Errorf("DeleteFeeRule() = %t, %v; want the row gone", had, err)
+	}
+	if had, err := repo.DeleteFeeRule(ctx, tenant, payments.MethodBankTransfer); err != nil || had {
+		t.Errorf("DeleteFeeRule() again = %t, %v; want nothing to delete", had, err)
+	}
+	if rules, _ := reader.FeeRules(ctx, tenant); rules[payments.MethodBankTransfer] != payments.DefaultFeeRules()[payments.MethodBankTransfer] {
+		t.Errorf("after a reset: %+v, want the default", rules[payments.MethodBankTransfer])
+	}
+}
+
+// A settings change and its audit entry commit or roll back together, under
+// the tenant's settings lock.
+func TestSettingsWrites_JoinTheCallersTransaction(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	change := func(ctx context.Context) error {
+		if err := repo.LockSettings(ctx, tenant); err != nil {
+			return err
+		}
+		if err := repo.SaveFeeRule(ctx, tenant, payments.FeeRule{Method: payments.MethodEWallet, RateBPS: 150, VATIncluded: true, Enabled: true}, now); err != nil {
+			return err
+		}
+		return repo.Audit(ctx, audit.Entry{TenantID: tenant, ActorID: uuid.New(), Action: "payments.method_fee.changed",
+			Entity: "payment_method_fee", EntityID: tenant, Reason: "Tarif baru", At: now})
+	}
+	counts := func() (rules, audits int) {
+		t.Helper()
+		if err := d.Pool().QueryRow(ctx, `select (select count(*) from payment_method_fees where tenant_id = $1),
+			(select count(*) from audit_log where tenant_id = $1 and entity = 'payment_method_fee')`, tenant).Scan(&rules, &audits); err != nil {
+			t.Fatal(err)
+		}
+		return rules, audits
+	}
+	errBoom := errors.New("boom")
+
+	if err := d.Tx(ctx, func(ctx context.Context) error {
+		if err := change(ctx); err != nil {
+			return err
+		}
+		return errBoom
+	}); !errors.Is(err, errBoom) {
+		t.Fatalf("Tx() error = %v", err)
+	}
+	if r, a := counts(); r != 0 || a != 0 {
+		t.Errorf("after a rollback: %d rules, %d audits; want none", r, a)
+	}
+	if err := d.Tx(ctx, change); err != nil {
+		t.Fatal(err)
+	}
+	if r, a := counts(); r != 1 || a != 1 {
+		t.Errorf("after a commit: %d rules, %d audits; want one of each", r, a)
 	}
 }

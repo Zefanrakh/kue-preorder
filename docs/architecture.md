@@ -282,6 +282,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Melihat seluruh katalog di CMS | ✅ | ✅ | ❌ |
 | Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
+| Setelan pembayaran: aturan DP dan tarif biaya admin per metode (`PaymentSettingsService`) | ✅ | ❌ (hanya lihat) | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 | Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
@@ -793,8 +794,18 @@ Estimasi biaya bahan memakai biaya per unit pada `u = 1` (batas atas, karena efe
   - Tarif tetap ditambah PPN 11%: VA Rp4.000 → **Rp4.440**, minimarket Rp5.000 → **Rp5.550**.
   - Tarif persen **dihitung ke atas**. Provider memotong persen dari seluruh yang dibayar, termasuk biaya admin itu sendiri. Biayanya adalah angka terkecil yang membuat toko tetap menerima jumlah pesanan secara utuh, dengan pembulatan provider yang paling merugikan. Contoh: e-wallet 2% atas Rp100.000 → **Rp2.041**.
   - Semua hitungan memakai bilangan bulat (`math/big` untuk hasil kali besar), tanpa float. Property test memastikan toko tidak pernah menerima kurang, dan biayanya tidak pernah lebih 1 rupiah pun dari yang perlu.
-- **Tarif per metode** disimpan per tenant (`payment_method_fees`). Tanpa baris, dipakai tarif Midtrans yang tercantum (`payments.DefaultFeeRules`, dicek 27 September 2026). Metode bisa dimatikan. Tarif diubah lewat CMS (M2.8) kalau Midtrans mengubah harga.
+- **Tarif per metode** disimpan per tenant (`payment_method_fees`). Tanpa baris, dipakai tarif Midtrans yang tercantum (`payments.DefaultFeeRules`, dicek 27 September 2026). Metode bisa dimatikan. Tarif diubah lewat CMS kalau Midtrans mengubah harga (lihat "Setelan pembayaran" di bawah).
 - Sebelum membayar, pelanggan melihat semua angka ini lewat `QuoteOrder`: harga dari server, pajak (0), total, DP, tenggat DP, tenggat pelunasan, dan apakah harus lunas.
+
+**Setelan pembayaran** (`payments.Settings` lewat `PaymentSettingsService`, sejak M2.8b). Owner mengubahnya dari CMS tanpa deploy; ibu hanya melihat (§8):
+- **Aturan DP** (`payment_policies`): persen DP minimal, DP menutup biaya bahan, tenggat pelunasan, masa berlaku tagihan DP, ambang DP, dan minimum order. Batasnya sama dengan check di database (`Policy.Validate`).
+- **Tarif per metode** (`payment_method_fees`): biaya tetap, biaya persen, PPN sudah termasuk atau belum, dan nyala/mati. **Reset** menghapus baris milik toko, sehingga tarif Midtrans yang tercantum di kode berlaku lagi dan metodenya menyala.
+- **Berlaku untuk order baru saja.** Order yang sudah dipesan tetap memakai DP dan tenggat yang dikunci saat checkout, dan tagihan yang sudah dibuat tetap memakai biaya admin-nya. E2E test di `cmd/api` membuktikan keduanya.
+- **Minimal satu metode tetap aktif** (`FailedPrecondition` `last_method`), supaya checkout selalu punya cara bayar.
+- **QRIS tetap Rp0 untuk pelanggan**, apa pun tarif yang diisi. Tarif QRIS hanya mencatat beban toko.
+- **Contoh biaya admin dihitung di server** untuk Rp50.000, Rp150.000, dan Rp500.000 (`payments.ExampleAmounts`). Tujuannya supaya salah ketik tarif langsung terlihat, tanpa CMS menghitung biaya sendiri.
+- **Setiap perubahan wajib alasan dan diaudit** (§22), dengan nilai sebelum dan sesudah. Menyimpan nilai yang sama tidak mengubah apa pun dan tidak dicatat.
+- **Perubahan dikunci per tenant** (advisory lock di transaksi). Audit selalu melihat nilai sebelum yang benar, dan dua owner tidak bisa mematikan dua metode terakhir bersamaan.
 
 **Tenggat pelunasan** dikunci saat checkout: default sebelum produksi dimulai (`balance_due_hours_before` dari jam mulai produksi). Pelanggan melihat tanggal dan jam pastinya sebelum membayar.
 
@@ -1055,6 +1066,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
     - **Perubahan harga varian** (harga yang dibayar pelanggan), dengan harga lama, harga baru, dan alasan. Harga di luar `ChangeVariantPrice` tidak bisa diubah. Menyimpan harga yang sama tidak dicatat. Harga kemasan dari supplier tidak diaudit karena hanya perkiraan biaya belanja.
     - **Pembayaran manual** (`orders.payment.recorded_manually`, sejak M2.8a): status sebelum dan sesudah, jumlah terbayar, jenis, nominal, dan nomor referensi. Alasannya adalah catatan pembayaran.
     - **Pembatalan order** (`orders.order.cancelled`, sejak M2.8a): caranya (`unpaid`, `forfeit`, atau `refund`), status sebelum dan sesudah, serta nominal dan referensi refund.
+    - **Setelan pembayaran** (sejak M2.8b): aturan DP (`payments.policy.changed`), tarif metode (`payments.method_fee.changed`), dan reset ke tarif Midtrans (`payments.method_fee.reset`), dengan nilai sebelum dan sesudah serta penanda apakah nilainya bawaan.
   - Stok (M3) dan jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
 
 ---

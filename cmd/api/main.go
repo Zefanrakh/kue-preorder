@@ -19,6 +19,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/payments/v1/paymentsv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	catalogrpc "github.com/Zefanrakh/kue-preorder/internal/catalog/connect"
@@ -31,6 +32,7 @@ import (
 	ordersrpc "github.com/Zefanrakh/kue-preorder/internal/orders/connect"
 	orderspg "github.com/Zefanrakh/kue-preorder/internal/orders/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
+	paymentsrpc "github.com/Zefanrakh/kue-preorder/internal/payments/connect"
 	paymentspg "github.com/Zefanrakh/kue-preorder/internal/payments/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/config"
@@ -166,6 +168,9 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 		orderAdmin: orders.NewAdmin(orders.AdminDeps{
 			Repo: ordersRepo, Ledger: ledger, Principals: identitySvc, Tx: database, Clock: clk,
 		}),
+		paymentSettings: payments.NewSettings(payments.SettingsDeps{
+			Repo: paymentsRepo, Principals: identitySvc, Tx: database, Clock: clk,
+		}),
 		db: database,
 	}
 }
@@ -206,19 +211,20 @@ func paymentProvider(cfg config.Config) (payments.Provider, error) {
 
 // handlerDeps is what the HTTP handler needs; tests pass fakes.
 type handlerDeps struct {
-	logger         *slog.Logger
-	tracerProvider trace.TracerProvider
-	verifier       identityrpc.Verifier
-	identity       *identity.Service
-	catalog        *catalog.Service
-	storefront     *catalog.Storefront
-	scheduling     *scheduling.Service
-	checkout       *orders.Checkout
-	orderAdmin     *orders.Admin
-	limiter        *ratelimit.Limiter
-	clientIPHeader string
-	sendSMSHook    http.Handler // nil: not served
-	db             httpserver.Pinger
+	logger          *slog.Logger
+	tracerProvider  trace.TracerProvider
+	verifier        identityrpc.Verifier
+	identity        *identity.Service
+	catalog         *catalog.Service
+	storefront      *catalog.Storefront
+	scheduling      *scheduling.Service
+	checkout        *orders.Checkout
+	orderAdmin      *orders.Admin
+	paymentSettings *payments.Settings
+	limiter         *ratelimit.Limiter
+	clientIPHeader  string
+	sendSMSHook     http.Handler // nil: not served
+	db              httpserver.Pinger
 }
 
 // rateLimits are the limits on public procedures, per client address
@@ -274,6 +280,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(ordersv1connect.NewCheckoutServiceHandler(ordersrpc.NewCheckoutHandler(d.checkout, d.logger), connectOpts...))
 	mux.Handle(ordersv1connect.NewCustomerOrderServiceHandler(ordersrpc.NewCustomerOrderHandler(d.checkout, d.logger), connectOpts...))
 	mux.Handle(ordersv1connect.NewOrderAdminServiceHandler(ordersrpc.NewAdminHandler(d.orderAdmin, d.logger), connectOpts...))
+	mux.Handle(paymentsv1connect.NewPaymentSettingsServiceHandler(paymentsrpc.NewSettingsHandler(d.paymentSettings, d.logger), connectOpts...))
 
 	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil

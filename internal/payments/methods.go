@@ -3,6 +3,7 @@ package payments
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
 )
@@ -47,6 +48,8 @@ type FeeRule struct {
 	VATIncluded bool
 	// Enabled offers the method at checkout.
 	Enabled bool
+	// UpdatedAt is when the tenant set the rule; zero for a default.
+	UpdatedAt time.Time
 }
 
 // DefaultFeeRules are Midtrans' prices as published (checked 27 September
