@@ -285,6 +285,9 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 | Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
+| Melihat semua order di CMS (`ListOrders`, `GetOrder`) | ✅ | ✅ | ❌ |
+| Status produksi: diproduksi, siap diambil, selesai (`AdvanceOrder`) | ✅ | ✅ | ❌ |
+| **Uang**: pembayaran manual, pembatalan, DP hangus, refund (`RecordManualPayment`, `CancelOrder`) | ✅ | ❌ | ❌ |
 
 Tanpa login hasilnya `Unauthenticated`; login tanpa peran yang cocok hasilnya `PermissionDenied`. Storefront publik tidak memeriksa peran dan hanya menampilkan yang dijual: produk aktif yang punya minimal satu varian aktif, beserta varian aktifnya saja (termurah dulu). Tenant diambil dari `TenantResolver`, bukan dari orangnya. Slug dicocokkan tanpa membedakan huruf besar-kecil. Token yang ada tapi rusak tetap `Unauthenticated`.
 - Peran `owner` pertama diberikan manual lewat SQL (lihat README). Setelah itu owner mengelola staf lewat CMS (M5).
@@ -520,7 +523,8 @@ payments (
   fee_idr bigint,                     -- "Biaya admin" yang dibayar pelanggan di atasnya; check: 0 untuk QRIS
   status text,                        -- 'pending' | 'paid' | 'expired' | 'failed'
   expires_at, paid_at,                -- check: paid_at terisi tepat saat status 'paid'
-  raw jsonb, created_at, updated_at
+  raw jsonb,                          -- manual: bukti {reference, note, recorded_by}; provider: datanya sendiri (M2.6b)
+  created_at, updated_at
 )
 -- Terbayar = SUM(amount_idr) WHERE status='paid'. fee_idr tidak pernah dihitung sebagai terbayar.
 -- Tidak ada kolom "sisa" yang di-update.
@@ -741,6 +745,27 @@ stateDiagram-v2
 
 Test mencoba setiap kombinasi status asal × status tujuan × status pembayaran × cara pengambilan. Property test menjalankan urutan acak (uang masuk, hangus, refund, percobaan transisi) dan memastikan order tidak pernah masuk status serah terima tanpa lunas.
 
+**Operasional order di CMS** (`orders.Admin` lewat `OrderAdminService`, sejak M2.8a; siapa boleh apa di §8):
+- **Daftar order** per tanggal produksi, paling panjang 92 hari sekali tampil dan 200 baris, diurutkan menurut jam ambil. Bisa disaring menurut status, dan dicari dengan kode order, nomor HP (boleh ditulis `0812-3456-7890`), atau nama pelanggan.
+- **Setiap perubahan berjalan dalam satu transaksi dengan baris order dikunci** (`select … for update`). Dua staf yang bertindak bersamaan jadi bergantian, tidak saling menimpa.
+- Setiap perubahan menulis event outbox: `order.status_changed`, `order.payment_received`, `order.confirmed`, `order.cancelled`, atau `order.expired`. Event membawa `production_date`, supaya agregasi (M3) tahu batch mana yang dihitung ulang.
+- **Status produksi** (`AdvanceOrder`): `in_production` → `ready` → `completed`, hanya lewat `orders.Transition`, jadi setiap langkah wajib lunas. Meminta status yang sudah berlaku tidak mengubah apa pun, jadi ketukan ganda aman.
+- **Pembatalan** (`CancelOrder`): hanya owner, alasan wajib, dan diaudit (§22).
+
+  | Cara | Syarat | Hasil |
+  |---|---|---|
+  | `unpaid` | Masih `awaiting_dp`, belum ada uang masuk | `expired`, sama seperti tagihan DP yang kedaluwarsa |
+  | `forfeit` (DP hangus) | `confirmed`, baru membayar DP, dan **tenggat pelunasan sudah lewat** | `cancelled`, pembayaran `forfeited`. DP tidak dikembalikan |
+  | `refund` | `confirmed`, sudah ada uang masuk | `cancelled`, pembayaran `refunded`. Satu baris refund negatif sebesar semua yang sudah dibayar, dengan nomor referensi transfer balik |
+
+  Order yang sudah `in_production` atau lebih jauh tidak bisa dibatalkan dari sini, karena lifecycle hanya mengizinkan `cancelled` dari `confirmed`. Semua tagihan yang masih terbuka ikut ditutup (`expired`).
+- Penolakan memakai `FailedPrecondition` dengan detail `Precondition`, dan pesannya berbahasa Indonesia supaya CMS bisa menampilkannya apa adanya: `not_paid_in_full`, `illegal_transition`, `payments_closed`, `nothing_owed`, `order_not_open`, `balance_not_due`, `not_forfeitable`, `nothing_to_refund`, `already_paid`.
+- Property test menjalankan urutan acak aksi staf (pembayaran manual dengan nominal acak, langkah produksi, tiga cara pembatalan, dan waktu yang maju). Test itu memastikan:
+  - order tidak pernah diproduksi atau diserahkan tanpa lunas;
+  - uang yang tercatat tidak pernah melebihi total;
+  - status pembayaran selalu sesuai ledger;
+  - `cancelled` selalu berarti pembayarannya sudah ditutup.
+
 ---
 
 ## 14. DP dan pelunasan (SOP ketat)
@@ -807,7 +832,23 @@ stateDiagram-v2
 4. Lewat tenggat tanpa pelunasan → order `cancelled`, pembayaran `forfeited`, batch dihitung ulang. Bahan yang sudah dibeli masuk stok.
 5. Kalau pembatalan atau jadwal ulang berasal dari **pihak toko**, pelanggan berhak refund penuh (lihat §16).
 
-Admin bisa menandai pelunasan manual (transfer langsung) hanya dengan bukti dan catatan, dan tercatat di ledger dengan nama admin. Ini jalur pengecualian, bukan jalur utama.
+**Pembayaran manual** (`RecordManualPayment`, sejak M2.8a, hanya owner). Ini jalur pengecualian, bukan jalur utama, misalnya pelanggan transfer langsung ke rekening toko:
+- **Isian wajib**: nominal, **nomor referensi** sebagai bukti (maksimal 100 karakter), dan **catatan** (menjadi alasan audit). Foto bukti menyusul bersama Storage di M5.
+- **Cara dicatat**: masuk ledger dengan `provider = manual`, langsung `paid`, tanpa biaya admin. Buktinya (referensi, catatan, dan siapa yang mencatat) disimpan di kolom `raw` pembayaran itu dan hanya tampil untuk staf. Pelanggan melihat pembayarannya, tapi tidak melihat catatan toko.
+- **Nominal yang diterima**:
+  - Order `awaiting_dp` wajib menerima **minimal sebesar DP**, lalu otomatis `confirmed`. Jenisnya `dp`, atau `full` kalau langsung lunas.
+  - Order `confirmed` menerima pelunasan (`balance`), utuh atau sebagian.
+- **Ditolak**:
+  - nominal yang melebihi sisa tagihan;
+  - order yang sudah lunas (`nothing_owed`);
+  - order yang sudah berakhir (`order_not_open`);
+  - order yang pembayarannya sudah ditutup (`payments_closed`), misalnya pelunasan terlambat setelah DP hangus.
+- **Satu transaksi** menulis semuanya:
+  - baris ledger;
+  - status order dan status pembayaran (lewat `payments.Settle` dan `orders.Transition`);
+  - penutupan tagihan online yang masih terbuka (`expired`), supaya pelanggan tidak membayar dua kali;
+  - entri audit dan event outbox.
+- **Catatan untuk M2.6b:** tagihan Midtrans yang ditutup di sistem harus dibatalkan juga di Midtrans. Sampai itu ada, pelanggan masih bisa membayar tagihan lama. Webhook harus memperlakukan uang itu sebagai uang yang masuk ke pembayaran yang sudah ditutup: log ERROR, lalu orang yang memutuskan.
 
 ---
 
@@ -1010,7 +1051,11 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
 - **Audit:** aksi admin yang mengubah uang, stok, atau jadwal selalu mencatat siapa, kapan, dan alasannya.
   - Tabel `audit_log` bersifat **append-only**: trigger database menolak `UPDATE` dan `DELETE`, jadi entri tidak bisa diubah atau dihapus oleh aplikasi.
   - `platform/audit.Record` wajib dipanggil **di dalam transaksi yang sama** dengan perubahannya, sehingga perubahan dan entrinya tersimpan atau batal bersama. Alasan wajib diisi; `action` berformat titik huruf kecil (`catalog.variant.price_changed`).
-  - Yang sudah diaudit: **perubahan harga varian** (harga yang dibayar pelanggan), dengan harga lama, harga baru, dan alasan. Harga di luar `ChangeVariantPrice` tidak bisa diubah. Menyimpan harga yang sama tidak dicatat. Harga kemasan dari supplier tidak diaudit karena hanya perkiraan biaya belanja. Stok (M3) dan jadwal (M6) menyusul memakai helper yang sama.
+  - Yang sudah diaudit:
+    - **Perubahan harga varian** (harga yang dibayar pelanggan), dengan harga lama, harga baru, dan alasan. Harga di luar `ChangeVariantPrice` tidak bisa diubah. Menyimpan harga yang sama tidak dicatat. Harga kemasan dari supplier tidak diaudit karena hanya perkiraan biaya belanja.
+    - **Pembayaran manual** (`orders.payment.recorded_manually`, sejak M2.8a): status sebelum dan sesudah, jumlah terbayar, jenis, nominal, dan nomor referensi. Alasannya adalah catatan pembayaran.
+    - **Pembatalan order** (`orders.order.cancelled`, sejak M2.8a): caranya (`unpaid`, `forfeit`, atau `refund`), status sebelum dan sesudah, serta nominal dan referensi refund.
+  - Stok (M3) dan jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
 
 ---
 
@@ -1070,7 +1115,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 |---|---|---|
 | **M0 Fondasi** | Skeleton repo, `platform`, verifikasi JWT Supabase, migrasi awal, CI | `/healthz` hijau, pipeline CI lengkap |
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
-| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8 operasional admin, M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7 worker | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
+| **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7 worker | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
@@ -1154,6 +1199,14 @@ Diputuskan 2026-09-26:
 | Penyerahan kode OTP | Hook HTTP Supabase ke `api`; kode tidak pernah disimpan (§8) |
 | Kode OTP | Berlaku 5 menit; maksimal 5 kode per jam per nomor; template dengan kalimat keamanan dan masa berlaku |
 
+Diputuskan 2026-09-28:
+
+| Topik | Keputusan |
+|---|---|
+| Operasional order | Ibu (`kitchen`) melihat order dan mengubah status produksi. Urusan uang (pembayaran manual, pembatalan, DP hangus, refund) hanya owner (§8, §13) |
+| Bukti pembayaran manual | Nomor referensi dan catatan dulu; foto bukti bersama Storage di M5 (§14) |
+| DP hangus | Hanya setelah tenggat pelunasan lewat. Pembatalan sebelum tenggat, termasuk atas permintaan pelanggan, berarti refund penuh (§13, §14) |
+
 ### Masih terbuka
 
 1. **Model kapasitas produksi berbasis loyang dan oven**, dirancang setelah M3, karena total adonan per hari baru dihitung di sana. Yang sudah disepakati:
@@ -1163,7 +1216,7 @@ Diputuskan 2026-09-26:
    - Adonan dengan **suhu sama boleh dipanggang bersamaan**.
 
    Dari sana: total adonan per hari → jumlah loyang → putaran panggang per oven → muat atau tidak. `daily_capacity_minutes` diganti model ini.
-2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order.
+2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order. Teksnya harus sesuai dengan aturan yang sudah diputuskan: DP hangus hanya setelah tenggat pelunasan, dan pembatalan sebelum tenggat berarti refund penuh.
 3. **Akun Midtrans atas nama siapa** (ibu atau Zefan). Rekening pencairan harus atas nama yang sama dengan KTP. Didaftarkan pemilik pada 30 September 2026, bersama domain dan Cloudflare.
 
 ### 27.1 Pertimbangan: email transaksional

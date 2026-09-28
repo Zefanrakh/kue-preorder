@@ -86,3 +86,38 @@ where tenant_id = sqlc.arg(tenant_id)
   and status = any(sqlc.arg(statuses)::text[])
   and (production_date between sqlc.arg(from_date) and sqlc.arg(to_date)
        or (pickup_at at time zone 'Asia/Jakarta')::date between sqlc.arg(from_date) and sqlc.arg(to_date));
+
+-- name: LockOrderByCode :one
+-- Staff actions on an order hold its row until the transaction ends, so two
+-- people acting on it at once take turns.
+select * from orders
+where tenant_id = sqlc.arg(tenant_id) and code = sqlc.arg(code)
+for update;
+
+-- name: GetOrderByCode :one
+select * from orders
+where tenant_id = sqlc.arg(tenant_id) and code = sqlc.arg(code);
+
+-- name: UpdateOrderStatus :exec
+update orders
+set status = sqlc.arg(status), payment_status = sqlc.arg(payment_status), updated_at = sqlc.arg(now)
+where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id);
+
+-- name: ListStaffOrders :many
+-- The kitchen's and the owner's list: orders produced from..to, in any of
+-- statuses (all when empty), matching query by code, phone, or name.
+select o.id, o.code, o.status, o.payment_status, o.pickup_at, o.production_date, o.total_idr,
+       o.customer_name, o.customer_phone, o.created_at,
+       (select count(*) from order_items i where i.order_id = o.id)::int as item_count,
+       coalesce((select i.product_name || ' ' || i.variant_name from order_items i
+                 where i.order_id = o.id order by i.product_name, i.variant_name, i.id limit 1), '')::text as first_item
+from orders o
+where o.tenant_id = sqlc.arg(tenant_id)
+  and o.production_date between sqlc.arg(from_date) and sqlc.arg(to_date)
+  and (cardinality(sqlc.arg(statuses)::text[]) = 0 or o.status = any(sqlc.arg(statuses)::text[]))
+  and (sqlc.arg(query)::text = ''
+       or o.code = upper(sqlc.arg(query)::text)
+       or o.customer_phone like '%' || sqlc.arg(query)::text || '%'
+       or o.customer_name ilike '%' || sqlc.arg(query)::text || '%')
+order by o.pickup_at, o.code
+limit sqlc.arg(max_rows);

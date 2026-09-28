@@ -15,6 +15,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
@@ -36,6 +37,7 @@ func (r *Repository) q(ctx context.Context) *Queries {
 	return New(r.db.Conn(ctx))
 }
 
+// statusNames never returns nil: a nil slice would reach the query as NULL.
 func statusNames(statuses []orders.Status) []string {
 	names := make([]string, len(statuses))
 	for i, s := range statuses {
@@ -195,4 +197,55 @@ func (r *Repository) ActiveOrderDays(ctx context.Context, tenantID uuid.UUID, fr
 		}
 	}
 	return out, nil
+}
+
+// LockByCode implements orders.Repository.
+func (r *Repository) LockByCode(ctx context.Context, tenantID uuid.UUID, code string) (orders.Order, error) {
+	row, err := r.q(ctx).LockOrderByCode(ctx, LockOrderByCodeParams{TenantID: tenantID, Code: code})
+	return r.withItems(ctx, tenantID, row, err)
+}
+
+// GetByCode implements orders.Repository.
+func (r *Repository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (orders.Order, error) {
+	row, err := r.q(ctx).GetOrderByCode(ctx, GetOrderByCodeParams{TenantID: tenantID, Code: code})
+	return r.withItems(ctx, tenantID, row, err)
+}
+
+// SetStatus implements orders.Repository.
+func (r *Repository) SetStatus(ctx context.Context, tenantID, id uuid.UUID, s orders.Status, p payments.Status, at time.Time) error {
+	return r.q(ctx).UpdateOrderStatus(ctx, UpdateOrderStatusParams{
+		Status: string(s), PaymentStatus: string(p), Now: at, TenantID: tenantID, ID: id,
+	})
+}
+
+// ListStaff implements orders.Repository.
+func (r *Repository) ListStaff(ctx context.Context, tenantID uuid.UUID, f orders.StaffFilter, limit int32) ([]orders.StaffSummary, error) {
+	rows, err := r.q(ctx).ListStaffOrders(ctx, ListStaffOrdersParams{
+		TenantID: tenantID, FromDate: db.Date(f.From), ToDate: db.Date(f.To), Statuses: statusNames(f.Statuses),
+		Query: f.Query, MaxRows: limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orders.StaffSummary, len(rows))
+	for i, row := range rows {
+		out[i] = orders.StaffSummary{
+			Summary: orders.Summary{
+				ID: row.ID, Code: row.Code, Status: orders.Status(row.Status), Payment: payments.Status(row.PaymentStatus),
+				PickupAt: row.PickupAt, TotalIDR: row.TotalIdr, FirstItem: row.FirstItem, ItemCount: row.ItemCount, CreatedAt: row.CreatedAt,
+			},
+			ProductionDate: db.FromDate(row.ProductionDate), CustomerName: row.CustomerName, CustomerPhone: row.CustomerPhone,
+		}
+	}
+	return out, nil
+}
+
+// Audit implements orders.Repository.
+func (r *Repository) Audit(ctx context.Context, e audit.Entry) error {
+	return audit.Record(ctx, r.db.Conn(ctx), e)
+}
+
+// Publish implements orders.Repository.
+func (r *Repository) Publish(ctx context.Context, e outbox.Event) error {
+	return outbox.Append(ctx, r.db.Conn(ctx), e)
 }

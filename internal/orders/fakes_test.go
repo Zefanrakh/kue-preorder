@@ -12,7 +12,9 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 )
 
 // fakeRepo keeps orders in memory.
@@ -27,6 +29,10 @@ type fakeRepo struct {
 	locked         []uuid.UUID
 	activeDays     map[clock.Date]int
 	activeStatuses []orders.Status
+	lockedCodes    []string
+	staffFilter    orders.StaffFilter
+	audits         []audit.Entry
+	events         []outbox.Event
 }
 
 func newFakeRepo() *fakeRepo {
@@ -122,18 +128,91 @@ func (f *fakeRepo) ActiveOrderDays(_ context.Context, _ uuid.UUID, _, _ clock.Da
 	return f.activeDays, nil
 }
 
+func (f *fakeRepo) byCode(code string) (orders.Order, error) {
+	for _, o := range f.orders {
+		if o.Code == code {
+			return o, nil
+		}
+	}
+	return orders.Order{}, apperr.ErrNotFound
+}
+
+func (f *fakeRepo) LockByCode(_ context.Context, _ uuid.UUID, code string) (orders.Order, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lockedCodes = append(f.lockedCodes, code)
+	return f.byCode(code)
+}
+
+func (f *fakeRepo) GetByCode(_ context.Context, _ uuid.UUID, code string) (orders.Order, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byCode(code)
+}
+
+func (f *fakeRepo) SetStatus(_ context.Context, _, id uuid.UUID, s orders.Status, p payments.Status, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	o := f.orders[id]
+	o.Status, o.Payment = s, p
+	f.orders[id] = o
+	return nil
+}
+
+func (f *fakeRepo) ListStaff(_ context.Context, _ uuid.UUID, filter orders.StaffFilter, _ int32) ([]orders.StaffSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.staffFilter = filter
+	out := []orders.StaffSummary{}
+	for _, o := range f.orders {
+		out = append(out, orders.StaffSummary{Summary: orders.Summary{ID: o.ID, Code: o.Code, Status: o.Status}, CustomerPhone: o.CustomerPhone})
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) Audit(_ context.Context, e audit.Entry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.audits = append(f.audits, e)
+	return nil
+}
+
+func (f *fakeRepo) Publish(_ context.Context, e outbox.Event) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, e)
+	return nil
+}
+
+// eventTypes lists the types of the events published so far.
+func (f *fakeRepo) eventTypes() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, e := range f.events {
+		out = append(out, e.Type)
+	}
+	return out
+}
+
 // fakeCustomers is identity for a caller signed in with a phone number.
 type fakeCustomers struct {
 	customer identity.Customer
-	err      error // what EnsureCustomer returns instead
-	anon     bool  // Principal: nobody signed in
+	err      error           // what EnsureCustomer returns instead
+	anon     bool            // Principal: nobody signed in
+	roles    []identity.Role // Principal: a staff member's roles
+	user     uuid.UUID       // Principal: the auth user; random when nil
 }
 
 func (f *fakeCustomers) Principal(context.Context) (identity.Principal, error) {
 	if f.anon {
 		return identity.Principal{}, identity.ErrUnauthenticated
 	}
-	p := identity.Principal{AuthUserID: uuid.New(), TenantID: tenant}
+	user := f.user
+	if user == uuid.Nil {
+		user = uuid.New()
+	}
+	p := identity.Principal{AuthUserID: user, TenantID: tenant, Roles: f.roles}
 	if f.customer.ID != uuid.Nil {
 		p.CustomerID = &f.customer.ID
 	}
@@ -151,30 +230,44 @@ func (f *fakeCustomers) EnsureCustomer(_ context.Context, in identity.CustomerIn
 	return f.customer, nil
 }
 
-// fakeLedger keeps payments in memory.
+// fakeLedger keeps the payment ledger in memory, behind the real
+// payments.Ledger.
 type fakeLedger struct {
 	mu       sync.Mutex
 	payments []payments.Payment
 }
 
-func (f *fakeLedger) AddPending(_ context.Context, _ uuid.UUID, p payments.Payment, at time.Time) error {
+func (f *fakeLedger) AddPayment(_ context.Context, _ uuid.UUID, p payments.Payment, at time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	p.State, p.CreatedAt = payments.StatePending, at
+	p.CreatedAt = at
 	f.payments = append(f.payments, p)
 	return nil
 }
 
-func (f *fakeLedger) AttachInvoice(_ context.Context, _, paymentID uuid.UUID, inv payments.Invoice, _ time.Time) error {
+func (f *fakeLedger) SetInvoice(_ context.Context, _, paymentID uuid.UUID, inv payments.Invoice, _ time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for i := range f.payments {
-		if f.payments[i].ID == paymentID {
+		if f.payments[i].ID == paymentID && f.payments[i].State == payments.StatePending {
 			f.payments[i].ExternalID, f.payments[i].CheckoutURL = inv.ExternalID, inv.URL
 			return nil
 		}
 	}
 	return apperr.ErrNotFound
+}
+
+func (f *fakeLedger) ExpirePending(_ context.Context, _, orderID uuid.UUID, _ time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for i := range f.payments {
+		if p := &f.payments[i]; p.OrderID == orderID && p.State == payments.StatePending {
+			p.State = payments.StateExpired
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *fakeLedger) OrderPayments(_ context.Context, _, orderID uuid.UUID) ([]payments.Payment, error) {

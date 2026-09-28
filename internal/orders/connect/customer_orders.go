@@ -62,11 +62,7 @@ func (h *CustomerOrderHandler) ListMyOrders(ctx context.Context, _ *connect.Requ
 	}
 	out := make([]*ordersv1.OrderSummary, len(list))
 	for i, s := range list {
-		out[i] = &ordersv1.OrderSummary{
-			Id: s.ID.String(), Code: s.Code, Status: orderStatuses[s.Status], PaymentStatus: paymentStatuses[s.Payment],
-			PickupAt: timestamppb.New(s.PickupAt), TotalIdr: s.TotalIDR, FirstItem: s.FirstItem, ItemCount: s.ItemCount,
-			CreatedAt: timestamppb.New(s.CreatedAt),
-		}
+		out[i] = summaryToProto(s)
 	}
 	return connect.NewResponse(&ordersv1.ListMyOrdersResponse{Orders: out}), nil
 }
@@ -131,6 +127,14 @@ var paymentStates = map[payments.State]ordersv1.PaymentState{
 	payments.StateFailed:  ordersv1.PaymentState_PAYMENT_STATE_FAILED,
 }
 
+func summaryToProto(s orders.Summary) *ordersv1.OrderSummary {
+	return &ordersv1.OrderSummary{
+		Id: s.ID.String(), Code: s.Code, Status: orderStatuses[s.Status], PaymentStatus: paymentStatuses[s.Payment],
+		PickupAt: timestamppb.New(s.PickupAt), TotalIdr: s.TotalIDR, FirstItem: s.FirstItem, ItemCount: s.ItemCount,
+		CreatedAt: timestamppb.New(s.CreatedAt),
+	}
+}
+
 func orderToProto(o orders.Order) *ordersv1.Order {
 	out := &ordersv1.Order{
 		Id: o.ID.String(), Code: o.Code, Status: orderStatuses[o.Status], PaymentStatus: paymentStatuses[o.Payment],
@@ -142,6 +146,7 @@ func orderToProto(o orders.Order) *ordersv1.Order {
 			FullPaymentRequired: o.FullPaymentRequired,
 		},
 		Notes: o.Notes, CustomerName: o.CustomerName, CreatedAt: timestamppb.New(o.CreatedAt),
+		CustomerPhone: o.CustomerPhone, CustomerEmail: o.CustomerEmail,
 	}
 	for _, p := range o.Payments {
 		pp := &ordersv1.Payment{

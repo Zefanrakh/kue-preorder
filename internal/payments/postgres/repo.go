@@ -5,7 +5,9 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,10 +74,24 @@ func (r *Repository) AddPayment(ctx context.Context, tenantID uuid.UUID, p payme
 		m := string(p.Method)
 		method = &m
 	}
+	var raw []byte
+	if p.Manual != nil {
+		b, err := json.Marshal(p.Manual)
+		if err != nil {
+			return fmt.Errorf("encode proof of payment %s: %w", p.ID, err)
+		}
+		raw = b
+	}
 	return r.q(ctx).AddPayment(ctx, AddPaymentParams{
 		ID: p.ID, TenantID: tenantID, OrderID: p.OrderID, Kind: string(p.Kind), Provider: p.Provider, Method: method,
-		AmountIdr: p.AmountIDR, FeeIdr: p.FeeIDR, Status: string(p.State), ExpiresAt: p.ExpiresAt, Now: at,
+		AmountIdr: p.AmountIDR, FeeIdr: p.FeeIDR, Status: string(p.State), ExpiresAt: p.ExpiresAt, PaidAt: p.PaidAt,
+		Raw: raw, Now: at,
 	})
+}
+
+// ExpirePending implements payments.LedgerRepository.
+func (r *Repository) ExpirePending(ctx context.Context, tenantID, orderID uuid.UUID, at time.Time) (int64, error) {
+	return r.q(ctx).ExpirePendingPayments(ctx, ExpirePendingPaymentsParams{Now: at, TenantID: tenantID, OrderID: orderID})
 }
 
 // SetInvoice implements payments.LedgerRepository.
@@ -105,6 +121,14 @@ func (r *Repository) OrderPayments(ctx context.Context, tenantID, orderID uuid.U
 			ExternalID: deref(row.ExternalID), AmountIDR: row.AmountIdr, FeeIDR: row.FeeIdr,
 			State: payments.State(row.Status), CheckoutURL: deref(row.CheckoutUrl),
 			ExpiresAt: row.ExpiresAt, PaidAt: row.PaidAt, CreatedAt: row.CreatedAt,
+		}
+		// Only manual rows keep a proof in raw; a provider's raw is its own.
+		if row.Provider == payments.ProviderManual && row.Raw != nil {
+			var proof payments.ManualProof
+			if err := json.Unmarshal(row.Raw, &proof); err != nil {
+				return nil, fmt.Errorf("decode proof of payment %s: %w", row.ID, err)
+			}
+			out[i].Manual = &proof
 		}
 	}
 	return out, nil

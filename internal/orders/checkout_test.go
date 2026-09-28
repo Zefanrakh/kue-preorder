@@ -127,7 +127,7 @@ func newShop() *shop {
 	s.provider = &fakeProvider{}
 	s.checkout = orders.NewCheckout(orders.Deps{
 		Catalog: s.catalog, Schedules: s.schedules, Policies: s.policies, Repo: s.repo,
-		Customers: s.customers, Ledger: s.ledger, Provider: s.provider, Tx: fakeTx{},
+		Customers: s.customers, Ledger: payments.NewLedger(s.ledger), Provider: s.provider, Tx: fakeTx{},
 		Tenants: tenantOf(tenant), Clock: s.clock, Logger: slog.New(slog.NewJSONHandler(s.logs, nil)),
 	})
 	return s

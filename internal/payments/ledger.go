@@ -9,6 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// ProviderManual marks money the owner received or returned outside the
+// payment provider, such as a bank transfer straight to the shop (§14).
+const ProviderManual = "manual"
+
 // Kind is what a payment is for (§9.8).
 type Kind string
 
@@ -49,6 +53,28 @@ type Payment struct {
 	ExpiresAt   *time.Time
 	PaidAt      *time.Time
 	CreatedAt   time.Time
+	// Manual is the proof of a manual payment or refund; nil otherwise.
+	Manual *ManualProof
+}
+
+// ManualProof is what the owner recorded of money that moved outside the
+// provider. It is kept with the payment, next to the audit entry.
+type ManualProof struct {
+	Reference  string    `json:"reference"` // such as the transfer's reference number
+	Note       string    `json:"note"`
+	RecordedBy uuid.UUID `json:"recorded_by"` // the staff member's auth user id
+}
+
+// Paid is what an order has paid over its ledger: the paid amounts, refunds
+// included. Fees never count.
+func Paid(ps []Payment) int64 {
+	var sum int64
+	for _, p := range ps {
+		if p.State == StatePaid {
+			sum += p.AmountIDR
+		}
+	}
+	return sum
 }
 
 // InvoiceRequest asks a provider for an invoice the customer pays online.
@@ -106,6 +132,9 @@ type LedgerRepository interface {
 	SetInvoice(ctx context.Context, tenantID, paymentID uuid.UUID, inv Invoice, at time.Time) error
 	// OrderPayments returns an order's payments, oldest first.
 	OrderPayments(ctx context.Context, tenantID, orderID uuid.UUID) ([]Payment, error)
+	// ExpirePending marks an order's pending payments expired and returns
+	// how many there were.
+	ExpirePending(ctx context.Context, tenantID, orderID uuid.UUID, at time.Time) (int64, error)
 }
 
 // Ledger records payments. Other modules use it in-process for a tenant.
@@ -131,6 +160,39 @@ func (l *Ledger) AddPending(ctx context.Context, tenantID uuid.UUID, p Payment, 
 	}
 	p.State = StatePending
 	return l.repo.AddPayment(ctx, tenantID, p, at)
+}
+
+// AddManual records money the owner received or returned outside the
+// provider (§14): a dp, balance, or full payment, or a refund with a negative
+// amount. It is paid as it is recorded, has no fee, and must carry its proof.
+func (l *Ledger) AddManual(ctx context.Context, tenantID uuid.UUID, p Payment, at time.Time) error {
+	switch p.Kind {
+	case KindDP, KindBalance, KindFull:
+		if p.AmountIDR <= 0 || p.AmountIDR > MaxOrderTotalIDR {
+			return fmt.Errorf("%w: manual %s payment of %d", ErrInvalidAmount, p.Kind, p.AmountIDR)
+		}
+	case KindRefund:
+		if p.AmountIDR >= 0 || p.AmountIDR < -MaxOrderTotalIDR {
+			return fmt.Errorf("%w: manual refund of %d", ErrInvalidAmount, p.AmountIDR)
+		}
+	default:
+		return fmt.Errorf("manual payment of kind %q", p.Kind)
+	}
+	if p.ID == uuid.Nil || p.OrderID == uuid.Nil || p.Manual == nil || p.Manual.RecordedBy == uuid.Nil || p.Manual.Reference == "" {
+		return errors.New("manual payment without an id, an order, or its proof")
+	}
+	paidAt := at
+	p.Provider, p.Method, p.ExternalID, p.CheckoutURL = ProviderManual, "", "", ""
+	p.FeeIDR, p.State, p.ExpiresAt, p.PaidAt = 0, StatePaid, nil, &paidAt
+	return l.repo.AddPayment(ctx, tenantID, p, at)
+}
+
+// ExpirePending closes an order's open invoices once they are not wanted:
+// the order was paid another way, or it ended. Until the Midtrans adapter
+// cancels them at the provider too (M2.6b), a customer can still pay one; the
+// webhook must then treat that money as arriving for a closed payment.
+func (l *Ledger) ExpirePending(ctx context.Context, tenantID, orderID uuid.UUID, at time.Time) (int64, error) {
+	return l.repo.ExpirePending(ctx, tenantID, orderID, at)
 }
 
 // AttachInvoice records the invoice a provider made for a pending payment.

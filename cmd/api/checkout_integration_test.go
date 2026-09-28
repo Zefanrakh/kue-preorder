@@ -52,6 +52,7 @@ type wired struct {
 	issuer *identitytest.TokenIssuer
 	d      *db.DB
 	donut  catalog.Variant
+	clock  *clock.Fake
 }
 
 func wiredCheckout(t *testing.T, opts ...connect.ClientOption) (ordersv1connect.CheckoutServiceClient, catalog.Variant) {
@@ -104,7 +105,7 @@ func newWired(t *testing.T) *wired {
 	noErr(t, err)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return &wired{url: srv.URL, http: srv.Client(), issuer: issuer, d: d, donut: donut}
+	return &wired{url: srv.URL, http: srv.Client(), issuer: issuer, d: d, donut: donut, clock: clk}
 }
 
 func noErr(t *testing.T, err error) {

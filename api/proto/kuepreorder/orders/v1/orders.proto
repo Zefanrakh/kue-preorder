@@ -83,6 +83,19 @@ message Payment {
   google.protobuf.Timestamp paid_at = 8;
   // What the invoice offers; unspecified for manual payments and refunds.
   PaymentMethod method = 9;
+  // The proof of a manual payment or refund. Set for staff only
+  // (OrderAdminService); customers never see the shop's notes.
+  ManualProof manual = 10;
+}
+
+// ManualProof is what the owner recorded of money that moved outside the
+// payment provider.
+message ManualProof {
+  // Such as the transfer's reference number.
+  string reference = 1;
+  string note = 2;
+  // The Supabase Auth user id of the staff member who recorded it.
+  string recorded_by = 3;
 }
 
 message Order {
@@ -104,6 +117,10 @@ message Order {
   repeated Payment payments = 12;
   string customer_name = 13;
   google.protobuf.Timestamp created_at = 14;
+  // The customer's WhatsApp number at checkout, E.164.
+  string customer_phone = 15;
+  // Empty when the customer gave none.
+  string customer_email = 16;
 }
 
 message OrderSummary {

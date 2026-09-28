@@ -54,6 +54,11 @@ func TestPolicy(t *testing.T) {
 // orders module's job and this package may not import it.
 func newOrder(t *testing.T, d *db.DB) uuid.UUID {
 	t.Helper()
+	return newOrderCoded(t, d, "K7M3QX")
+}
+
+func newOrderCoded(t *testing.T, d *db.DB, code string) uuid.UUID {
+	t.Helper()
 	ctx := t.Context()
 	var customer, channel, order uuid.UUID
 	if err := d.Pool().QueryRow(ctx, "insert into customers (tenant_id, name, phone) values ($1, 'Sari', '+6281234567890') returning id", dbtest.DefaultTenantID).Scan(&customer); err != nil {
@@ -66,10 +71,10 @@ func newOrder(t *testing.T, d *db.DB) uuid.UUID {
 		pickup_at, production_start_at, production_date, shopping_cutoff_at, dp_due_at, balance_due_at,
 		subtotal_idr, total_idr, dp_required_idr, full_payment_required, terms_version, terms_accepted_at,
 		idempotency_key, customer_name, customer_phone, created_at, updated_at)
-		values ($1, $2, $3, 'K7M3QX', 'awaiting_dp', 'unpaid', 'pickup', now() + interval '2 days', now() + interval '2 days',
+		values ($1, $2, $3, $4, 'awaiting_dp', 'unpaid', 'pickup', now() + interval '2 days', now() + interval '2 days',
 		current_date + 2, now() + interval '1 day', now() + interval '3 hours', now() + interval '1 day',
 		16000, 16000, 8000, false, 'dp-draft-1', now(), gen_random_uuid(), 'Sari', '+6281234567890', now(), now())
-		returning id`, dbtest.DefaultTenantID, customer, channel).Scan(&order)
+		returning id`, dbtest.DefaultTenantID, customer, channel, code).Scan(&order)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,5 +212,61 @@ func TestLedger_KeepsTheMethodAndRefusesAQRISFee(t *testing.T) {
 	qris.State = payments.StatePending
 	if err := repo.AddPayment(ctx, dbtest.DefaultTenantID, qris, now); err == nil {
 		t.Error("the database took a QRIS payment with a fee")
+	}
+}
+
+// Manual payments and refunds keep their proof, and ExpirePending closes
+// only the order's pending invoices.
+func TestLedger_ManualPaymentsAndExpiry(t *testing.T) {
+	d := dbtest.New(t)
+	ledger := payments.NewLedger(postgres.NewRepository(d))
+	ctx := t.Context()
+	order, other := newOrder(t, d), newOrderCoded(t, d, "P2Q3RS")
+	tenant := dbtest.DefaultTenantID
+	pending := func(order uuid.UUID) payments.Payment {
+		return payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, Provider: "dev", Method: payments.MethodBankTransfer, AmountIDR: 8000, FeeIDR: 4440}
+	}
+	mine, theirs := pending(order), pending(other)
+	for _, p := range []payments.Payment{mine, theirs} {
+		if err := ledger.AddPending(ctx, tenant, p, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staff := uuid.New()
+	dp := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindDP, AmountIDR: 8000,
+		Manual: &payments.ManualProof{Reference: "BCA 0412", Note: "Transfer langsung", RecordedBy: staff}}
+	refund := payments.Payment{ID: uuid.New(), OrderID: order, Kind: payments.KindRefund, AmountIDR: -8000,
+		Manual: &payments.ManualProof{Reference: "BCA balik", Note: "Oven rusak", RecordedBy: staff}}
+	later := now.Add(time.Minute)
+
+	if err := ledger.AddManual(ctx, tenant, dp, now); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ledger.ExpirePending(ctx, tenant, order, now); err != nil || n != 1 {
+		t.Errorf("ExpirePending() = %d, %v; want the one pending invoice", n, err)
+	}
+	if err := ledger.AddManual(ctx, tenant, refund, later); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ledger.OrderPayments(ctx, tenant, order)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("OrderPayments() = %+v, %v", got, err)
+	}
+	if got[0].State != payments.StateExpired || got[0].Manual != nil {
+		t.Errorf("invoice = %+v, want expired", got[0])
+	}
+	if p := got[1]; p.State != payments.StatePaid || p.Provider != payments.ProviderManual || !p.PaidAt.Equal(now) || p.Method != "" ||
+		p.Manual == nil || *p.Manual != *dp.Manual {
+		t.Errorf("manual DP = %+v (proof %+v), want paid with its proof", p, p.Manual)
+	}
+	if p := got[2]; p.Kind != payments.KindRefund || p.AmountIDR != -8000 || p.Manual.Reference != "BCA balik" {
+		t.Errorf("refund = %+v", p)
+	}
+	if paid := payments.Paid(got); paid != 0 {
+		t.Errorf("Paid() = %d, want 0 after the refund", paid)
+	}
+	if theirs, _ := ledger.OrderPayments(ctx, tenant, other); theirs[0].State != payments.StatePending {
+		t.Errorf("another order's invoice = %s, want still pending", theirs[0].State)
 	}
 }

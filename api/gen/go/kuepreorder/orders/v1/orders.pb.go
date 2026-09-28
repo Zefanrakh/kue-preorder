@@ -274,7 +274,10 @@ type Payment struct {
 	ExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	PaidAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=paid_at,json=paidAt,proto3" json:"paid_at,omitempty"`
 	// What the invoice offers; unspecified for manual payments and refunds.
-	Method        PaymentMethod `protobuf:"varint,9,opt,name=method,proto3,enum=kuepreorder.orders.v1.PaymentMethod" json:"method,omitempty"`
+	Method PaymentMethod `protobuf:"varint,9,opt,name=method,proto3,enum=kuepreorder.orders.v1.PaymentMethod" json:"method,omitempty"`
+	// The proof of a manual payment or refund. Set for staff only
+	// (OrderAdminService); customers never see the shop's notes.
+	Manual        *ManualProof `protobuf:"bytes,10,opt,name=manual,proto3" json:"manual,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -372,6 +375,77 @@ func (x *Payment) GetMethod() PaymentMethod {
 	return PaymentMethod_PAYMENT_METHOD_UNSPECIFIED
 }
 
+func (x *Payment) GetManual() *ManualProof {
+	if x != nil {
+		return x.Manual
+	}
+	return nil
+}
+
+// ManualProof is what the owner recorded of money that moved outside the
+// payment provider.
+type ManualProof struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Such as the transfer's reference number.
+	Reference string `protobuf:"bytes,1,opt,name=reference,proto3" json:"reference,omitempty"`
+	Note      string `protobuf:"bytes,2,opt,name=note,proto3" json:"note,omitempty"`
+	// The Supabase Auth user id of the staff member who recorded it.
+	RecordedBy    string `protobuf:"bytes,3,opt,name=recorded_by,json=recordedBy,proto3" json:"recorded_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ManualProof) Reset() {
+	*x = ManualProof{}
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManualProof) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManualProof) ProtoMessage() {}
+
+func (x *ManualProof) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManualProof.ProtoReflect.Descriptor instead.
+func (*ManualProof) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ManualProof) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *ManualProof) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *ManualProof) GetRecordedBy() string {
+	if x != nil {
+		return x.RecordedBy
+	}
+	return ""
+}
+
 type Order struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -389,16 +463,20 @@ type Order struct {
 	// The customer's notes, such as the writing on the cake.
 	Notes string `protobuf:"bytes,11,opt,name=notes,proto3" json:"notes,omitempty"`
 	// The ledger, oldest first.
-	Payments      []*Payment             `protobuf:"bytes,12,rep,name=payments,proto3" json:"payments,omitempty"`
-	CustomerName  string                 `protobuf:"bytes,13,opt,name=customer_name,json=customerName,proto3" json:"customer_name,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Payments     []*Payment             `protobuf:"bytes,12,rep,name=payments,proto3" json:"payments,omitempty"`
+	CustomerName string                 `protobuf:"bytes,13,opt,name=customer_name,json=customerName,proto3" json:"customer_name,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The customer's WhatsApp number at checkout, E.164.
+	CustomerPhone string `protobuf:"bytes,15,opt,name=customer_phone,json=customerPhone,proto3" json:"customer_phone,omitempty"`
+	// Empty when the customer gave none.
+	CustomerEmail string `protobuf:"bytes,16,opt,name=customer_email,json=customerEmail,proto3" json:"customer_email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[1]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -410,7 +488,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[1]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -423,7 +501,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{1}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Order) GetId() string {
@@ -524,6 +602,20 @@ func (x *Order) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Order) GetCustomerPhone() string {
+	if x != nil {
+		return x.CustomerPhone
+	}
+	return ""
+}
+
+func (x *Order) GetCustomerEmail() string {
+	if x != nil {
+		return x.CustomerEmail
+	}
+	return ""
+}
+
 type OrderSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -542,7 +634,7 @@ type OrderSummary struct {
 
 func (x *OrderSummary) Reset() {
 	*x = OrderSummary{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[2]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +646,7 @@ func (x *OrderSummary) String() string {
 func (*OrderSummary) ProtoMessage() {}
 
 func (x *OrderSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[2]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +659,7 @@ func (x *OrderSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderSummary.ProtoReflect.Descriptor instead.
 func (*OrderSummary) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{2}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *OrderSummary) GetId() string {
@@ -659,7 +751,7 @@ type PlaceOrderRequest struct {
 
 func (x *PlaceOrderRequest) Reset() {
 	*x = PlaceOrderRequest{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[3]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -671,7 +763,7 @@ func (x *PlaceOrderRequest) String() string {
 func (*PlaceOrderRequest) ProtoMessage() {}
 
 func (x *PlaceOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[3]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -684,7 +776,7 @@ func (x *PlaceOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceOrderRequest.ProtoReflect.Descriptor instead.
 func (*PlaceOrderRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{3}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PlaceOrderRequest) GetItems() []*CartItem {
@@ -759,7 +851,7 @@ type PlaceOrderResponse struct {
 
 func (x *PlaceOrderResponse) Reset() {
 	*x = PlaceOrderResponse{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[4]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -771,7 +863,7 @@ func (x *PlaceOrderResponse) String() string {
 func (*PlaceOrderResponse) ProtoMessage() {}
 
 func (x *PlaceOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[4]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -784,7 +876,7 @@ func (x *PlaceOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceOrderResponse.ProtoReflect.Descriptor instead.
 func (*PlaceOrderResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{4}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PlaceOrderResponse) GetOrder() *Order {
@@ -802,7 +894,7 @@ type ListMyOrdersRequest struct {
 
 func (x *ListMyOrdersRequest) Reset() {
 	*x = ListMyOrdersRequest{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[5]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -814,7 +906,7 @@ func (x *ListMyOrdersRequest) String() string {
 func (*ListMyOrdersRequest) ProtoMessage() {}
 
 func (x *ListMyOrdersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[5]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -827,7 +919,7 @@ func (x *ListMyOrdersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMyOrdersRequest.ProtoReflect.Descriptor instead.
 func (*ListMyOrdersRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{5}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{6}
 }
 
 type ListMyOrdersResponse struct {
@@ -839,7 +931,7 @@ type ListMyOrdersResponse struct {
 
 func (x *ListMyOrdersResponse) Reset() {
 	*x = ListMyOrdersResponse{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[6]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -851,7 +943,7 @@ func (x *ListMyOrdersResponse) String() string {
 func (*ListMyOrdersResponse) ProtoMessage() {}
 
 func (x *ListMyOrdersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[6]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -864,7 +956,7 @@ func (x *ListMyOrdersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMyOrdersResponse.ProtoReflect.Descriptor instead.
 func (*ListMyOrdersResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{6}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListMyOrdersResponse) GetOrders() []*OrderSummary {
@@ -883,7 +975,7 @@ type GetMyOrderRequest struct {
 
 func (x *GetMyOrderRequest) Reset() {
 	*x = GetMyOrderRequest{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[7]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +987,7 @@ func (x *GetMyOrderRequest) String() string {
 func (*GetMyOrderRequest) ProtoMessage() {}
 
 func (x *GetMyOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[7]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +1000,7 @@ func (x *GetMyOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMyOrderRequest.ProtoReflect.Descriptor instead.
 func (*GetMyOrderRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{7}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetMyOrderRequest) GetCode() string {
@@ -927,7 +1019,7 @@ type GetMyOrderResponse struct {
 
 func (x *GetMyOrderResponse) Reset() {
 	*x = GetMyOrderResponse{}
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[8]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -939,7 +1031,7 @@ func (x *GetMyOrderResponse) String() string {
 func (*GetMyOrderResponse) ProtoMessage() {}
 
 func (x *GetMyOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[8]
+	mi := &file_kuepreorder_orders_v1_orders_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -952,7 +1044,7 @@ func (x *GetMyOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMyOrderResponse.ProtoReflect.Descriptor instead.
 func (*GetMyOrderResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{8}
+	return file_kuepreorder_orders_v1_orders_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetMyOrderResponse) GetOrder() *Order {
@@ -966,7 +1058,7 @@ var File_kuepreorder_orders_v1_orders_proto protoreflect.FileDescriptor
 
 const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\n" +
-	"\"kuepreorder/orders/v1/orders.proto\x12\x15kuepreorder.orders.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kuepreorder/orders/v1/checkout.proto\"\x95\x03\n" +
+	"\"kuepreorder/orders/v1/orders.proto\x12\x15kuepreorder.orders.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kuepreorder/orders/v1/checkout.proto\"\xd1\x03\n" +
 	"\aPayment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x126\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\".kuepreorder.orders.v1.PaymentKindR\x04kind\x12\x1d\n" +
@@ -978,7 +1070,14 @@ const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x123\n" +
 	"\apaid_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x06paidAt\x12<\n" +
-	"\x06method\x18\t \x01(\x0e2$.kuepreorder.orders.v1.PaymentMethodR\x06method\"\xdd\x04\n" +
+	"\x06method\x18\t \x01(\x0e2$.kuepreorder.orders.v1.PaymentMethodR\x06method\x12:\n" +
+	"\x06manual\x18\n" +
+	" \x01(\v2\".kuepreorder.orders.v1.ManualProofR\x06manual\"`\n" +
+	"\vManualProof\x12\x1c\n" +
+	"\treference\x18\x01 \x01(\tR\treference\x12\x12\n" +
+	"\x04note\x18\x02 \x01(\tR\x04note\x12\x1f\n" +
+	"\vrecorded_by\x18\x03 \x01(\tR\n" +
+	"recordedBy\"\xab\x05\n" +
 	"\x05Order\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12:\n" +
@@ -995,7 +1094,9 @@ const file_kuepreorder_orders_v1_orders_proto_rawDesc = "" +
 	"\bpayments\x18\f \x03(\v2\x1e.kuepreorder.orders.v1.PaymentR\bpayments\x12#\n" +
 	"\rcustomer_name\x18\r \x01(\tR\fcustomerName\x129\n" +
 	"\n" +
-	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x8a\x03\n" +
+	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12%\n" +
+	"\x0ecustomer_phone\x18\x0f \x01(\tR\rcustomerPhone\x12%\n" +
+	"\x0ecustomer_email\x18\x10 \x01(\tR\rcustomerEmail\"\x8a\x03\n" +
 	"\fOrderSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12:\n" +
@@ -1078,60 +1179,62 @@ func file_kuepreorder_orders_v1_orders_proto_rawDescGZIP() []byte {
 }
 
 var file_kuepreorder_orders_v1_orders_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_kuepreorder_orders_v1_orders_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kuepreorder_orders_v1_orders_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_kuepreorder_orders_v1_orders_proto_goTypes = []any{
 	(OrderStatus)(0),              // 0: kuepreorder.orders.v1.OrderStatus
 	(PaymentStatus)(0),            // 1: kuepreorder.orders.v1.PaymentStatus
 	(PaymentKind)(0),              // 2: kuepreorder.orders.v1.PaymentKind
 	(PaymentState)(0),             // 3: kuepreorder.orders.v1.PaymentState
 	(*Payment)(nil),               // 4: kuepreorder.orders.v1.Payment
-	(*Order)(nil),                 // 5: kuepreorder.orders.v1.Order
-	(*OrderSummary)(nil),          // 6: kuepreorder.orders.v1.OrderSummary
-	(*PlaceOrderRequest)(nil),     // 7: kuepreorder.orders.v1.PlaceOrderRequest
-	(*PlaceOrderResponse)(nil),    // 8: kuepreorder.orders.v1.PlaceOrderResponse
-	(*ListMyOrdersRequest)(nil),   // 9: kuepreorder.orders.v1.ListMyOrdersRequest
-	(*ListMyOrdersResponse)(nil),  // 10: kuepreorder.orders.v1.ListMyOrdersResponse
-	(*GetMyOrderRequest)(nil),     // 11: kuepreorder.orders.v1.GetMyOrderRequest
-	(*GetMyOrderResponse)(nil),    // 12: kuepreorder.orders.v1.GetMyOrderResponse
-	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
-	(PaymentMethod)(0),            // 14: kuepreorder.orders.v1.PaymentMethod
-	(*QuotedItem)(nil),            // 15: kuepreorder.orders.v1.QuotedItem
-	(*Schedule)(nil),              // 16: kuepreorder.orders.v1.Schedule
-	(*CartItem)(nil),              // 17: kuepreorder.orders.v1.CartItem
+	(*ManualProof)(nil),           // 5: kuepreorder.orders.v1.ManualProof
+	(*Order)(nil),                 // 6: kuepreorder.orders.v1.Order
+	(*OrderSummary)(nil),          // 7: kuepreorder.orders.v1.OrderSummary
+	(*PlaceOrderRequest)(nil),     // 8: kuepreorder.orders.v1.PlaceOrderRequest
+	(*PlaceOrderResponse)(nil),    // 9: kuepreorder.orders.v1.PlaceOrderResponse
+	(*ListMyOrdersRequest)(nil),   // 10: kuepreorder.orders.v1.ListMyOrdersRequest
+	(*ListMyOrdersResponse)(nil),  // 11: kuepreorder.orders.v1.ListMyOrdersResponse
+	(*GetMyOrderRequest)(nil),     // 12: kuepreorder.orders.v1.GetMyOrderRequest
+	(*GetMyOrderResponse)(nil),    // 13: kuepreorder.orders.v1.GetMyOrderResponse
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(PaymentMethod)(0),            // 15: kuepreorder.orders.v1.PaymentMethod
+	(*QuotedItem)(nil),            // 16: kuepreorder.orders.v1.QuotedItem
+	(*Schedule)(nil),              // 17: kuepreorder.orders.v1.Schedule
+	(*CartItem)(nil),              // 18: kuepreorder.orders.v1.CartItem
 }
 var file_kuepreorder_orders_v1_orders_proto_depIdxs = []int32{
 	2,  // 0: kuepreorder.orders.v1.Payment.kind:type_name -> kuepreorder.orders.v1.PaymentKind
 	3,  // 1: kuepreorder.orders.v1.Payment.state:type_name -> kuepreorder.orders.v1.PaymentState
-	13, // 2: kuepreorder.orders.v1.Payment.expires_at:type_name -> google.protobuf.Timestamp
-	13, // 3: kuepreorder.orders.v1.Payment.paid_at:type_name -> google.protobuf.Timestamp
-	14, // 4: kuepreorder.orders.v1.Payment.method:type_name -> kuepreorder.orders.v1.PaymentMethod
-	0,  // 5: kuepreorder.orders.v1.Order.status:type_name -> kuepreorder.orders.v1.OrderStatus
-	1,  // 6: kuepreorder.orders.v1.Order.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
-	15, // 7: kuepreorder.orders.v1.Order.items:type_name -> kuepreorder.orders.v1.QuotedItem
-	16, // 8: kuepreorder.orders.v1.Order.schedule:type_name -> kuepreorder.orders.v1.Schedule
-	4,  // 9: kuepreorder.orders.v1.Order.payments:type_name -> kuepreorder.orders.v1.Payment
-	13, // 10: kuepreorder.orders.v1.Order.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 11: kuepreorder.orders.v1.OrderSummary.status:type_name -> kuepreorder.orders.v1.OrderStatus
-	1,  // 12: kuepreorder.orders.v1.OrderSummary.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
-	13, // 13: kuepreorder.orders.v1.OrderSummary.pickup_at:type_name -> google.protobuf.Timestamp
-	13, // 14: kuepreorder.orders.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
-	17, // 15: kuepreorder.orders.v1.PlaceOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
-	13, // 16: kuepreorder.orders.v1.PlaceOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
-	14, // 17: kuepreorder.orders.v1.PlaceOrderRequest.payment_method:type_name -> kuepreorder.orders.v1.PaymentMethod
-	5,  // 18: kuepreorder.orders.v1.PlaceOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
-	6,  // 19: kuepreorder.orders.v1.ListMyOrdersResponse.orders:type_name -> kuepreorder.orders.v1.OrderSummary
-	5,  // 20: kuepreorder.orders.v1.GetMyOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
-	7,  // 21: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:input_type -> kuepreorder.orders.v1.PlaceOrderRequest
-	9,  // 22: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:input_type -> kuepreorder.orders.v1.ListMyOrdersRequest
-	11, // 23: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:input_type -> kuepreorder.orders.v1.GetMyOrderRequest
-	8,  // 24: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:output_type -> kuepreorder.orders.v1.PlaceOrderResponse
-	10, // 25: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:output_type -> kuepreorder.orders.v1.ListMyOrdersResponse
-	12, // 26: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:output_type -> kuepreorder.orders.v1.GetMyOrderResponse
-	24, // [24:27] is the sub-list for method output_type
-	21, // [21:24] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	14, // 2: kuepreorder.orders.v1.Payment.expires_at:type_name -> google.protobuf.Timestamp
+	14, // 3: kuepreorder.orders.v1.Payment.paid_at:type_name -> google.protobuf.Timestamp
+	15, // 4: kuepreorder.orders.v1.Payment.method:type_name -> kuepreorder.orders.v1.PaymentMethod
+	5,  // 5: kuepreorder.orders.v1.Payment.manual:type_name -> kuepreorder.orders.v1.ManualProof
+	0,  // 6: kuepreorder.orders.v1.Order.status:type_name -> kuepreorder.orders.v1.OrderStatus
+	1,  // 7: kuepreorder.orders.v1.Order.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
+	16, // 8: kuepreorder.orders.v1.Order.items:type_name -> kuepreorder.orders.v1.QuotedItem
+	17, // 9: kuepreorder.orders.v1.Order.schedule:type_name -> kuepreorder.orders.v1.Schedule
+	4,  // 10: kuepreorder.orders.v1.Order.payments:type_name -> kuepreorder.orders.v1.Payment
+	14, // 11: kuepreorder.orders.v1.Order.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 12: kuepreorder.orders.v1.OrderSummary.status:type_name -> kuepreorder.orders.v1.OrderStatus
+	1,  // 13: kuepreorder.orders.v1.OrderSummary.payment_status:type_name -> kuepreorder.orders.v1.PaymentStatus
+	14, // 14: kuepreorder.orders.v1.OrderSummary.pickup_at:type_name -> google.protobuf.Timestamp
+	14, // 15: kuepreorder.orders.v1.OrderSummary.created_at:type_name -> google.protobuf.Timestamp
+	18, // 16: kuepreorder.orders.v1.PlaceOrderRequest.items:type_name -> kuepreorder.orders.v1.CartItem
+	14, // 17: kuepreorder.orders.v1.PlaceOrderRequest.pickup_at:type_name -> google.protobuf.Timestamp
+	15, // 18: kuepreorder.orders.v1.PlaceOrderRequest.payment_method:type_name -> kuepreorder.orders.v1.PaymentMethod
+	6,  // 19: kuepreorder.orders.v1.PlaceOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
+	7,  // 20: kuepreorder.orders.v1.ListMyOrdersResponse.orders:type_name -> kuepreorder.orders.v1.OrderSummary
+	6,  // 21: kuepreorder.orders.v1.GetMyOrderResponse.order:type_name -> kuepreorder.orders.v1.Order
+	8,  // 22: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:input_type -> kuepreorder.orders.v1.PlaceOrderRequest
+	10, // 23: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:input_type -> kuepreorder.orders.v1.ListMyOrdersRequest
+	12, // 24: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:input_type -> kuepreorder.orders.v1.GetMyOrderRequest
+	9,  // 25: kuepreorder.orders.v1.CustomerOrderService.PlaceOrder:output_type -> kuepreorder.orders.v1.PlaceOrderResponse
+	11, // 26: kuepreorder.orders.v1.CustomerOrderService.ListMyOrders:output_type -> kuepreorder.orders.v1.ListMyOrdersResponse
+	13, // 27: kuepreorder.orders.v1.CustomerOrderService.GetMyOrder:output_type -> kuepreorder.orders.v1.GetMyOrderResponse
+	25, // [25:28] is the sub-list for method output_type
+	22, // [22:25] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_kuepreorder_orders_v1_orders_proto_init() }
@@ -1146,7 +1249,7 @@ func file_kuepreorder_orders_v1_orders_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kuepreorder_orders_v1_orders_proto_rawDesc), len(file_kuepreorder_orders_v1_orders_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
