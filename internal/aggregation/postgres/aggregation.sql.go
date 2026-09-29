@@ -95,6 +95,49 @@ func (q *Queries) BatchRequirements(ctx context.Context, arg BatchRequirementsPa
 	return items, nil
 }
 
+const claimedBefore = `-- name: ClaimedBefore :many
+select r.ingredient_id, sum(r.qty_usable_stock)::bigint as claimed
+from batch_requirements r
+join production_batches b on b.tenant_id = r.tenant_id and b.id = r.batch_id
+where r.tenant_id = $1 and b.batch_date < $2 and b.status <> 'done'
+  and r.ingredient_id = any($3::uuid[]) and r.qty_usable_stock > 0
+group by r.ingredient_id
+`
+
+type ClaimedBeforeParams struct {
+	TenantID      uuid.UUID
+	BatchDate     pgtype.Date
+	IngredientIds []uuid.UUID
+}
+
+type ClaimedBeforeRow struct {
+	IngredientID uuid.UUID
+	Claimed      int64
+}
+
+// The stock the batches before a date count on, per ingredient: a batch
+// only gets what they left (§11, allocated by date). Done batches have
+// consumed theirs (M3.3) and claim nothing.
+func (q *Queries) ClaimedBefore(ctx context.Context, arg ClaimedBeforeParams) ([]ClaimedBeforeRow, error) {
+	rows, err := q.db.Query(ctx, claimedBefore, arg.TenantID, arg.BatchDate, arg.IngredientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClaimedBeforeRow{}
+	for rows.Next() {
+		var i ClaimedBeforeRow
+		if err := rows.Scan(&i.IngredientID, &i.Claimed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteComponentTotals = `-- name: DeleteComponentTotals :exec
 delete from batch_component_totals
 where tenant_id = $1 and batch_id = $2

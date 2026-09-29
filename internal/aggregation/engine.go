@@ -29,20 +29,10 @@ type Catalog interface {
 	Labels(ctx context.Context, tenantID uuid.UUID) (catalog.Labels, error)
 }
 
-// Stock tells how much of each ingredient a batch may count on (§12);
-// inventory implements it from M3.2.
+// Stock tells how much of each ingredient a batch made on date may count on
+// (§12); inventory.Reader implements it.
 type Stock interface {
 	Usable(ctx context.Context, tenantID uuid.UUID, date clock.Date, ingredientIDs []uuid.UUID) (map[uuid.UUID]int64, error)
-}
-
-// NoStock counts no stock at all: everything is bought. It stands in until
-// inventory arrives (M3.2), and is the safe answer anyway (§12: when in
-// doubt, do not count it).
-type NoStock struct{}
-
-// Usable implements Stock.
-func (NoStock) Usable(context.Context, uuid.UUID, clock.Date, []uuid.UUID) (map[uuid.UUID]int64, error) {
-	return map[uuid.UUID]int64{}, nil
 }
 
 // Transactor runs a unit of work in one transaction; *db.DB implements it.
@@ -95,6 +85,9 @@ type Repository interface {
 	ListBatches(ctx context.Context, tenantID uuid.UUID, from, to clock.Date) ([]Summary, error)
 	// UpcomingDates returns the dates from on whose batch is not done.
 	UpcomingDates(ctx context.Context, tenantID uuid.UUID, from clock.Date) ([]clock.Date, error)
+	// ClaimedBefore returns, per ingredient, the stock the batches before
+	// date that are not done count on.
+	ClaimedBefore(ctx context.Context, tenantID uuid.UUID, date clock.Date, ingredientIDs []uuid.UUID) (map[uuid.UUID]int64, error)
 	Components(ctx context.Context, tenantID, batchID uuid.UUID) ([]ComponentTotal, error)
 	Lines(ctx context.Context, tenantID, batchID uuid.UUID) ([]Line, error)
 	// SaveResult replaces the batch's component totals, writes its lines
@@ -159,7 +152,7 @@ func (e *Engine) Recompute(ctx context.Context, tenant uuid.UUID, date clock.Dat
 			return err
 		}
 		ids := ingredientIDs(needs, existing)
-		stock, err := e.stock.Usable(ctx, tenant, date, ids)
+		stock, err := e.available(ctx, tenant, date, ids)
 		if err != nil {
 			return err
 		}
@@ -184,6 +177,31 @@ func (e *Engine) Recompute(ctx context.Context, tenant uuid.UUID, date clock.Dat
 		}
 	}
 	return fmt.Errorf("recompute batch %s: %w", date, err)
+}
+
+// available is the stock a batch may count on: what inventory says is
+// usable on its date, less what the earlier batches already count on. Stock
+// is allocated by date, so no gram counts twice; when an earlier batch's
+// claim grows, RecomputeFrom takes it back from the later ones. Earlier
+// claims are subtracted whole even where they rest on lots that would not
+// last until date, which can only make a batch buy more, never less (§12).
+func (e *Engine) available(ctx context.Context, tenant uuid.UUID, date clock.Date, ids []uuid.UUID) (map[uuid.UUID]int64, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]int64{}, nil
+	}
+	usable, err := e.stock.Usable(ctx, tenant, date, ids)
+	if err != nil {
+		return nil, err
+	}
+	claimed, err := e.repo.ClaimedBefore(ctx, tenant, date, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]int64, len(usable))
+	for id, q := range usable {
+		out[id] = max(q-claimed[id], 0)
+	}
+	return out, nil
 }
 
 // totals reads the batch's items and recipes and computes levels 1 and 2.
@@ -229,14 +247,35 @@ func (e *Engine) describe(ctx context.Context, tenant uuid.UUID, re *RecipeError
 	return fmt.Sprintf("Resep %s untuk bahan %s tidak bisa dihitung. Periksa resepnya di katalog.", component, ingredient)
 }
 
+// RecomputeFrom computes the batch of date again, then every later batch
+// that is not done, in date order: stock is allocated by date, so a change
+// to one batch can change what the later ones may count on. It returns how
+// many it computed and every failure; one failing batch does not stop the
+// others.
+func (e *Engine) RecomputeFrom(ctx context.Context, tenant uuid.UUID, date clock.Date) (int, error) {
+	dates, err := e.repo.UpcomingDates(ctx, tenant, date)
+	if err != nil {
+		return 0, err
+	}
+	if len(dates) == 0 || dates[0] != date {
+		dates = append([]clock.Date{date}, dates...)
+	}
+	return e.recomputeAll(ctx, tenant, dates)
+}
+
 // RecomputeUpcoming computes again every batch from today on that is not
-// done, after a recipe changed. It returns how many it computed and every
-// failure; one failing batch does not stop the others.
+// done, in date order, after a recipe or the stock changed. It returns how
+// many it computed and every failure; one failing batch does not stop the
+// others.
 func (e *Engine) RecomputeUpcoming(ctx context.Context, tenant uuid.UUID) (int, error) {
 	dates, err := e.repo.UpcomingDates(ctx, tenant, clock.DateOf(e.clock.Now()))
 	if err != nil {
 		return 0, err
 	}
+	return e.recomputeAll(ctx, tenant, dates)
+}
+
+func (e *Engine) recomputeAll(ctx context.Context, tenant uuid.UUID, dates []clock.Date) (int, error) {
 	n := 0
 	var errs []error
 	for _, d := range dates {

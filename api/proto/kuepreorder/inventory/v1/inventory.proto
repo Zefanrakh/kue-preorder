@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package kuepreorder.inventory.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kuepreorder/catalog/v1/catalog.proto";
+
+// InventoryService is the kitchen's stock in the PWA (docs/architecture.md
+// §9.4, §12): deliveries in, the check of what is left before shopping, and
+// stock counts. Staff (owner and kitchen) only; anyone else gets
+// PermissionDenied. Every change is audited and recomputes the upcoming
+// shopping lists.
+//
+// Quantities are whole units of the ingredient's base unit (g, ml, pcs).
+service InventoryService {
+  // ReceiveStock records a delivery as a new lot ("Belanja masuk").
+  rpc ReceiveStock(ReceiveStockRequest) returns (ReceiveStockResponse);
+  // ListStock returns every ingredient's stock, by name.
+  rpc ListStock(ListStockRequest) returns (ListStockResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // ListLotsToCheck lists what needs a look before shopping: perishable
+  // lots without a "masih bagus" check in the last 24 hours, and expired
+  // lots waiting to be thrown away.
+  rpc ListLotsToCheck(ListLotsToCheckRequest) returns (ListLotsToCheckResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // CheckLot records "Masih bagus" or "Buang". FailedPrecondition
+  // "lot_empty" for a lot with nothing left, "lot_expired" for passing an
+  // expired lot.
+  rpc CheckLot(CheckLotRequest) returns (CheckLotResponse);
+  // CountStock sets an ingredient's stock to what was counted (stok
+  // opname): less comes out of the oldest lots first, more goes into the
+  // newest.
+  rpc CountStock(CountStockRequest) returns (CountStockResponse);
+}
+
+enum LotStatus {
+  LOT_STATUS_UNSPECIFIED = 0;
+  // May count as stock.
+  LOT_STATUS_AVAILABLE = 1;
+  LOT_STATUS_EXHAUSTED = 2;
+  LOT_STATUS_DISCARDED = 3;
+  // Past its expiry: never counts; throw it away.
+  LOT_STATUS_EXPIRED = 4;
+}
+
+enum LotSource {
+  LOT_SOURCE_UNSPECIFIED = 0;
+  // "Belanja masuk".
+  LOT_SOURCE_MANUAL = 1;
+  LOT_SOURCE_PROCUREMENT = 2;
+  // A stock count found more than there was.
+  LOT_SOURCE_ADJUSTMENT = 3;
+}
+
+message Lot {
+  string id = 1;
+  string ingredient_id = 2;
+  google.protobuf.Timestamp received_at = 3;
+  // Unset when the ingredient's shelf life is unknown.
+  google.protobuf.Timestamp expires_at = 4;
+  LotStatus status = 5;
+  LotSource source = 6;
+  string note = 7;
+  // What is left: the sum of the lot's ledger.
+  int64 balance = 8;
+  // The latest "masih bagus" check; unset without one.
+  google.protobuf.Timestamp last_ok_at = 9;
+}
+
+message IngredientStock {
+  string ingredient_id = 1;
+  string name = 2;
+  kuepreorder.catalog.v1.BaseUnit base_unit = 3;
+  kuepreorder.catalog.v1.LeftoverPolicy leftover_policy = 4;
+  // What the ledger holds, counted or not.
+  int64 total = 5;
+  // What a batch made today may count on (§12).
+  int64 usable_today = 6;
+  // The lots with something left, oldest first.
+  repeated Lot lots = 7;
+}
+
+message LotToCheck {
+  Lot lot = 1;
+  string ingredient_name = 2;
+  kuepreorder.catalog.v1.BaseUnit base_unit = 3;
+  // Only waits to be thrown away.
+  bool expired = 4;
+}
+
+message ReceiveStockRequest {
+  string ingredient_id = 1;
+  // In the base unit, such as 2000 for 2 kg of flour.
+  int64 qty = 2;
+  // Defaults to now; up to 30 days back.
+  google.protobuf.Timestamp received_at = 3;
+  // Defaults to received_at plus the ingredient's shelf life.
+  google.protobuf.Timestamp expires_at = 4;
+  // Up to 500 characters, such as the shop it came from.
+  string note = 5;
+}
+
+message ReceiveStockResponse {
+  Lot lot = 1;
+}
+
+message ListStockRequest {}
+
+message ListStockResponse {
+  repeated IngredientStock ingredients = 1;
+}
+
+message ListLotsToCheckRequest {}
+
+message ListLotsToCheckResponse {
+  repeated LotToCheck lots = 1;
+}
+
+enum CheckResult {
+  CHECK_RESULT_UNSPECIFIED = 0;
+  // "Masih bagus": a perishable lot counts for 24 hours.
+  CHECK_RESULT_OK = 1;
+  // "Buang": everything left goes to waste.
+  CHECK_RESULT_DISCARD = 2;
+}
+
+enum DiscardReason {
+  DISCARD_REASON_UNSPECIFIED = 0;
+  // Bau.
+  DISCARD_REASON_SMELL = 1;
+  // Berjamur.
+  DISCARD_REASON_MOLD = 2;
+  // Kedaluwarsa.
+  DISCARD_REASON_EXPIRED = 3;
+  // Lainnya: note required.
+  DISCARD_REASON_OTHER = 4;
+}
+
+message CheckLotRequest {
+  string lot_id = 1;
+  CheckResult result = 2;
+  // Required for CHECK_RESULT_DISCARD.
+  DiscardReason reason = 3;
+  // Up to 500 characters; required for DISCARD_REASON_OTHER.
+  string note = 4;
+}
+
+message CheckLotResponse {
+  Lot lot = 1;
+}
+
+message CountStockRequest {
+  string ingredient_id = 1;
+  // What is there now, in the base unit.
+  int64 actual_qty = 2;
+  // Required, up to 500 characters. It is the audit reason.
+  string reason = 3;
+}
+
+message CountStockResponse {
+  IngredientStock ingredient = 1;
+}

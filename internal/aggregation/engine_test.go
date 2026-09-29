@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -75,6 +76,21 @@ func (m *memBatches) UpcomingDates(_ context.Context, _ uuid.UUID, from clock.Da
 		}
 	}
 	slices.SortFunc(out, func(a, b clock.Date) int { return a.Compare(b) })
+	return out, nil
+}
+
+func (m *memBatches) ClaimedBefore(_ context.Context, _ uuid.UUID, date clock.Date, ids []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := map[uuid.UUID]int64{}
+	for d, b := range m.batches {
+		if !d.Before(date) || b.Status == aggregation.BatchDone {
+			continue
+		}
+		for _, l := range m.lines[b.ID] {
+			if slices.Contains(ids, l.IngredientID) {
+				out[l.IngredientID] += l.UsableStock
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -172,6 +188,19 @@ func (k *kitchen) DefaultPacks(context.Context, uuid.UUID, []uuid.UUID) ([]catal
 
 func (k *kitchen) Labels(context.Context, uuid.UUID) (catalog.Labels, error) { return k.labels, nil }
 
+// shelf is the stock inventory would report as usable, whatever the date.
+type shelf map[uuid.UUID]int64
+
+func (s shelf) Usable(_ context.Context, _ uuid.UUID, _ clock.Date, ids []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := map[uuid.UUID]int64{}
+	for _, id := range ids {
+		if q, ok := s[id]; ok {
+			out[id] = q
+		}
+	}
+	return out, nil
+}
+
 type directTx struct{}
 
 func (directTx) Tx(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -185,15 +214,16 @@ func (c caller) Principal(context.Context) (identity.Principal, error) {
 type bakery struct {
 	repo    *memBatches
 	kitchen *kitchen
+	shelf   shelf
 	clock   *clock.Fake
 	engine  *aggregation.Engine
 	service *aggregation.Service
 }
 
 func newBakery(roles ...identity.Role) *bakery {
-	b := &bakery{repo: newMemBatches(), kitchen: newKitchen(), clock: clock.NewFake(time.Date(2026, 10, 5, 10, 0, 0, 0, clock.Jakarta))}
+	b := &bakery{repo: newMemBatches(), kitchen: newKitchen(), shelf: shelf{}, clock: clock.NewFake(time.Date(2026, 10, 5, 10, 0, 0, 0, clock.Jakarta))}
 	b.engine = aggregation.NewEngine(aggregation.EngineDeps{
-		Repo: b.repo, Orders: b.kitchen, Catalog: b.kitchen, Stock: aggregation.NoStock{}, Tx: directTx{}, Clock: b.clock,
+		Repo: b.repo, Orders: b.kitchen, Catalog: b.kitchen, Stock: b.shelf, Tx: directTx{}, Clock: b.clock,
 		Logger: slog.New(slog.DiscardHandler),
 	})
 	b.service = aggregation.NewService(aggregation.ServiceDeps{Engine: b.engine, Repo: b.repo, Catalog: b.kitchen, Principals: caller{roles: roles}})
@@ -360,5 +390,58 @@ func TestService_View(t *testing.T) {
 	var p *apperr.PreconditionError
 	if _, err := b.service.Recompute(t.Context(), day(7)); !errors.As(err, &p) || p.Reason != "broken_recipe" {
 		t.Errorf("Recompute() with a broken recipe error = %v, want broken_recipe", err)
+	}
+}
+
+// Stock is allocated by date: the earlier batch takes what it needs, the
+// later one gets what is left and buys the rest. No gram counts twice.
+func TestEngine_AllocatesStockByDate(t *testing.T) {
+	b := newBakery()
+	perDonut := int64(math.Round(100 * math.Pow(12, 0.9) * 1.05)) // flour for 12 portions of dough
+	b.shelf[flour] = perDonut + 200
+	b.kitchen.items[day(7)] = []orders.CommittedItem{{VariantID: chocolate, Quantity: 6}, {VariantID: cheese, Quantity: 6}}
+	b.kitchen.items[day(8)] = []orders.CommittedItem{{VariantID: chocolate, Quantity: 6}, {VariantID: cheese, Quantity: 6}}
+	b.recompute(t, day(8)) // the 8th's orders came first and took the whole stock
+
+	if _, err := b.engine.RecomputeFrom(t.Context(), tenant, day(7)); err != nil {
+		t.Fatal(err)
+	}
+
+	first, second := lineOf(b.linesOf(day(7)), flour), lineOf(b.linesOf(day(8)), flour)
+	if first.UsableStock != perDonut || first.ToBuy != 0 {
+		t.Errorf("7th = %+v, want all its flour from stock", first)
+	}
+	if second.UsableStock != 200 || second.ToBuy != perDonut-200 {
+		t.Errorf("8th = %+v, want the 200 g left and the rest to buy", second)
+	}
+	if total := first.UsableStock + second.UsableStock; total > b.shelf[flour] {
+		t.Errorf("the batches count %d g of a %d g stock", total, b.shelf[flour])
+	}
+}
+
+// When an earlier batch grows, RecomputeFrom takes its stock back from the
+// later ones.
+func TestEngine_RecomputeFromRebalancesLaterBatches(t *testing.T) {
+	b := newBakery()
+	b.shelf[egg] = 10
+	b.kitchen.items[day(7)] = []orders.CommittedItem{{VariantID: cheese, Quantity: 4}}  // 2 eggs
+	b.kitchen.items[day(8)] = []orders.CommittedItem{{VariantID: cheese, Quantity: 10}} // 5 eggs
+	b.recompute(t, day(8))
+	if _, err := b.engine.RecomputeFrom(t.Context(), tenant, day(7)); err != nil {
+		t.Fatal(err)
+	}
+	if e := lineOf(b.linesOf(day(8)), egg); e.UsableStock != 5 {
+		t.Fatalf("8th = %+v, want its 5 eggs from stock", e)
+	}
+
+	b.kitchen.items[day(7)] = []orders.CommittedItem{{VariantID: cheese, Quantity: 14}} // 7 eggs now
+	n, err := b.engine.RecomputeFrom(t.Context(), tenant, day(7))
+
+	if err != nil || n != 2 {
+		t.Fatalf("RecomputeFrom() = %d, %v; want both batches", n, err)
+	}
+	first, second := lineOf(b.linesOf(day(7)), egg), lineOf(b.linesOf(day(8)), egg)
+	if first.UsableStock != 7 || second.UsableStock != 3 || second.ToBuy != 2 {
+		t.Errorf("7th %+v, 8th %+v; want 7 and 3 from stock, 2 eggs to buy for the 8th", first, second)
 	}
 }

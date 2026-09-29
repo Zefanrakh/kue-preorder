@@ -23,7 +23,8 @@ import (
 // an hour; a batch is computed again with its next order anyway.
 const recomputeAttempts = 8
 
-// RecomputeBatchArgs asks for one batch to be computed again.
+// RecomputeBatchArgs asks for a batch, and those after it, to be computed
+// again.
 type RecomputeBatchArgs struct {
 	TenantID uuid.UUID `json:"tenant_id"`
 	Date     string    `json:"date"` // such as "2026-10-07"
@@ -66,12 +67,14 @@ func Register(workers *river.Workers, d Deps) {
 }
 
 // Subscriptions are the outbox events that change a batch: an order that
-// starts or stops counting for production (§13), and any recipe change.
+// starts or stops counting for production (§13), any recipe change, and any
+// stock change (§12).
 func Subscriptions() map[string][]jobs.Subscriber {
 	return map[string][]jobs.Subscriber{
-		"order.confirmed":        {recomputeBatch},
-		"order.cancelled":        {recomputeBatch},
-		"catalog.recipe_changed": {recomputeUpcoming},
+		"order.confirmed":         {recomputeBatch},
+		"order.cancelled":         {recomputeBatch},
+		"catalog.recipe_changed":  {recomputeUpcoming},
+		"inventory.stock_changed": {recomputeUpcoming},
 	}
 }
 
@@ -97,7 +100,8 @@ type recomputeWorker struct {
 	deps Deps
 }
 
-// Work computes the batch. A broken recipe is not retried: nothing heals
+// Work computes the batch and every later one: stock is allocated by date
+// (§11). A broken recipe is not retried: nothing heals
 // until someone fixes the recipe, which computes the batch again itself. It
 // alerts instead, and the batch shows the reason (§11).
 func (w *recomputeWorker) Work(ctx context.Context, job *river.Job[RecomputeBatchArgs]) error {
@@ -105,7 +109,8 @@ func (w *recomputeWorker) Work(ctx context.Context, job *river.Job[RecomputeBatc
 	if err != nil {
 		return river.JobCancel(fmt.Errorf("bad date %q: %w", job.Args.Date, err))
 	}
-	return cancelIfRecipe(ctx, w.deps.Logger, w.deps.Engine.Recompute(ctx, job.Args.TenantID, date))
+	_, err = w.deps.Engine.RecomputeFrom(ctx, job.Args.TenantID, date)
+	return cancelIfRecipe(ctx, w.deps.Logger, err)
 }
 
 type upcomingWorker struct {

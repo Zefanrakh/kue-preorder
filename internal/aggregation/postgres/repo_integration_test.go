@@ -192,3 +192,27 @@ func TestUpcomingDates(t *testing.T) {
 		t.Errorf("UpcomingDates() = %v, %v; want the 5th and the 7th", got, err)
 	}
 }
+
+// A batch sees only what the earlier batches that are not done count on.
+func TestClaimedBefore(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	k := seed(t, d, tenant)
+	claim := func(date int, flour int64) {
+		compute(t, d, repo, tenant, day(date), nil, []aggregation.Line{{IngredientID: k.flour, Needed: flour, UsableStock: flour}})
+	}
+	claim(5, 300)
+	claim(6, 200)
+	claim(8, 900)
+	if _, err := d.Pool().Exec(ctx, "update production_batches set status = 'done' where batch_date = '2026-10-05'"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.ClaimedBefore(ctx, tenant, day(8), []uuid.UUID{k.flour, k.egg})
+
+	if err != nil || got[k.flour] != 200 || len(got) != 1 {
+		t.Errorf("ClaimedBefore(8th) = %v, %v; want the 6th's 200 g only (the 5th is done, the 8th is not before)", got, err)
+	}
+}
