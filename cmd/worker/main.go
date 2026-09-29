@@ -17,6 +17,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Zefanrakh/kue-preorder/cmd/internal/app"
+	"github.com/Zefanrakh/kue-preorder/internal/aggregation"
+	aggregationpg "github.com/Zefanrakh/kue-preorder/internal/aggregation/postgres"
+	aggregationworker "github.com/Zefanrakh/kue-preorder/internal/aggregation/worker"
+	"github.com/Zefanrakh/kue-preorder/internal/catalog"
+	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
@@ -134,14 +139,22 @@ func wire(database *db.DB, tenants identity.TenantResolver, provider payments.Pr
 		Provider: provider, Tx: database, Clock: clk,
 	})
 
+	engine := aggregation.NewEngine(aggregation.EngineDeps{
+		Repo: aggregationpg.NewRepository(database), Orders: orders.NewReader(ordersRepo),
+		Catalog: catalog.NewReader(catalogpg.NewRepository(database)), Stock: aggregation.NoStock{},
+		Tx: database, Clock: clk, Logger: logger,
+	})
+
 	workers := river.NewWorkers()
 	ordersworker.Register(workers, ordersworker.Deps{Automation: automation, Tenants: tenants, Logger: logger})
+	aggregationworker.Register(workers, aggregationworker.Deps{Engine: engine, Logger: logger})
 	client, err := jobs.NewClient(database, jobs.Config{
 		Workers: workers, Periodic: ordersworker.Periodic(), Logger: logger, TracerProvider: tp,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	publisher := outbox.NewPublisher(database, jobs.Dispatcher(client, ordersworker.Subscriptions(), logger), clk, logger)
+	subscriptions := jobs.Merge(ordersworker.Subscriptions(), aggregationworker.Subscriptions())
+	publisher := outbox.NewPublisher(database, jobs.Dispatcher(client, subscriptions, logger), clk, logger)
 	return client, publisher, nil
 }

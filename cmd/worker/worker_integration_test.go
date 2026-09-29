@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/Zefanrakh/kue-preorder/internal/catalog"
+	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
@@ -21,6 +23,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db/dbtest"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
+	"github.com/Zefanrakh/kue-preorder/internal/recipe"
 )
 
 func TestMain(m *testing.M) { dbtest.Main(m) }
@@ -163,4 +166,84 @@ func TestWorker_ExpiresUnpaidOrders(t *testing.T) {
 	if !automatic {
 		t.Error("order.expired is not marked automatic")
 	}
+}
+
+// withRecipe gives the order's variant one portion of dough per donut, and
+// the dough 50 g of flour per portion, bought in packs of 1 kg at Rp14.000.
+// It returns the flour.
+func withRecipe(t *testing.T, d *db.DB, o orders.Order) uuid.UUID {
+	t.Helper()
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	repo := catalogpg.NewRepository(d)
+	at := wib(5, 9, 0)
+	dough, err := repo.CreateComponent(ctx, tenant, catalog.ComponentInput{Name: "Adonan donut", UnitLabel: "porsi"}, at)
+	noErr(t, err)
+	flour, err := repo.CreateIngredient(ctx, tenant, catalog.IngredientInput{Name: "Tepung", BaseUnit: catalog.Gram, LeftoverPolicy: catalog.LeftoverAuto}, at)
+	noErr(t, err)
+	_, err = repo.SetVariantComponents(ctx, tenant, o.Items[0].VariantID, []catalog.VariantComponent{{ComponentID: dough.ID, UnitsPerItem: 1}}, at)
+	noErr(t, err)
+	perPortion, err := recipe.NewAffine(0, 50)
+	noErr(t, err)
+	params, err := recipe.Params(perPortion)
+	noErr(t, err)
+	_, err = repo.SetRecipeLine(ctx, tenant, catalog.RecipeLineWrite{
+		ComponentID: dough.ID, IngredientID: flour.ID, ModelType: recipe.Affine, Params: params, WasteFactor: 1,
+	}, at)
+	noErr(t, err)
+	supplier, err := repo.CreateSupplier(ctx, tenant, catalog.SupplierInput{Name: "Toko Sinar", Adapter: catalog.AdapterManual}, at)
+	noErr(t, err)
+	kilo := int64(14000)
+	pack, err := repo.CreatePack(ctx, tenant, flour.ID, catalog.PackInput{SupplierID: supplier.ID, Size: 1000, Unit: "kg", PriceIDR: &kilo}, at)
+	noErr(t, err)
+	_, err = repo.SetDefaultPack(ctx, tenant, pack.ID, at)
+	noErr(t, err)
+	return flour.ID
+}
+
+func emit(t *testing.T, d *db.DB, typ string, o orders.Order, at time.Time) {
+	t.Helper()
+	noErr(t, outbox.Append(t.Context(), d.Pool(), outbox.Event{
+		TenantID: dbtest.DefaultTenantID, Aggregate: "order", Type: typ, At: at,
+		Payload: map[string]any{"order_id": o.ID, "code": o.Code, "production_date": o.ProductionDate.String()},
+	}))
+}
+
+// A confirmed order puts its ingredients on its day's shopping list; the
+// list empties when the order is cancelled.
+func TestWorker_KeepsTheShoppingListCurrent(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := t.Context()
+	o := placed(t, d, wib(5, 10, 0))
+	flour := withRecipe(t, d, o)
+	_, err := d.Pool().Exec(ctx, "update orders set status = 'confirmed', payment_status = 'dp_paid' where id = $1", o.ID)
+	noErr(t, err)
+	emit(t, d, "order.confirmed", o, wib(5, 10, 5))
+	publisher := start(t, d, wib(5, 10, 6))
+
+	_, err = publisher.PublishBatch(ctx)
+	noErr(t, err)
+
+	var needed, packs int64
+	eventually(t, "the flour on the shopping list", func() bool {
+		err := d.Pool().QueryRow(ctx, `select r.qty_needed, r.packs_to_buy from batch_requirements r
+			join production_batches b on b.id = r.batch_id
+			where b.batch_date = '2026-10-08' and r.ingredient_id = $1`, flour).Scan(&needed, &packs)
+		return err == nil
+	})
+	if needed != 100 || packs != 1 {
+		t.Errorf("flour = %d g in %d packs, want 100 g (2 donuts × 50 g) in 1 pack of 1 kg", needed, packs)
+	}
+
+	_, err = d.Pool().Exec(ctx, "update orders set status = 'cancelled', payment_status = 'forfeited' where id = $1", o.ID)
+	noErr(t, err)
+	emit(t, d, "order.cancelled", o, wib(7, 20, 0))
+	_, err = publisher.PublishBatch(ctx)
+	noErr(t, err)
+	eventually(t, "the shopping list emptied", func() bool {
+		var n int
+		err := d.Pool().QueryRow(ctx, `select count(*) from batch_requirements r join production_batches b on b.id = r.batch_id
+			where b.batch_date = '2026-10-08'`).Scan(&n)
+		return err == nil && n == 0
+	})
 }

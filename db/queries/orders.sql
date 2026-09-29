@@ -143,3 +143,14 @@ where tenant_id = sqlc.arg(tenant_id) and status = sqlc.arg(status) and payment_
   and balance_due_at <= sqlc.arg(before)
 order by balance_due_at, id
 limit sqlc.arg(max_rows);
+
+-- name: CommittedItems :many
+-- What a batch makes (§11): the variants and summed quantities of the orders
+-- produced on a date whose status and payment status count for production.
+select i.variant_id, sum(i.quantity)::bigint as quantity
+from order_items i
+join orders o on o.tenant_id = i.tenant_id and o.id = i.order_id
+where o.tenant_id = sqlc.arg(tenant_id) and o.production_date = sqlc.arg(production_date)
+  and o.status = any(sqlc.arg(statuses)::text[]) and o.payment_status = any(sqlc.arg(payment_statuses)::text[])
+group by i.variant_id
+order by i.variant_id;

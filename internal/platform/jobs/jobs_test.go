@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 )
 
 // A failure alerts (ERROR) only once River gives up; before that it warns.
@@ -54,5 +56,16 @@ func TestObserve_CorrelatesAndTraces(t *testing.T) {
 	ended := spans.Ended()
 	if len(ended) != 1 || ended[0].Name() != "job expire-unpaid-dp" || ended[0].Status().Description != "job failed" {
 		t.Errorf("spans = %+v, want one failed span for the job", ended)
+	}
+}
+
+func TestMerge_KeepsEverySubscriber(t *testing.T) {
+	a := func(outbox.Stored) (river.JobArgs, error) { return nil, nil }
+	b := func(outbox.Stored) (river.JobArgs, error) { return nil, nil }
+
+	got := Merge(map[string][]Subscriber{"order.confirmed": {a}}, map[string][]Subscriber{"order.confirmed": {b}, "order.cancelled": {b}})
+
+	if len(got["order.confirmed"]) != 2 || len(got["order.cancelled"]) != 1 {
+		t.Errorf("Merge() = %d and %d subscribers, want 2 and 1", len(got["order.confirmed"]), len(got["order.cancelled"]))
 	}
 }

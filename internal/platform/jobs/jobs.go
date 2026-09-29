@@ -132,3 +132,15 @@ func Dispatcher(client *river.Client[pgx.Tx], subs map[string][]Subscriber, logg
 		return nil
 	}
 }
+
+// Merge joins the subscriptions of several modules: an event two modules
+// subscribe to starts the jobs of both.
+func Merge(all ...map[string][]Subscriber) map[string][]Subscriber {
+	out := map[string][]Subscriber{}
+	for _, subs := range all {
+		for typ, s := range subs {
+			out[typ] = append(out[typ], s...)
+		}
+	}
+	return out
+}
