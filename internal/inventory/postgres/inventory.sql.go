@@ -32,7 +32,7 @@ func (q *Queries) ExpireLots(ctx context.Context, arg ExpireLotsParams) (int64, 
 }
 
 const getLot = `-- name: GetLot :one
-select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.note, l.created_at,
+select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.procurement_item_id, l.note, l.created_at,
        coalesce((select sum(m.qty) from stock_movements m where m.tenant_id = l.tenant_id and m.lot_id = l.id), 0)::bigint as balance
 from stock_lots l
 where l.tenant_id = $1 and l.id = $2
@@ -44,15 +44,16 @@ type GetLotParams struct {
 }
 
 type GetLotRow struct {
-	ID           uuid.UUID
-	IngredientID uuid.UUID
-	ReceivedAt   time.Time
-	ExpiresAt    *time.Time
-	Status       string
-	Source       string
-	Note         *string
-	CreatedAt    time.Time
-	Balance      int64
+	ID                uuid.UUID
+	IngredientID      uuid.UUID
+	ReceivedAt        time.Time
+	ExpiresAt         *time.Time
+	Status            string
+	Source            string
+	ProcurementItemID *uuid.UUID
+	Note              *string
+	CreatedAt         time.Time
+	Balance           int64
 }
 
 func (q *Queries) GetLot(ctx context.Context, arg GetLotParams) (GetLotRow, error) {
@@ -65,6 +66,7 @@ func (q *Queries) GetLot(ctx context.Context, arg GetLotParams) (GetLotRow, erro
 		&i.ExpiresAt,
 		&i.Status,
 		&i.Source,
+		&i.ProcurementItemID,
 		&i.Note,
 		&i.CreatedAt,
 		&i.Balance,
@@ -102,21 +104,23 @@ func (q *Queries) InsertCheck(ctx context.Context, arg InsertCheckParams) error 
 }
 
 const insertLot = `-- name: InsertLot :exec
-insert into stock_lots (id, tenant_id, ingredient_id, received_at, expires_at, source, note, created_by, created_at, updated_at)
+insert into stock_lots (id, tenant_id, ingredient_id, received_at, expires_at, source, procurement_item_id, note,
+                        created_by, created_at, updated_at)
 values ($1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $9)
+        $6, $7, $8, $9, $10, $10)
 `
 
 type InsertLotParams struct {
-	ID           uuid.UUID
-	TenantID     uuid.UUID
-	IngredientID uuid.UUID
-	ReceivedAt   time.Time
-	ExpiresAt    *time.Time
-	Source       string
-	Note         *string
-	CreatedBy    uuid.UUID
-	Now          time.Time
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	IngredientID      uuid.UUID
+	ReceivedAt        time.Time
+	ExpiresAt         *time.Time
+	Source            string
+	ProcurementItemID *uuid.UUID
+	Note              *string
+	CreatedBy         uuid.UUID
+	Now               time.Time
 }
 
 func (q *Queries) InsertLot(ctx context.Context, arg InsertLotParams) error {
@@ -127,6 +131,7 @@ func (q *Queries) InsertLot(ctx context.Context, arg InsertLotParams) error {
 		arg.ReceivedAt,
 		arg.ExpiresAt,
 		arg.Source,
+		arg.ProcurementItemID,
 		arg.Note,
 		arg.CreatedBy,
 		arg.Now,
@@ -219,7 +224,7 @@ func (q *Queries) LockIngredientStock(ctx context.Context, ingredientID string) 
 }
 
 const lots = `-- name: Lots :many
-select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.note, l.created_at,
+select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.procurement_item_id, l.note, l.created_at,
        coalesce((select sum(m.qty) from stock_movements m where m.tenant_id = l.tenant_id and m.lot_id = l.id), 0)::bigint as balance
 from stock_lots l
 where l.tenant_id = $1
@@ -235,15 +240,16 @@ type LotsParams struct {
 }
 
 type LotsRow struct {
-	ID           uuid.UUID
-	IngredientID uuid.UUID
-	ReceivedAt   time.Time
-	ExpiresAt    *time.Time
-	Status       string
-	Source       string
-	Note         *string
-	CreatedAt    time.Time
-	Balance      int64
+	ID                uuid.UUID
+	IngredientID      uuid.UUID
+	ReceivedAt        time.Time
+	ExpiresAt         *time.Time
+	Status            string
+	Source            string
+	ProcurementItemID *uuid.UUID
+	Note              *string
+	CreatedAt         time.Time
+	Balance           int64
 }
 
 // The lots of the ingredients (every ingredient when none is given) in any
@@ -265,6 +271,7 @@ func (q *Queries) Lots(ctx context.Context, arg LotsParams) ([]LotsRow, error) {
 			&i.ExpiresAt,
 			&i.Status,
 			&i.Source,
+			&i.ProcurementItemID,
 			&i.Note,
 			&i.CreatedAt,
 			&i.Balance,

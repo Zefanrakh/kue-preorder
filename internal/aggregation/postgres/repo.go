@@ -134,7 +134,7 @@ func (r *Repository) Lines(ctx context.Context, tenantID, batchID uuid.UUID) ([]
 	for i, row := range rows {
 		l := aggregation.Line{
 			IngredientID: row.IngredientID, Needed: row.QtyNeeded, UsableStock: row.QtyUsableStock,
-			Ordered: row.QtyOrdered, ToBuy: row.QtyToBuy, Status: aggregation.LineStatus(row.Status),
+			Ordered: row.QtyOrdered, Received: row.QtyReceived, ToBuy: row.QtyToBuy, Status: aggregation.LineStatus(row.Status),
 		}
 		if row.SupplierID != nil && row.PackSize != nil {
 			l.Pack = &catalog.DefaultPack{
@@ -212,6 +212,20 @@ func (r *Repository) OpenDates(ctx context.Context, tenantID uuid.UUID) ([]clock
 		out[i] = db.FromDate(d)
 	}
 	return out, nil
+}
+
+// AddProcured implements aggregation.Repository.
+func (r *Repository) AddProcured(ctx context.Context, tenantID, batchID, ingredientID uuid.UUID, ordered, received int64, at time.Time) error {
+	n, err := r.q(ctx).AddProcured(ctx, AddProcuredParams{
+		Ordered: ordered, Received: received, Now: at, TenantID: tenantID, BatchID: batchID, IngredientID: ingredientID,
+	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperr.ErrNotFound
+	}
+	return nil
 }
 
 // Audit implements aggregation.Repository.

@@ -105,6 +105,10 @@ type Repository interface {
 	SetStatus(ctx context.Context, tenantID uuid.UUID, date clock.Date, from []BatchStatus, s BatchStatus, at time.Time) (bool, error)
 	// OpenDates returns the dates whose batch is open, oldest first.
 	OpenDates(ctx context.Context, tenantID uuid.UUID) ([]clock.Date, error)
+	// AddProcured adds to a line what procurement ordered and received
+	// (deltas, M4) and sets its status from them; apperr.ErrNotFound when the
+	// batch has no such line.
+	AddProcured(ctx context.Context, tenantID, batchID, ingredientID uuid.UUID, ordered, received int64, at time.Time) error
 	// Audit and Publish write a staff action's audit entry and outbox
 	// events, in the transaction making the change.
 	Audit(ctx context.Context, e audit.Entry) error

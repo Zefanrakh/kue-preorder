@@ -56,7 +56,10 @@ type Lot struct {
 	ExpiresAt *time.Time
 	Status    LotStatus
 	Source    Source
-	Note      string
+	// ProcurementItemID is the order item the lot arrived for; set only for
+	// SourceProcurement.
+	ProcurementItemID *uuid.UUID
+	Note              string
 	// Balance is the sum of the lot's movements.
 	Balance int64
 	// LastOKAt is the latest "masih bagus" check; nil without one.

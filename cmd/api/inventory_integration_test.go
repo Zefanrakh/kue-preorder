@@ -4,6 +4,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -85,7 +86,8 @@ func TestInventory_StockReachesTheShoppingList(t *testing.T) {
 	}
 }
 
-// Eggs count only once checked; thrown away, nothing is left.
+// Fresh eggs count at once; a day later they need a check; thrown away,
+// nothing is left.
 func TestInventory_CheckingPerishables(t *testing.T) {
 	w := newWired(t)
 	ctx := t.Context()
@@ -102,10 +104,18 @@ func TestInventory_CheckingPerishables(t *testing.T) {
 		t.Error("eggs have no expiry despite a 14-day shelf life")
 	}
 
+	fresh, err := kitchen.ListLotsToCheck(ctx, connect.NewRequest(&inventoryv1.ListLotsToCheckRequest{}))
+	noErr(t, err)
+	if ls := fresh.Msg.GetLots(); len(ls) != 0 {
+		t.Fatalf("ListLotsToCheck() = %v, want nothing: the eggs are fresh from the shop", ls)
+	}
+
+	w.clock.Advance(25 * time.Hour)
+	kitchen = w.inventory(t, "kitchen") // a token for the new day
 	toCheck, err := kitchen.ListLotsToCheck(ctx, connect.NewRequest(&inventoryv1.ListLotsToCheckRequest{}))
 	noErr(t, err)
 	if ls := toCheck.Msg.GetLots(); len(ls) != 1 || ls[0].GetLot().GetId() != lotID || ls[0].GetIngredientName() != "Telur" {
-		t.Fatalf("ListLotsToCheck() = %v, want the new eggs", ls)
+		t.Fatalf("a day later: ListLotsToCheck() = %v, want the eggs", ls)
 	}
 	if _, err := kitchen.CheckLot(ctx, connect.NewRequest(&inventoryv1.CheckLotRequest{LotId: lotID})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("CheckLot() without a result: code = %v, want InvalidArgument", connect.CodeOf(err))

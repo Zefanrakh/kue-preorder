@@ -43,7 +43,7 @@ func (r *Repository) LockIngredient(ctx context.Context, ingredientID uuid.UUID)
 func (r *Repository) InsertLot(ctx context.Context, tenantID uuid.UUID, l inventory.Lot, createdBy uuid.UUID, at time.Time) error {
 	return r.q(ctx).InsertLot(ctx, InsertLotParams{
 		ID: l.ID, TenantID: tenantID, IngredientID: l.IngredientID, ReceivedAt: l.ReceivedAt, ExpiresAt: l.ExpiresAt,
-		Source: string(l.Source), Note: optional(l.Note), CreatedBy: createdBy, Now: at,
+		Source: string(l.Source), ProcurementItemID: l.ProcurementItemID, Note: optional(l.Note), CreatedBy: createdBy, Now: at,
 	})
 }
 
@@ -89,7 +89,7 @@ func (r *Repository) Lots(ctx context.Context, tenantID uuid.UUID, ingredientIDs
 		lots[i] = inventory.Lot{
 			ID: row.ID, IngredientID: row.IngredientID, ReceivedAt: row.ReceivedAt, ExpiresAt: row.ExpiresAt,
 			Status: inventory.LotStatus(row.Status), Source: inventory.Source(row.Source), Note: deref(row.Note),
-			Balance: row.Balance, CreatedAt: row.CreatedAt,
+			Balance: row.Balance, CreatedAt: row.CreatedAt, ProcurementItemID: row.ProcurementItemID,
 		}
 		ids[i] = row.ID
 	}
@@ -108,7 +108,7 @@ func (r *Repository) GetLot(ctx context.Context, tenantID, lotID uuid.UUID) (inv
 	lots := []inventory.Lot{{
 		ID: row.ID, IngredientID: row.IngredientID, ReceivedAt: row.ReceivedAt, ExpiresAt: row.ExpiresAt,
 		Status: inventory.LotStatus(row.Status), Source: inventory.Source(row.Source), Note: deref(row.Note),
-		Balance: row.Balance, CreatedAt: row.CreatedAt,
+		Balance: row.Balance, CreatedAt: row.CreatedAt, ProcurementItemID: row.ProcurementItemID,
 	}}
 	if err := r.withChecks(ctx, tenantID, lots, []uuid.UUID{row.ID}); err != nil {
 		return inventory.Lot{}, err

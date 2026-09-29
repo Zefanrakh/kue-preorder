@@ -13,6 +13,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addProcured = `-- name: AddProcured :execrows
+update batch_requirements
+set qty_ordered = qty_ordered + $1, qty_received = qty_received + $2,
+    status = case when qty_ordered + $1 > 0 then 'ordered'
+                  when qty_received + $2 > 0 then 'received'
+                  else 'needed' end,
+    updated_at = $3
+where tenant_id = $4 and batch_id = $5 and ingredient_id = $6
+`
+
+type AddProcuredParams struct {
+	Ordered      int64
+	Received     int64
+	Now          time.Time
+	TenantID     uuid.UUID
+	BatchID      uuid.UUID
+	IngredientID uuid.UUID
+}
+
+// Procurement's side of a line (M4): what was ordered and has not arrived
+// yet, and what arrived; the status follows from them.
+func (q *Queries) AddProcured(ctx context.Context, arg AddProcuredParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addProcured,
+		arg.Ordered,
+		arg.Received,
+		arg.Now,
+		arg.TenantID,
+		arg.BatchID,
+		arg.IngredientID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const batchComponentTotals = `-- name: BatchComponentTotals :many
 select tenant_id, batch_id, component_id, units from batch_component_totals
 where tenant_id = $1 and batch_id = $2
@@ -50,7 +86,7 @@ func (q *Queries) BatchComponentTotals(ctx context.Context, arg BatchComponentTo
 }
 
 const batchRequirements = `-- name: BatchRequirements :many
-select tenant_id, batch_id, ingredient_id, qty_needed, qty_usable_stock, qty_ordered, qty_to_buy, supplier_id, pack_size, pack_unit, pack_price_idr, packs_to_buy, status, updated_at from batch_requirements
+select tenant_id, batch_id, ingredient_id, qty_needed, qty_usable_stock, qty_ordered, qty_to_buy, supplier_id, pack_size, pack_unit, pack_price_idr, packs_to_buy, status, updated_at, qty_received from batch_requirements
 where tenant_id = $1 and batch_id = $2
 order by ingredient_id
 `
@@ -84,6 +120,7 @@ func (q *Queries) BatchRequirements(ctx context.Context, arg BatchRequirementsPa
 			&i.PacksToBuy,
 			&i.Status,
 			&i.UpdatedAt,
+			&i.QtyReceived,
 		); err != nil {
 			return nil, err
 		}

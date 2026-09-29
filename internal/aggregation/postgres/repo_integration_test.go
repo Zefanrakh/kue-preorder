@@ -247,3 +247,48 @@ func TestSetStatus(t *testing.T) {
 		t.Errorf("OpenDates() = %v, want the 8th only", dates)
 	}
 }
+
+// A line's status follows what was ordered and received; a computation
+// keeps both.
+func TestAddProcured(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	k := seed(t, d, tenant)
+	b := compute(t, d, repo, tenant, day(7), nil, []aggregation.Line{{IngredientID: k.flour, Needed: 1800, ToBuy: 1800}})
+	line := func() aggregation.Line {
+		t.Helper()
+		lines, err := repo.Lines(ctx, tenant, b.ID)
+		if err != nil || len(lines) != 1 {
+			t.Fatalf("Lines() = %+v, %v", lines, err)
+		}
+		return lines[0]
+	}
+	for _, step := range []struct {
+		ordered, received int64
+		want              aggregation.LineStatus
+	}{
+		{2000, 0, aggregation.LineOrdered},
+		{-2000, 1800, aggregation.LineReceived},
+		{500, 0, aggregation.LineOrdered},
+		{-500, 0, aggregation.LineReceived},
+	} {
+		if err := repo.AddProcured(ctx, tenant, b.ID, k.flour, step.ordered, step.received, now); err != nil {
+			t.Fatal(err)
+		}
+		if l := line(); l.Status != step.want {
+			t.Errorf("after %+v: %s, want %s", step, l.Status, step.want)
+		}
+	}
+	if l := line(); l.Ordered != 0 || l.Received != 1800 {
+		t.Errorf("line = %+v, want nothing ordered and 1,800 received", l)
+	}
+	compute(t, d, repo, tenant, day(7), nil, []aggregation.Line{{IngredientID: k.flour, Needed: 1800, UsableStock: 1800}})
+	if l := line(); l.Received != 1800 || l.Status != aggregation.LineReceived {
+		t.Errorf("after a computation: %+v, want procurement's columns kept", l)
+	}
+	if err := repo.AddProcured(ctx, tenant, b.ID, k.egg, 1, 0, now); !errors.Is(err, apperr.ErrNotFound) {
+		t.Errorf("AddProcured(no such line) error = %v, want ErrNotFound", err)
+	}
+}

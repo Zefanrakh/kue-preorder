@@ -100,3 +100,14 @@ where tenant_id = sqlc.arg(tenant_id) and batch_date = sqlc.arg(batch_date)
 select batch_date from production_batches
 where tenant_id = sqlc.arg(tenant_id) and status = 'open'
 order by batch_date;
+
+-- name: AddProcured :execrows
+-- Procurement's side of a line (M4): what was ordered and has not arrived
+-- yet, and what arrived; the status follows from them.
+update batch_requirements
+set qty_ordered = qty_ordered + sqlc.arg(ordered), qty_received = qty_received + sqlc.arg(received),
+    status = case when qty_ordered + sqlc.arg(ordered) > 0 then 'ordered'
+                  when qty_received + sqlc.arg(received) > 0 then 'received'
+                  else 'needed' end,
+    updated_at = sqlc.arg(now)
+where tenant_id = sqlc.arg(tenant_id) and batch_id = sqlc.arg(batch_id) and ingredient_id = sqlc.arg(ingredient_id);
