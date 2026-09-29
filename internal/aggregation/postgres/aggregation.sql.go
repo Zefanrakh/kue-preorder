@@ -361,6 +361,62 @@ func (q *Queries) MarkBatchFailed(ctx context.Context, arg MarkBatchFailedParams
 	return err
 }
 
+const openBatchDates = `-- name: OpenBatchDates :many
+select batch_date from production_batches
+where tenant_id = $1 and status = 'open'
+order by batch_date
+`
+
+func (q *Queries) OpenBatchDates(ctx context.Context, tenantID uuid.UUID) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, openBatchDates, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var batch_date pgtype.Date
+		if err := rows.Scan(&batch_date); err != nil {
+			return nil, err
+		}
+		items = append(items, batch_date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setBatchStatus = `-- name: SetBatchStatus :execrows
+update production_batches set status = $1, updated_at = $2
+where tenant_id = $3 and batch_date = $4
+  and status = any($5::text[])
+`
+
+type SetBatchStatusParams struct {
+	Status       string
+	Now          time.Time
+	TenantID     uuid.UUID
+	BatchDate    pgtype.Date
+	FromStatuses []string
+}
+
+// Moves a batch on, only from one of the statuses given: a step already
+// taken, or one out of order, changes nothing.
+func (q *Queries) SetBatchStatus(ctx context.Context, arg SetBatchStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setBatchStatus,
+		arg.Status,
+		arg.Now,
+		arg.TenantID,
+		arg.BatchDate,
+		arg.FromStatuses,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upcomingBatchDates = `-- name: UpcomingBatchDates :many
 select batch_date from production_batches
 where tenant_id = $1 and batch_date >= $2 and status <> 'done'

@@ -14,8 +14,10 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/aggregation"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 )
 
 // Repository implements aggregation.Repository.
@@ -185,6 +187,41 @@ func (r *Repository) SaveResult(ctx context.Context, tenantID, batchID uuid.UUID
 // MarkFailed implements aggregation.Repository.
 func (r *Repository) MarkFailed(ctx context.Context, tenantID uuid.UUID, date clock.Date, reason string, at time.Time) error {
 	return r.q(ctx).MarkBatchFailed(ctx, MarkBatchFailedParams{TenantID: tenantID, BatchDate: db.Date(date), Error: &reason, Now: at})
+}
+
+// SetStatus implements aggregation.Repository.
+func (r *Repository) SetStatus(ctx context.Context, tenantID uuid.UUID, date clock.Date, from []aggregation.BatchStatus, to aggregation.BatchStatus, at time.Time) (bool, error) {
+	names := make([]string, len(from))
+	for i, s := range from {
+		names[i] = string(s)
+	}
+	n, err := r.q(ctx).SetBatchStatus(ctx, SetBatchStatusParams{
+		Status: string(to), Now: at, TenantID: tenantID, BatchDate: db.Date(date), FromStatuses: names,
+	})
+	return n > 0, err
+}
+
+// OpenDates implements aggregation.Repository.
+func (r *Repository) OpenDates(ctx context.Context, tenantID uuid.UUID) ([]clock.Date, error) {
+	rows, err := r.q(ctx).OpenBatchDates(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]clock.Date, len(rows))
+	for i, d := range rows {
+		out[i] = db.FromDate(d)
+	}
+	return out, nil
+}
+
+// Audit implements aggregation.Repository.
+func (r *Repository) Audit(ctx context.Context, e audit.Entry) error {
+	return audit.Record(ctx, r.db.Conn(ctx), e)
+}
+
+// Publish implements aggregation.Repository.
+func (r *Repository) Publish(ctx context.Context, e outbox.Event) error {
+	return outbox.Append(ctx, r.db.Conn(ctx), e)
 }
 
 func deref(s *string) string {

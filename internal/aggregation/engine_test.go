@@ -17,9 +17,12 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/aggregation"
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
+	"github.com/Zefanrakh/kue-preorder/internal/inventory"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 	"github.com/Zefanrakh/kue-preorder/internal/recipe"
 )
 
@@ -33,6 +36,8 @@ type memBatches struct {
 	components map[uuid.UUID][]aggregation.ComponentTotal
 	lines      map[uuid.UUID]map[uuid.UUID]aggregation.Line
 	saves      int
+	audits     []audit.Entry
+	events     []outbox.Event
 }
 
 func newMemBatches() *memBatches {
@@ -131,6 +136,36 @@ func (m *memBatches) SaveResult(_ context.Context, _, batchID uuid.UUID, compone
 	return nil
 }
 
+func (m *memBatches) SetStatus(_ context.Context, _ uuid.UUID, date clock.Date, from []aggregation.BatchStatus, to aggregation.BatchStatus, at time.Time) (bool, error) {
+	b, ok := m.batches[date]
+	if !ok || !slices.Contains(from, b.Status) {
+		return false, nil
+	}
+	b.Status, b.UpdatedAt = to, at
+	return true, nil
+}
+
+func (m *memBatches) OpenDates(context.Context, uuid.UUID) ([]clock.Date, error) {
+	var out []clock.Date
+	for d, b := range m.batches {
+		if b.Status == aggregation.BatchOpen {
+			out = append(out, d)
+		}
+	}
+	slices.SortFunc(out, func(a, b clock.Date) int { return a.Compare(b) })
+	return out, nil
+}
+
+func (m *memBatches) Audit(_ context.Context, e audit.Entry) error {
+	m.audits = append(m.audits, e)
+	return nil
+}
+
+func (m *memBatches) Publish(_ context.Context, e outbox.Event) error {
+	m.events = append(m.events, e)
+	return nil
+}
+
 func (m *memBatches) MarkFailed(ctx context.Context, tenantID uuid.UUID, date clock.Date, reason string, at time.Time) error {
 	if err := m.EnsureBatch(ctx, tenantID, date, at); err != nil {
 		return err
@@ -142,6 +177,7 @@ func (m *memBatches) MarkFailed(ctx context.Context, tenantID uuid.UUID, date cl
 // kitchen is the orders and the catalog of §11's example.
 type kitchen struct {
 	items   map[clock.Date][]orders.CommittedItem
+	cutoffs map[clock.Date]time.Time
 	models  []catalog.RecipeModel
 	broken  error // what RecipeModels fails with
 	packs   []catalog.DefaultPack
@@ -152,9 +188,10 @@ type kitchen struct {
 func newKitchen() *kitchen {
 	supplier := uuid.New()
 	return &kitchen{
-		items:  map[clock.Date][]orders.CommittedItem{},
-		models: models(),
-		packs:  []catalog.DefaultPack{{IngredientID: flour, SupplierID: supplier, Size: 1000, Unit: "kg", PriceIDR: price(14000)}},
+		items:   map[clock.Date][]orders.CommittedItem{},
+		cutoffs: map[clock.Date]time.Time{},
+		models:  models(),
+		packs:   []catalog.DefaultPack{{IngredientID: flour, SupplierID: supplier, Size: 1000, Unit: "kg", PriceIDR: price(14000)}},
 		labels: catalog.Labels{
 			Components:  map[uuid.UUID]catalog.Component{dough: {Name: "Adonan donut", UnitLabel: "porsi"}, chocTop: {Name: "Topping coklat"}, cheeseTop: {Name: "Topping keju"}},
 			Ingredients: map[uuid.UUID]catalog.Ingredient{flour: {Name: "Tepung", BaseUnit: catalog.Gram}, egg: {Name: "Telur", BaseUnit: catalog.Piece}, cocoa: {Name: "Coklat bubuk"}, grated: {Name: "Keju parut"}},
@@ -169,6 +206,16 @@ func (k *kitchen) CommittedItems(_ context.Context, _ uuid.UUID, date clock.Date
 		return nil, errors.New("connection reset")
 	}
 	return k.items[date], nil
+}
+
+func (k *kitchen) BatchCutoffs(_ context.Context, _ uuid.UUID, from, to clock.Date) (map[clock.Date]time.Time, error) {
+	out := map[clock.Date]time.Time{}
+	for d, c := range k.cutoffs {
+		if !d.Before(from) && !d.After(to) {
+			out[d] = c
+		}
+	}
+	return out, nil
 }
 
 func (k *kitchen) ComponentUses(context.Context, uuid.UUID, []uuid.UUID) ([]catalog.ComponentUse, error) {
@@ -201,6 +248,28 @@ func (s shelf) Usable(_ context.Context, _ uuid.UUID, _ clock.Date, ids []uuid.U
 	return out, nil
 }
 
+// pantry records what batches consumed; each ingredient has at most
+// available of it in the ledger, when set.
+type pantry struct {
+	calls     int
+	uses      []inventory.Use
+	available map[uuid.UUID]int64
+}
+
+func (p *pantry) Consume(_ context.Context, _, _ uuid.UUID, uses []inventory.Use, _ uuid.UUID, _ time.Time) ([]inventory.Used, error) {
+	p.calls++
+	p.uses = append(p.uses, uses...)
+	var out []inventory.Used
+	for _, u := range uses {
+		took := u.Qty
+		if a, ok := p.available[u.IngredientID]; ok {
+			took = min(a, u.Qty)
+		}
+		out = append(out, inventory.Used{IngredientID: u.IngredientID, Consumed: took, Missing: u.Qty - took})
+	}
+	return out, nil
+}
+
 type directTx struct{}
 
 func (directTx) Tx(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
@@ -215,6 +284,7 @@ type bakery struct {
 	repo    *memBatches
 	kitchen *kitchen
 	shelf   shelf
+	pantry  *pantry
 	clock   *clock.Fake
 	engine  *aggregation.Engine
 	service *aggregation.Service
@@ -226,7 +296,10 @@ func newBakery(roles ...identity.Role) *bakery {
 		Repo: b.repo, Orders: b.kitchen, Catalog: b.kitchen, Stock: b.shelf, Tx: directTx{}, Clock: b.clock,
 		Logger: slog.New(slog.DiscardHandler),
 	})
-	b.service = aggregation.NewService(aggregation.ServiceDeps{Engine: b.engine, Repo: b.repo, Catalog: b.kitchen, Principals: caller{roles: roles}})
+	b.pantry = &pantry{}
+	b.service = aggregation.NewService(aggregation.ServiceDeps{
+		Engine: b.engine, Repo: b.repo, Catalog: b.kitchen, Stock: b.pantry, Principals: caller{roles: roles}, Tx: directTx{}, Clock: b.clock,
+	})
 	return b
 }
 

@@ -61,10 +61,11 @@ func wiredCheckout(t *testing.T, opts ...connect.ClientOption) (ordersv1connect.
 	return ordersv1connect.NewCheckoutServiceClient(w.http, w.url, opts...), w.donut
 }
 
-// bearer signs a token for user; with a phone, as after a WhatsApp sign-in.
+// bearer signs a token for user, valid for an hour from the wired clock's
+// now; with a phone, as after a WhatsApp sign-in.
 func (w *wired) bearer(t *testing.T, user uuid.UUID, phone string) connect.ClientOption {
 	t.Helper()
-	claims := identitytest.Claims(user, wib(5, 10, 0))
+	claims := identitytest.Claims(user, w.clock.Now())
 	claims["phone"] = phone
 	token := w.issuer.Sign(t, claims)
 	return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {

@@ -504,6 +504,89 @@ func newestAvailable(lots []Lot) (Lot, bool) {
 	return Lot{}, false
 }
 
+// Use is how much of an ingredient a batch used.
+type Use struct {
+	IngredientID uuid.UUID
+	Qty          int64
+}
+
+// Used is what a consumption took from the ledger, and what it could not
+// because the ledger held less than the batch used: a delivery nobody
+// recorded, for the kitchen to put right with a stock count.
+type Used struct {
+	IngredientID uuid.UUID
+	Consumed     int64
+	Missing      int64
+}
+
+// Consumer takes what a finished batch used out of the stock (§12, M3.3).
+// It acts for a person another module already authorized, in that module's
+// transaction.
+type Consumer struct {
+	repo Repository
+}
+
+// NewConsumer returns a Consumer over repo.
+func NewConsumer(repo Repository) *Consumer {
+	return &Consumer{repo: repo}
+}
+
+// Consume records what batch used of each ingredient as consume movements,
+// oldest available lot first (FIFO), and empties the lots it uses up. It
+// never takes more than a lot holds: what the ledger lacks comes back as
+// Missing. Ingredients are locked in id order, so two consumptions never
+// wait on each other in a circle. It publishes one inventory.stock_changed.
+func (c *Consumer) Consume(ctx context.Context, tenant, batchID uuid.UUID, uses []Use, actorID uuid.UUID, at time.Time) ([]Used, error) {
+	sorted := slices.Clone(uses)
+	slices.SortFunc(sorted, func(a, b Use) int { return slices.Compare(a.IngredientID[:], b.IngredientID[:]) })
+	out := make([]Used, 0, len(sorted))
+	var changed []uuid.UUID
+	for _, u := range sorted {
+		if u.Qty <= 0 {
+			continue
+		}
+		if err := c.repo.LockIngredient(ctx, u.IngredientID); err != nil {
+			return nil, err
+		}
+		lots, err := c.repo.Lots(ctx, tenant, []uuid.UUID{u.IngredientID}, []LotStatus{LotAvailable})
+		if err != nil {
+			return nil, err
+		}
+		remaining := u.Qty
+		for _, l := range lots {
+			take := min(l.Balance, remaining)
+			if take <= 0 {
+				continue
+			}
+			if err := c.repo.InsertMovement(ctx, tenant, Movement{
+				LotID: l.ID, IngredientID: u.IngredientID, Kind: MoveConsume, Qty: -take, BatchID: &batchID, ActorID: actorID, At: at,
+			}); err != nil {
+				return nil, err
+			}
+			if take == l.Balance {
+				if err := c.repo.SetLotStatus(ctx, tenant, l.ID, LotExhausted, at); err != nil {
+					return nil, err
+				}
+			}
+			remaining -= take
+			if remaining == 0 {
+				break
+			}
+		}
+		if remaining < u.Qty {
+			changed = append(changed, u.IngredientID)
+		}
+		out = append(out, Used{IngredientID: u.IngredientID, Consumed: u.Qty - remaining, Missing: remaining})
+	}
+	if len(changed) == 0 {
+		return out, nil
+	}
+	return out, c.repo.Publish(ctx, outbox.Event{
+		TenantID: tenant, Aggregate: "batch", Type: "inventory.stock_changed", At: at,
+		Payload: map[string]any{"batch_id": batchID, "ingredient_ids": changed},
+	})
+}
+
 // stockChanged tells aggregation to compute the upcoming batches again.
 func stockChanged(tenant, ingredientID uuid.UUID, at time.Time) outbox.Event {
 	return outbox.Event{

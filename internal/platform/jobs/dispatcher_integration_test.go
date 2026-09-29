@@ -55,9 +55,10 @@ func jobCount(t *testing.T, d *db.DB) int {
 	return n
 }
 
-// Subscribed events start their jobs in the publisher's transaction; others
-// are only published; a subscriber that cannot read its event alerts and
-// is skipped, without holding up the outbox.
+// Subscribed events start their jobs in the publisher's transaction; others,
+// and those a subscriber passes on with nil, are only published; a
+// subscriber that cannot read its event alerts and is skipped, without
+// holding up the outbox.
 func TestDispatcher(t *testing.T) {
 	d := dbtest.New(t)
 	var logs bytes.Buffer
@@ -71,6 +72,8 @@ func TestDispatcher(t *testing.T) {
 	subs := map[string][]jobs.Subscriber{
 		"order.confirmed": {func(e outbox.Stored) (river.JobArgs, error) { return pingArgs{Seq: e.Seq}, nil }},
 		"order.cancelled": {func(outbox.Stored) (river.JobArgs, error) { return nil, errors.New("no order_id") }},
+		// Cares about this event only sometimes: nil starts nothing.
+		"order.placed": {func(outbox.Stored) (river.JobArgs, error) { return nil, nil }},
 	}
 	publisher := outbox.NewPublisher(d, jobs.Dispatcher(client, subs, logger), clock.Real{}, logger)
 	emit(t, d, "order.confirmed")

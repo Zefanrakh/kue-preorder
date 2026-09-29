@@ -59,21 +59,27 @@ type ServiceDeps struct {
 	Engine     *Engine
 	Repo       Repository
 	Catalog    Catalog
+	Stock      Consumer
 	Principals Principals
+	Tx         Transactor
+	Clock      clock.Clock
 }
 
-// Service shows batches to staff in the CMS and lets them compute one
-// again.
+// Service shows batches to staff in the CMS, lets them compute one again,
+// and closes a day's production.
 type Service struct {
 	engine     *Engine
 	repo       Repository
 	catalog    Catalog
+	stock      Consumer
 	principals Principals
+	tx         Transactor
+	clock      clock.Clock
 }
 
 // NewService returns a Service over d.
 func NewService(d ServiceDeps) *Service {
-	return &Service{engine: d.Engine, repo: d.Repo, catalog: d.Catalog, principals: d.Principals}
+	return &Service{engine: d.Engine, repo: d.Repo, catalog: d.Catalog, stock: d.Stock, principals: d.Principals, tx: d.Tx, clock: d.Clock}
 }
 
 func (s *Service) authorize(ctx context.Context) (identity.Principal, error) {

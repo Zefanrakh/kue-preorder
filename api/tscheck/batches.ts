@@ -58,3 +58,18 @@ export async function recompute(accessToken: string, date: string): Promise<stri
     throw cerr;
   }
 }
+
+// "Produksi selesai": what was taken, and what the ledger lacked, for the
+// kitchen to put right with a stock count.
+export async function productionDone(accessToken: string, date: string): Promise<{ missing: string[] } | string> {
+  try {
+    const res = await batches.completeBatch({ date }, auth(accessToken));
+    return { missing: res.uses.filter((u) => u.missing > 0n).map((u) => `${u.ingredientName}: ${u.missing}`) };
+  } catch (err) {
+    const cerr = ConnectError.from(err);
+    if (cerr.code === Code.FailedPrecondition) {
+      return cerr.findDetails(PreconditionSchema)[0]?.message ?? cerr.rawMessage;
+    }
+    throw cerr;
+  }
+}

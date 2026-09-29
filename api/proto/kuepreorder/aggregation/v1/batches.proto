@@ -29,6 +29,13 @@ service BatchService {
   rpc RecomputeBatch(RecomputeBatchRequest) returns (RecomputeBatchResponse) {
     option idempotency_level = IDEMPOTENT;
   }
+  // CompleteBatch closes a day's production ("Produksi selesai"): what the
+  // recipes need comes out of the stock, oldest lot first, and the batch is
+  // done. The stock never goes below zero; what it lacked comes back as
+  // missing, to put right with a stock count. Only on or after the
+  // production day ("not_production_day"), and only once ("batch_done");
+  // there is no undo.
+  rpc CompleteBatch(CompleteBatchRequest) returns (CompleteBatchResponse);
 }
 
 enum BatchStatus {
@@ -148,4 +155,24 @@ message RecomputeBatchRequest {
 
 message RecomputeBatchResponse {
   BatchDetail batch = 1;
+}
+
+message CompleteBatchRequest {
+  string date = 1;
+}
+
+// IngredientUse is what a finished batch took of one ingredient.
+message IngredientUse {
+  string ingredient_id = 1;
+  string ingredient_name = 2;
+  // Taken out of the stock.
+  int64 consumed = 3;
+  // Used but not in the stock ledger, such as a delivery nobody recorded.
+  int64 missing = 4;
+}
+
+message CompleteBatchResponse {
+  BatchDetail batch = 1;
+  // By ingredient name.
+  repeated IngredientUse uses = 2;
 }

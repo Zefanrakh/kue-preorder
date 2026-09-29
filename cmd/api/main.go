@@ -188,7 +188,8 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 			Repo: paymentsRepo, Principals: identitySvc, Tx: database, Clock: clk,
 		}),
 		batches: aggregation.NewService(aggregation.ServiceDeps{
-			Engine: engine, Repo: aggregationRepo, Catalog: catalogReader, Principals: identitySvc,
+			Engine: engine, Repo: aggregationRepo, Catalog: catalogReader, Stock: inventory.NewConsumer(inventoryRepo),
+			Principals: identitySvc, Tx: database, Clock: clk,
 		}),
 		stock: inventory.NewService(inventory.ServiceDeps{
 			Repo: inventoryRepo, Catalog: catalogReader, Principals: identitySvc, Tx: database, Clock: clk,

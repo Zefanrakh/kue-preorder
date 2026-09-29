@@ -88,3 +88,15 @@ join production_batches b on b.tenant_id = r.tenant_id and b.id = r.batch_id
 where r.tenant_id = sqlc.arg(tenant_id) and b.batch_date < sqlc.arg(batch_date) and b.status <> 'done'
   and r.ingredient_id = any(sqlc.arg(ingredient_ids)::uuid[]) and r.qty_usable_stock > 0
 group by r.ingredient_id;
+
+-- name: SetBatchStatus :execrows
+-- Moves a batch on, only from one of the statuses given: a step already
+-- taken, or one out of order, changes nothing.
+update production_batches set status = sqlc.arg(status), updated_at = sqlc.arg(now)
+where tenant_id = sqlc.arg(tenant_id) and batch_date = sqlc.arg(batch_date)
+  and status = any(sqlc.arg(from_statuses)::text[]);
+
+-- name: OpenBatchDates :many
+select batch_date from production_batches
+where tenant_id = sqlc.arg(tenant_id) and status = 'open'
+order by batch_date;

@@ -41,6 +41,9 @@ const (
 	// BatchServiceRecomputeBatchProcedure is the fully-qualified name of the BatchService's
 	// RecomputeBatch RPC.
 	BatchServiceRecomputeBatchProcedure = "/kuepreorder.aggregation.v1.BatchService/RecomputeBatch"
+	// BatchServiceCompleteBatchProcedure is the fully-qualified name of the BatchService's
+	// CompleteBatch RPC.
+	BatchServiceCompleteBatchProcedure = "/kuepreorder.aggregation.v1.BatchService/CompleteBatch"
 )
 
 // BatchServiceClient is a client for the kuepreorder.aggregation.v1.BatchService service.
@@ -54,6 +57,13 @@ type BatchServiceClient interface {
 	// a recipe or a pack price. FailedPrecondition "broken_recipe" when a
 	// recipe cannot be evaluated; the batch's error then names it.
 	RecomputeBatch(context.Context, *connect.Request[v1.RecomputeBatchRequest]) (*connect.Response[v1.RecomputeBatchResponse], error)
+	// CompleteBatch closes a day's production ("Produksi selesai"): what the
+	// recipes need comes out of the stock, oldest lot first, and the batch is
+	// done. The stock never goes below zero; what it lacked comes back as
+	// missing, to put right with a stock count. Only on or after the
+	// production day ("not_production_day"), and only once ("batch_done");
+	// there is no undo.
+	CompleteBatch(context.Context, *connect.Request[v1.CompleteBatchRequest]) (*connect.Response[v1.CompleteBatchResponse], error)
 }
 
 // NewBatchServiceClient constructs a client for the kuepreorder.aggregation.v1.BatchService
@@ -88,6 +98,12 @@ func NewBatchServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyIdempotent),
 			connect.WithClientOptions(opts...),
 		),
+		completeBatch: connect.NewClient[v1.CompleteBatchRequest, v1.CompleteBatchResponse](
+			httpClient,
+			baseURL+BatchServiceCompleteBatchProcedure,
+			connect.WithSchema(batchServiceMethods.ByName("CompleteBatch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -96,6 +112,7 @@ type batchServiceClient struct {
 	listBatches    *connect.Client[v1.ListBatchesRequest, v1.ListBatchesResponse]
 	getBatch       *connect.Client[v1.GetBatchRequest, v1.GetBatchResponse]
 	recomputeBatch *connect.Client[v1.RecomputeBatchRequest, v1.RecomputeBatchResponse]
+	completeBatch  *connect.Client[v1.CompleteBatchRequest, v1.CompleteBatchResponse]
 }
 
 // ListBatches calls kuepreorder.aggregation.v1.BatchService.ListBatches.
@@ -113,6 +130,11 @@ func (c *batchServiceClient) RecomputeBatch(ctx context.Context, req *connect.Re
 	return c.recomputeBatch.CallUnary(ctx, req)
 }
 
+// CompleteBatch calls kuepreorder.aggregation.v1.BatchService.CompleteBatch.
+func (c *batchServiceClient) CompleteBatch(ctx context.Context, req *connect.Request[v1.CompleteBatchRequest]) (*connect.Response[v1.CompleteBatchResponse], error) {
+	return c.completeBatch.CallUnary(ctx, req)
+}
+
 // BatchServiceHandler is an implementation of the kuepreorder.aggregation.v1.BatchService service.
 type BatchServiceHandler interface {
 	// ListBatches lists the batches of a range of at most 92 days, by date.
@@ -124,6 +146,13 @@ type BatchServiceHandler interface {
 	// a recipe or a pack price. FailedPrecondition "broken_recipe" when a
 	// recipe cannot be evaluated; the batch's error then names it.
 	RecomputeBatch(context.Context, *connect.Request[v1.RecomputeBatchRequest]) (*connect.Response[v1.RecomputeBatchResponse], error)
+	// CompleteBatch closes a day's production ("Produksi selesai"): what the
+	// recipes need comes out of the stock, oldest lot first, and the batch is
+	// done. The stock never goes below zero; what it lacked comes back as
+	// missing, to put right with a stock count. Only on or after the
+	// production day ("not_production_day"), and only once ("batch_done");
+	// there is no undo.
+	CompleteBatch(context.Context, *connect.Request[v1.CompleteBatchRequest]) (*connect.Response[v1.CompleteBatchResponse], error)
 }
 
 // NewBatchServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -154,6 +183,12 @@ func NewBatchServiceHandler(svc BatchServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyIdempotent),
 		connect.WithHandlerOptions(opts...),
 	)
+	batchServiceCompleteBatchHandler := connect.NewUnaryHandler(
+		BatchServiceCompleteBatchProcedure,
+		svc.CompleteBatch,
+		connect.WithSchema(batchServiceMethods.ByName("CompleteBatch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/kuepreorder.aggregation.v1.BatchService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BatchServiceListBatchesProcedure:
@@ -162,6 +197,8 @@ func NewBatchServiceHandler(svc BatchServiceHandler, opts ...connect.HandlerOpti
 			batchServiceGetBatchHandler.ServeHTTP(w, r)
 		case BatchServiceRecomputeBatchProcedure:
 			batchServiceRecomputeBatchHandler.ServeHTTP(w, r)
+		case BatchServiceCompleteBatchProcedure:
+			batchServiceCompleteBatchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -181,4 +218,8 @@ func (UnimplementedBatchServiceHandler) GetBatch(context.Context, *connect.Reque
 
 func (UnimplementedBatchServiceHandler) RecomputeBatch(context.Context, *connect.Request[v1.RecomputeBatchRequest]) (*connect.Response[v1.RecomputeBatchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("kuepreorder.aggregation.v1.BatchService.RecomputeBatch is not implemented"))
+}
+
+func (UnimplementedBatchServiceHandler) CompleteBatch(context.Context, *connect.Request[v1.CompleteBatchRequest]) (*connect.Response[v1.CompleteBatchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("kuepreorder.aggregation.v1.BatchService.CompleteBatch is not implemented"))
 }
