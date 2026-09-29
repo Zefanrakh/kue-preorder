@@ -903,6 +903,174 @@ func (x *RecomputeBatchResponse) GetBatch() *BatchDetail {
 	return nil
 }
 
+type CompleteBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteBatchRequest) Reset() {
+	*x = CompleteBatchRequest{}
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteBatchRequest) ProtoMessage() {}
+
+func (x *CompleteBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteBatchRequest.ProtoReflect.Descriptor instead.
+func (*CompleteBatchRequest) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_aggregation_v1_batches_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CompleteBatchRequest) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+// IngredientUse is what a finished batch took of one ingredient.
+type IngredientUse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	IngredientId   string                 `protobuf:"bytes,1,opt,name=ingredient_id,json=ingredientId,proto3" json:"ingredient_id,omitempty"`
+	IngredientName string                 `protobuf:"bytes,2,opt,name=ingredient_name,json=ingredientName,proto3" json:"ingredient_name,omitempty"`
+	// Taken out of the stock.
+	Consumed int64 `protobuf:"varint,3,opt,name=consumed,proto3" json:"consumed,omitempty"`
+	// Used but not in the stock ledger, such as a delivery nobody recorded.
+	Missing       int64 `protobuf:"varint,4,opt,name=missing,proto3" json:"missing,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IngredientUse) Reset() {
+	*x = IngredientUse{}
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IngredientUse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IngredientUse) ProtoMessage() {}
+
+func (x *IngredientUse) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IngredientUse.ProtoReflect.Descriptor instead.
+func (*IngredientUse) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_aggregation_v1_batches_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *IngredientUse) GetIngredientId() string {
+	if x != nil {
+		return x.IngredientId
+	}
+	return ""
+}
+
+func (x *IngredientUse) GetIngredientName() string {
+	if x != nil {
+		return x.IngredientName
+	}
+	return ""
+}
+
+func (x *IngredientUse) GetConsumed() int64 {
+	if x != nil {
+		return x.Consumed
+	}
+	return 0
+}
+
+func (x *IngredientUse) GetMissing() int64 {
+	if x != nil {
+		return x.Missing
+	}
+	return 0
+}
+
+type CompleteBatchResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Batch *BatchDetail           `protobuf:"bytes,1,opt,name=batch,proto3" json:"batch,omitempty"`
+	// By ingredient name.
+	Uses          []*IngredientUse `protobuf:"bytes,2,rep,name=uses,proto3" json:"uses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteBatchResponse) Reset() {
+	*x = CompleteBatchResponse{}
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteBatchResponse) ProtoMessage() {}
+
+func (x *CompleteBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_aggregation_v1_batches_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteBatchResponse.ProtoReflect.Descriptor instead.
+func (*CompleteBatchResponse) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_aggregation_v1_batches_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CompleteBatchResponse) GetBatch() *BatchDetail {
+	if x != nil {
+		return x.Batch
+	}
+	return nil
+}
+
+func (x *CompleteBatchResponse) GetUses() []*IngredientUse {
+	if x != nil {
+		return x.Uses
+	}
+	return nil
+}
+
 var File_kuepreorder_aggregation_v1_batches_proto protoreflect.FileDescriptor
 
 const file_kuepreorder_aggregation_v1_batches_proto_rawDesc = "" +
@@ -968,7 +1136,17 @@ const file_kuepreorder_aggregation_v1_batches_proto_rawDesc = "" +
 	"\x15RecomputeBatchRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\"W\n" +
 	"\x16RecomputeBatchResponse\x12=\n" +
-	"\x05batch\x18\x01 \x01(\v2'.kuepreorder.aggregation.v1.BatchDetailR\x05batch*\x92\x01\n" +
+	"\x05batch\x18\x01 \x01(\v2'.kuepreorder.aggregation.v1.BatchDetailR\x05batch\"*\n" +
+	"\x14CompleteBatchRequest\x12\x12\n" +
+	"\x04date\x18\x01 \x01(\tR\x04date\"\x93\x01\n" +
+	"\rIngredientUse\x12#\n" +
+	"\ringredient_id\x18\x01 \x01(\tR\fingredientId\x12'\n" +
+	"\x0fingredient_name\x18\x02 \x01(\tR\x0eingredientName\x12\x1a\n" +
+	"\bconsumed\x18\x03 \x01(\x03R\bconsumed\x12\x18\n" +
+	"\amissing\x18\x04 \x01(\x03R\amissing\"\x95\x01\n" +
+	"\x15CompleteBatchResponse\x12=\n" +
+	"\x05batch\x18\x01 \x01(\v2'.kuepreorder.aggregation.v1.BatchDetailR\x05batch\x12=\n" +
+	"\x04uses\x18\x02 \x03(\v2).kuepreorder.aggregation.v1.IngredientUseR\x04uses*\x92\x01\n" +
 	"\vBatchStatus\x12\x1c\n" +
 	"\x18BATCH_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11BATCH_STATUS_OPEN\x10\x01\x12\x17\n" +
@@ -980,11 +1158,12 @@ const file_kuepreorder_aggregation_v1_batches_proto_rawDesc = "" +
 	"\x17LINE_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12LINE_STATUS_NEEDED\x10\x01\x12\x17\n" +
 	"\x13LINE_STATUS_ORDERED\x10\x02\x12\x18\n" +
-	"\x14LINE_STATUS_RECEIVED\x10\x032\xed\x02\n" +
+	"\x14LINE_STATUS_RECEIVED\x10\x032\xe3\x03\n" +
 	"\fBatchService\x12s\n" +
 	"\vListBatches\x12..kuepreorder.aggregation.v1.ListBatchesRequest\x1a/.kuepreorder.aggregation.v1.ListBatchesResponse\"\x03\x90\x02\x01\x12j\n" +
 	"\bGetBatch\x12+.kuepreorder.aggregation.v1.GetBatchRequest\x1a,.kuepreorder.aggregation.v1.GetBatchResponse\"\x03\x90\x02\x01\x12|\n" +
-	"\x0eRecomputeBatch\x121.kuepreorder.aggregation.v1.RecomputeBatchRequest\x1a2.kuepreorder.aggregation.v1.RecomputeBatchResponse\"\x03\x90\x02\x02B\x8f\x02\n" +
+	"\x0eRecomputeBatch\x121.kuepreorder.aggregation.v1.RecomputeBatchRequest\x1a2.kuepreorder.aggregation.v1.RecomputeBatchResponse\"\x03\x90\x02\x02\x12t\n" +
+	"\rCompleteBatch\x120.kuepreorder.aggregation.v1.CompleteBatchRequest\x1a1.kuepreorder.aggregation.v1.CompleteBatchResponseB\x8f\x02\n" +
 	"\x1ecom.kuepreorder.aggregation.v1B\fBatchesProtoP\x01ZUgithub.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/aggregation/v1;aggregationv1\xa2\x02\x03KAX\xaa\x02\x1aKuepreorder.Aggregation.V1\xca\x02\x1aKuepreorder\\Aggregation\\V1\xe2\x02&Kuepreorder\\Aggregation\\V1\\GPBMetadata\xea\x02\x1cKuepreorder::Aggregation::V1b\x06proto3"
 
 var (
@@ -1000,7 +1179,7 @@ func file_kuepreorder_aggregation_v1_batches_proto_rawDescGZIP() []byte {
 }
 
 var file_kuepreorder_aggregation_v1_batches_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kuepreorder_aggregation_v1_batches_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_kuepreorder_aggregation_v1_batches_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kuepreorder_aggregation_v1_batches_proto_goTypes = []any{
 	(BatchStatus)(0),               // 0: kuepreorder.aggregation.v1.BatchStatus
 	(LineStatus)(0),                // 1: kuepreorder.aggregation.v1.LineStatus
@@ -1016,14 +1195,17 @@ var file_kuepreorder_aggregation_v1_batches_proto_goTypes = []any{
 	(*GetBatchResponse)(nil),       // 11: kuepreorder.aggregation.v1.GetBatchResponse
 	(*RecomputeBatchRequest)(nil),  // 12: kuepreorder.aggregation.v1.RecomputeBatchRequest
 	(*RecomputeBatchResponse)(nil), // 13: kuepreorder.aggregation.v1.RecomputeBatchResponse
-	(*timestamppb.Timestamp)(nil),  // 14: google.protobuf.Timestamp
-	(v1.BaseUnit)(0),               // 15: kuepreorder.catalog.v1.BaseUnit
+	(*CompleteBatchRequest)(nil),   // 14: kuepreorder.aggregation.v1.CompleteBatchRequest
+	(*IngredientUse)(nil),          // 15: kuepreorder.aggregation.v1.IngredientUse
+	(*CompleteBatchResponse)(nil),  // 16: kuepreorder.aggregation.v1.CompleteBatchResponse
+	(*timestamppb.Timestamp)(nil),  // 17: google.protobuf.Timestamp
+	(v1.BaseUnit)(0),               // 18: kuepreorder.catalog.v1.BaseUnit
 }
 var file_kuepreorder_aggregation_v1_batches_proto_depIdxs = []int32{
 	0,  // 0: kuepreorder.aggregation.v1.Batch.status:type_name -> kuepreorder.aggregation.v1.BatchStatus
-	14, // 1: kuepreorder.aggregation.v1.Batch.computed_at:type_name -> google.protobuf.Timestamp
+	17, // 1: kuepreorder.aggregation.v1.Batch.computed_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: kuepreorder.aggregation.v1.BatchSummary.batch:type_name -> kuepreorder.aggregation.v1.Batch
-	15, // 3: kuepreorder.aggregation.v1.ShoppingLine.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
+	18, // 3: kuepreorder.aggregation.v1.ShoppingLine.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
 	5,  // 4: kuepreorder.aggregation.v1.ShoppingLine.pack:type_name -> kuepreorder.aggregation.v1.Pack
 	1,  // 5: kuepreorder.aggregation.v1.ShoppingLine.status:type_name -> kuepreorder.aggregation.v1.LineStatus
 	3,  // 6: kuepreorder.aggregation.v1.ListBatchesResponse.batches:type_name -> kuepreorder.aggregation.v1.BatchSummary
@@ -1032,17 +1214,21 @@ var file_kuepreorder_aggregation_v1_batches_proto_depIdxs = []int32{
 	6,  // 9: kuepreorder.aggregation.v1.BatchDetail.lines:type_name -> kuepreorder.aggregation.v1.ShoppingLine
 	10, // 10: kuepreorder.aggregation.v1.GetBatchResponse.batch:type_name -> kuepreorder.aggregation.v1.BatchDetail
 	10, // 11: kuepreorder.aggregation.v1.RecomputeBatchResponse.batch:type_name -> kuepreorder.aggregation.v1.BatchDetail
-	7,  // 12: kuepreorder.aggregation.v1.BatchService.ListBatches:input_type -> kuepreorder.aggregation.v1.ListBatchesRequest
-	9,  // 13: kuepreorder.aggregation.v1.BatchService.GetBatch:input_type -> kuepreorder.aggregation.v1.GetBatchRequest
-	12, // 14: kuepreorder.aggregation.v1.BatchService.RecomputeBatch:input_type -> kuepreorder.aggregation.v1.RecomputeBatchRequest
-	8,  // 15: kuepreorder.aggregation.v1.BatchService.ListBatches:output_type -> kuepreorder.aggregation.v1.ListBatchesResponse
-	11, // 16: kuepreorder.aggregation.v1.BatchService.GetBatch:output_type -> kuepreorder.aggregation.v1.GetBatchResponse
-	13, // 17: kuepreorder.aggregation.v1.BatchService.RecomputeBatch:output_type -> kuepreorder.aggregation.v1.RecomputeBatchResponse
-	15, // [15:18] is the sub-list for method output_type
-	12, // [12:15] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	10, // 12: kuepreorder.aggregation.v1.CompleteBatchResponse.batch:type_name -> kuepreorder.aggregation.v1.BatchDetail
+	15, // 13: kuepreorder.aggregation.v1.CompleteBatchResponse.uses:type_name -> kuepreorder.aggregation.v1.IngredientUse
+	7,  // 14: kuepreorder.aggregation.v1.BatchService.ListBatches:input_type -> kuepreorder.aggregation.v1.ListBatchesRequest
+	9,  // 15: kuepreorder.aggregation.v1.BatchService.GetBatch:input_type -> kuepreorder.aggregation.v1.GetBatchRequest
+	12, // 16: kuepreorder.aggregation.v1.BatchService.RecomputeBatch:input_type -> kuepreorder.aggregation.v1.RecomputeBatchRequest
+	14, // 17: kuepreorder.aggregation.v1.BatchService.CompleteBatch:input_type -> kuepreorder.aggregation.v1.CompleteBatchRequest
+	8,  // 18: kuepreorder.aggregation.v1.BatchService.ListBatches:output_type -> kuepreorder.aggregation.v1.ListBatchesResponse
+	11, // 19: kuepreorder.aggregation.v1.BatchService.GetBatch:output_type -> kuepreorder.aggregation.v1.GetBatchResponse
+	13, // 20: kuepreorder.aggregation.v1.BatchService.RecomputeBatch:output_type -> kuepreorder.aggregation.v1.RecomputeBatchResponse
+	16, // 21: kuepreorder.aggregation.v1.BatchService.CompleteBatch:output_type -> kuepreorder.aggregation.v1.CompleteBatchResponse
+	18, // [18:22] is the sub-list for method output_type
+	14, // [14:18] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_kuepreorder_aggregation_v1_batches_proto_init() }
@@ -1058,7 +1244,7 @@ func file_kuepreorder_aggregation_v1_batches_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kuepreorder_aggregation_v1_batches_proto_rawDesc), len(file_kuepreorder_aggregation_v1_batches_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

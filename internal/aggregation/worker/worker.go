@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 
 	"github.com/Zefanrakh/kue-preorder/internal/aggregation"
+	"github.com/Zefanrakh/kue-preorder/internal/identity"
+	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/jobs"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
@@ -54,16 +57,48 @@ func (RecomputeUpcomingArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{MaxAttempts: recomputeAttempts}
 }
 
+// LockBatchesArgs asks for a sweep of batches past their shopping cutoff.
+type LockBatchesArgs struct{}
+
+// Kind implements river.JobArgs.
+func (LockBatchesArgs) Kind() string { return "lock-batches" }
+
+// MarkInProductionArgs asks for a batch to be marked in production.
+type MarkInProductionArgs struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Date     string    `json:"date"`
+}
+
+// Kind implements river.JobArgs.
+func (MarkInProductionArgs) Kind() string { return "mark-batch-in-production" }
+
+// SweepEvery is how often the worker looks for batches past their cutoff.
+const SweepEvery = time.Minute
+
 // Deps are what the workers work with.
 type Deps struct {
 	Engine *aggregation.Engine
-	Logger *slog.Logger
+	// Tenants picks the tenant a sweep works on.
+	Tenants identity.TenantResolver
+	Logger  *slog.Logger
 }
 
 // Register adds the aggregation module's workers.
 func Register(workers *river.Workers, d Deps) {
 	river.AddWorker(workers, &recomputeWorker{deps: d})
 	river.AddWorker(workers, &upcomingWorker{deps: d})
+	river.AddWorker(workers, &lockWorker{deps: d})
+	river.AddWorker(workers, &inProductionWorker{deps: d})
+}
+
+// Periodic lists the sweep that locks batches at their cutoff (§15): once
+// a minute and at start; a failed sweep waits for the next one.
+func Periodic() []*river.PeriodicJob {
+	opts := &river.InsertOpts{MaxAttempts: 1, UniqueOpts: river.UniqueOpts{ByPeriod: SweepEvery}}
+	return []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(SweepEvery), func() (river.JobArgs, *river.InsertOpts) { return LockBatchesArgs{}, opts },
+			&river.PeriodicJobOpts{RunOnStart: true}),
+	}
 }
 
 // Subscriptions are the outbox events that change a batch: an order that
@@ -75,7 +110,27 @@ func Subscriptions() map[string][]jobs.Subscriber {
 		"order.cancelled":         {recomputeBatch},
 		"catalog.recipe_changed":  {recomputeUpcoming},
 		"inventory.stock_changed": {recomputeUpcoming},
+		"order.status_changed":    {markInProduction},
 	}
+}
+
+// markInProduction starts a job only for an order moved into production:
+// the first one marks its batch (decided 2026-09-29).
+func markInProduction(e outbox.Stored) (river.JobArgs, error) {
+	var p struct {
+		To             string `json:"to"`
+		ProductionDate string `json:"production_date"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil {
+		return nil, fmt.Errorf("read event %d: %w", e.Seq, err)
+	}
+	if p.To != string(orders.InProduction) {
+		return nil, nil
+	}
+	if _, err := clock.ParseDate(p.ProductionDate); err != nil {
+		return nil, fmt.Errorf("event %d has no production_date: %w", e.Seq, err)
+	}
+	return MarkInProductionArgs{TenantID: e.TenantID, Date: p.ProductionDate}, nil
 }
 
 func recomputeBatch(e outbox.Stored) (river.JobArgs, error) {
@@ -137,4 +192,30 @@ func cancelIfRecipe(ctx context.Context, logger *slog.Logger, err error) error {
 	logger.ErrorContext(ctx, "batch cannot be computed: broken recipe",
 		slog.String("component_id", re.ComponentID.String()), slog.String("ingredient_id", re.IngredientID.String()), slog.Any("error", err))
 	return river.JobCancel(err)
+}
+
+type lockWorker struct {
+	river.WorkerDefaults[LockBatchesArgs]
+	deps Deps
+}
+
+func (w *lockWorker) Work(ctx context.Context, _ *river.Job[LockBatchesArgs]) error {
+	n, err := w.deps.Engine.LockDue(ctx, w.deps.Tenants.TenantID(ctx))
+	if n > 0 {
+		w.deps.Logger.InfoContext(ctx, "batches locked at their shopping cutoff", slog.Int("batches", n))
+	}
+	return err
+}
+
+type inProductionWorker struct {
+	river.WorkerDefaults[MarkInProductionArgs]
+	deps Deps
+}
+
+func (w *inProductionWorker) Work(ctx context.Context, job *river.Job[MarkInProductionArgs]) error {
+	date, err := clock.ParseDate(job.Args.Date)
+	if err != nil {
+		return river.JobCancel(fmt.Errorf("bad date %q: %w", job.Args.Date, err))
+	}
+	return w.deps.Engine.MarkInProduction(ctx, job.Args.TenantID, date)
 }

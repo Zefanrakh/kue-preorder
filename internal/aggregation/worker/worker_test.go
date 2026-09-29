@@ -39,3 +39,25 @@ func TestSubscriptions(t *testing.T) {
 		t.Error("order.expired recomputes a batch, but an unpaid order never counted")
 	}
 }
+
+// Only an order moved into production marks its batch; other steps start
+// nothing.
+func TestSubscriptions_InProduction(t *testing.T) {
+	tenant := uuid.New()
+	sub := worker.Subscriptions()["order.status_changed"][0]
+	event := func(to string) outbox.Stored {
+		payload, _ := json.Marshal(map[string]any{"from": "confirmed", "to": to, "production_date": "2026-10-08"})
+		return outbox.Stored{Seq: 5, TenantID: tenant, Type: "order.status_changed", Payload: payload}
+	}
+
+	args, err := sub(event("in_production"))
+	if got, ok := args.(worker.MarkInProductionArgs); err != nil || !ok || got.TenantID != tenant || got.Date != "2026-10-08" {
+		t.Errorf("in_production started %#v, %v; want the batch of 8 October marked", args, err)
+	}
+	if args, err := sub(event("ready")); err != nil || args != nil {
+		t.Errorf("ready started %#v, %v; want nothing", args, err)
+	}
+	if _, err := sub(outbox.Stored{Seq: 6, Payload: json.RawMessage(`{"to":"in_production"}`)}); err == nil {
+		t.Error("an event without a date started a job")
+	}
+}

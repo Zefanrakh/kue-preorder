@@ -12,12 +12,15 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/catalog"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/apperr"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/audit"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
+	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 )
 
 // Orders is what aggregation reads from orders; orders.Reader implements it.
 type Orders interface {
 	CommittedItems(ctx context.Context, tenantID uuid.UUID, date clock.Date) ([]orders.CommittedItem, error)
+	BatchCutoffs(ctx context.Context, tenantID uuid.UUID, from, to clock.Date) (map[clock.Date]time.Time, error)
 }
 
 // Catalog is what aggregation reads from the catalog; catalog.Reader
@@ -97,6 +100,15 @@ type Repository interface {
 	// MarkFailed records why the batch of date could not be computed,
 	// creating it when needed.
 	MarkFailed(ctx context.Context, tenantID uuid.UUID, date clock.Date, reason string, at time.Time) error
+	// SetStatus moves the batch of date to s, only from one of from; it
+	// reports whether it did.
+	SetStatus(ctx context.Context, tenantID uuid.UUID, date clock.Date, from []BatchStatus, s BatchStatus, at time.Time) (bool, error)
+	// OpenDates returns the dates whose batch is open, oldest first.
+	OpenDates(ctx context.Context, tenantID uuid.UUID) ([]clock.Date, error)
+	// Audit and Publish write a staff action's audit entry and outbox
+	// events, in the transaction making the change.
+	Audit(ctx context.Context, e audit.Entry) error
+	Publish(ctx context.Context, e outbox.Event) error
 }
 
 // EngineDeps are what Engine works with.

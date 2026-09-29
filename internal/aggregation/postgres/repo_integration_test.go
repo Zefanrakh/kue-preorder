@@ -216,3 +216,34 @@ func TestClaimedBefore(t *testing.T) {
 		t.Errorf("ClaimedBefore(8th) = %v, %v; want the 6th's 200 g only (the 5th is done, the 8th is not before)", got, err)
 	}
 }
+
+// A batch moves on only from the statuses given; open batches list oldest
+// first.
+func TestSetStatus(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	compute(t, d, repo, tenant, day(8), nil, nil)
+	compute(t, d, repo, tenant, day(7), nil, nil)
+
+	if dates, err := repo.OpenDates(ctx, tenant); err != nil || len(dates) != 2 || dates[0] != day(7) {
+		t.Fatalf("OpenDates() = %v, %v; want the 7th then the 8th", dates, err)
+	}
+	moved, err := repo.SetStatus(ctx, tenant, day(7), []aggregation.BatchStatus{aggregation.BatchOpen}, aggregation.BatchLocked, now)
+	if err != nil || !moved {
+		t.Fatalf("SetStatus(open → locked) = %t, %v", moved, err)
+	}
+	if moved, _ := repo.SetStatus(ctx, tenant, day(7), []aggregation.BatchStatus{aggregation.BatchOpen}, aggregation.BatchLocked, now); moved {
+		t.Error("a locked batch was locked again")
+	}
+	if moved, _ := repo.SetStatus(ctx, tenant, day(9), []aggregation.BatchStatus{aggregation.BatchOpen}, aggregation.BatchLocked, now); moved {
+		t.Error("a batch that does not exist moved")
+	}
+	if b, _ := repo.GetBatch(ctx, tenant, day(7)); b.Status != aggregation.BatchLocked {
+		t.Errorf("status = %s, want locked", b.Status)
+	}
+	if dates, _ := repo.OpenDates(ctx, tenant); len(dates) != 1 || dates[0] != day(8) {
+		t.Errorf("OpenDates() = %v, want the 8th only", dates)
+	}
+}

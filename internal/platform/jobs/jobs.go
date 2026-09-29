@@ -106,7 +106,8 @@ func (o *observe) Work(ctx context.Context, job *rivertype.JobRow, doInner func(
 	return err
 }
 
-// Subscriber turns an outbox event into the job it starts.
+// Subscriber turns an outbox event into the job it starts; nil args start
+// nothing, for an event the subscriber cares about only sometimes.
 type Subscriber func(e outbox.Stored) (river.JobArgs, error)
 
 // Dispatcher returns the outbox.Dispatch that inserts the jobs an event's
@@ -121,6 +122,9 @@ func Dispatcher(client *river.Client[pgx.Tx], subs map[string][]Subscriber, logg
 			args, err := sub(e)
 			if err != nil {
 				logger.ErrorContext(ctx, "outbox event has no job", slog.String("type", e.Type), slog.Int64("seq", e.Seq), slog.Any("error", err))
+				continue
+			}
+			if args == nil {
 				continue
 			}
 			params = append(params, river.InsertManyParams{Args: args})

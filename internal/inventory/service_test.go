@@ -466,3 +466,75 @@ func TestProperty_StockIsTheLedger(t *testing.T) {
 		}
 	})
 }
+
+// A finished batch takes its flour from the oldest lot first, empties the
+// lots it uses up, and reports what the ledger lacked instead of going
+// below zero; expired lots are never used.
+func TestConsumer_FIFO(t *testing.T) {
+	p := newPantry()
+	old, fresh := p.receive(t, p.flour, 300), p.receive(t, p.flour, 1000)
+	eggs := p.receive(t, p.egg, 4)
+	p.clock.Advance(15 * 24 * time.Hour) // the eggs expire; the flour keeps
+	if _, err := p.reader.ExpireLots(t.Context(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	batch, cook := uuid.New(), uuid.New()
+	events := len(p.repo.events)
+
+	used, err := inventory.NewConsumer(p.repo).Consume(t.Context(), tenant, batch,
+		[]inventory.Use{{IngredientID: p.flour, Qty: 800}, {IngredientID: p.egg, Qty: 6}}, cook, p.clock.Now())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uuid.UUID]inventory.Used{}
+	for _, u := range used {
+		got[u.IngredientID] = u
+	}
+	if f := got[p.flour]; f.Consumed != 800 || f.Missing != 0 {
+		t.Errorf("flour = %+v, want 800 taken", f)
+	}
+	if e := got[p.egg]; e.Consumed != 0 || e.Missing != 6 {
+		t.Errorf("eggs = %+v, want none taken from the expired lot and 6 missing", e)
+	}
+	if l, _ := p.repo.GetLot(t.Context(), tenant, old.ID); l.Balance != 0 || l.Status != inventory.LotExhausted {
+		t.Errorf("oldest flour = %+v, want emptied first", l)
+	}
+	if l, _ := p.repo.GetLot(t.Context(), tenant, fresh.ID); l.Balance != 500 {
+		t.Errorf("newer flour = %d, want 500 left", l.Balance)
+	}
+	if l, _ := p.repo.GetLot(t.Context(), tenant, eggs.ID); l.Balance != 4 {
+		t.Errorf("expired eggs = %d, want untouched", l.Balance)
+	}
+	for _, m := range p.repo.movements[len(p.repo.movements)-2:] {
+		if m.Kind != inventory.MoveConsume || m.BatchID == nil || *m.BatchID != batch || m.ActorID != cook {
+			t.Errorf("movement = %+v, want a consume for the batch by the cook", m)
+		}
+	}
+	if len(p.repo.events) != events+1 || p.repo.events[len(p.repo.events)-1].Type != "inventory.stock_changed" {
+		t.Errorf("events = %+v, want one stock change", p.repo.events[events:])
+	}
+}
+
+// Ingredients lock in id order whatever order the uses come in, so two
+// consumptions never wait on each other in a circle.
+func TestConsumer_LocksInIDOrder(t *testing.T) {
+	p := newPantry()
+	p.receive(t, p.flour, 100)
+	p.receive(t, p.egg, 10)
+	p.repo.locks = nil
+
+	_, err := inventory.NewConsumer(p.repo).Consume(t.Context(), tenant, uuid.New(),
+		[]inventory.Use{{IngredientID: p.egg, Qty: 1}, {IngredientID: p.flour, Qty: 1}}, uuid.New(), p.clock.Now())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []uuid.UUID{p.flour, p.egg}
+	if slices.Compare(p.egg[:], p.flour[:]) < 0 {
+		want = []uuid.UUID{p.egg, p.flour}
+	}
+	if !slices.Equal(p.repo.locks, want) {
+		t.Errorf("locks = %v, want %v", p.repo.locks, want)
+	}
+}

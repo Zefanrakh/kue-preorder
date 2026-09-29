@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kuepreorder/aggregation/v1/batches.proto.
  */
 export const file_kuepreorder_aggregation_v1_batches: GenFile = /*@__PURE__*/
-  fileDesc("CihrdWVwcmVvcmRlci9hZ2dyZWdhdGlvbi92MS9iYXRjaGVzLnByb3RvEhprdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MSKOAQoFQmF0Y2gSDAoEZGF0ZRgBIAEoCRI3CgZzdGF0dXMYAiABKA4yJy5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaFN0YXR1cxIvCgtjb21wdXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDQoFZXJyb3IYBCABKAkiaAoMQmF0Y2hTdW1tYXJ5EjAKBWJhdGNoGAEgASgLMiEua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQmF0Y2gSFAoMbGluZXNfdG9fYnV5GAIgASgFEhAKCGNvc3RfaWRyGAMgASgDIlcKDkNvbXBvbmVudFRvdGFsEhQKDGNvbXBvbmVudF9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhIKCnVuaXRfbGFiZWwYAyABKAkSDQoFdW5pdHMYBCABKAEidAoEUGFjaxITCgtzdXBwbGllcl9pZBgBIAEoCRIVCg1zdXBwbGllcl9uYW1lGAIgASgJEgwKBHNpemUYAyABKAESDAoEdW5pdBgEIAEoCRIWCglwcmljZV9pZHIYBSABKANIAIgBAUIMCgpfcHJpY2VfaWRyItUCCgxTaG9wcGluZ0xpbmUSFQoNaW5ncmVkaWVudF9pZBgBIAEoCRIXCg9pbmdyZWRpZW50X25hbWUYAiABKAkSMwoJYmFzZV91bml0GAMgASgOMiAua3VlcHJlb3JkZXIuY2F0YWxvZy52MS5CYXNlVW5pdBIOCgZuZWVkZWQYBCABKAMSFAoMdXNhYmxlX3N0b2NrGAUgASgDEg8KB29yZGVyZWQYBiABKAMSDgoGdG9fYnV5GAcgASgDEi4KBHBhY2sYCCABKAsyIC5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5QYWNrEg0KBXBhY2tzGAkgASgDEhUKCGNvc3RfaWRyGAogASgDSACIAQESNgoGc3RhdHVzGAsgASgOMiYua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuTGluZVN0YXR1c0ILCglfY29zdF9pZHIiOAoSTGlzdEJhdGNoZXNSZXF1ZXN0EhEKCWZyb21fZGF0ZRgBIAEoCRIPCgd0b19kYXRlGAIgASgJIlAKE0xpc3RCYXRjaGVzUmVzcG9uc2USOQoHYmF0Y2hlcxgBIAMoCzIoLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkJhdGNoU3VtbWFyeSIfCg9HZXRCYXRjaFJlcXVlc3QSDAoEZGF0ZRgBIAEoCSLcAQoLQmF0Y2hEZXRhaWwSMAoFYmF0Y2gYASABKAsyIS5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaBI+Cgpjb21wb25lbnRzGAIgAygLMioua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQ29tcG9uZW50VG90YWwSNwoFbGluZXMYAyADKAsyKC5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5TaG9wcGluZ0xpbmUSEAoIY29zdF9pZHIYBCABKAMSEAoIdW5wcmljZWQYBSABKAUiSgoQR2V0QmF0Y2hSZXNwb25zZRI2CgViYXRjaBgBIAEoCzInLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkJhdGNoRGV0YWlsIiUKFVJlY29tcHV0ZUJhdGNoUmVxdWVzdBIMCgRkYXRlGAEgASgJIlAKFlJlY29tcHV0ZUJhdGNoUmVzcG9uc2USNgoFYmF0Y2gYASABKAsyJy5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaERldGFpbCqSAQoLQmF0Y2hTdGF0dXMSHAoYQkFUQ0hfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFQoRQkFUQ0hfU1RBVFVTX09QRU4QARIXChNCQVRDSF9TVEFUVVNfTE9DS0VEEAISHgoaQkFUQ0hfU1RBVFVTX0lOX1BST0RVQ1RJT04QAxIVChFCQVRDSF9TVEFUVVNfRE9ORRAEKnQKCkxpbmVTdGF0dXMSGwoXTElORV9TVEFUVVNfVU5TUEVDSUZJRUQQABIWChJMSU5FX1NUQVRVU19ORUVERUQQARIXChNMSU5FX1NUQVRVU19PUkRFUkVEEAISGAoUTElORV9TVEFUVVNfUkVDRUlWRUQQAzLtAgoMQmF0Y2hTZXJ2aWNlEnMKC0xpc3RCYXRjaGVzEi4ua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuTGlzdEJhdGNoZXNSZXF1ZXN0Gi8ua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuTGlzdEJhdGNoZXNSZXNwb25zZSIDkAIBEmoKCEdldEJhdGNoEisua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuR2V0QmF0Y2hSZXF1ZXN0Giwua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuR2V0QmF0Y2hSZXNwb25zZSIDkAIBEnwKDlJlY29tcHV0ZUJhdGNoEjEua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuUmVjb21wdXRlQmF0Y2hSZXF1ZXN0GjIua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuUmVjb21wdXRlQmF0Y2hSZXNwb25zZSIDkAICQo8CCh5jb20ua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjFCDEJhdGNoZXNQcm90b1ABWlVnaXRodWIuY29tL1plZmFucmFraC9rdWUtcHJlb3JkZXIvYXBpL2dlbi9nby9rdWVwcmVvcmRlci9hZ2dyZWdhdGlvbi92MTthZ2dyZWdhdGlvbnYxogIDS0FYqgIaS3VlcHJlb3JkZXIuQWdncmVnYXRpb24uVjHKAhpLdWVwcmVvcmRlclxBZ2dyZWdhdGlvblxWMeICJkt1ZXByZW9yZGVyXEFnZ3JlZ2F0aW9uXFYxXEdQQk1ldGFkYXRh6gIcS3VlcHJlb3JkZXI6OkFnZ3JlZ2F0aW9uOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp, file_kuepreorder_catalog_v1_catalog]);
+  fileDesc("CihrdWVwcmVvcmRlci9hZ2dyZWdhdGlvbi92MS9iYXRjaGVzLnByb3RvEhprdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MSKOAQoFQmF0Y2gSDAoEZGF0ZRgBIAEoCRI3CgZzdGF0dXMYAiABKA4yJy5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaFN0YXR1cxIvCgtjb21wdXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDQoFZXJyb3IYBCABKAkiaAoMQmF0Y2hTdW1tYXJ5EjAKBWJhdGNoGAEgASgLMiEua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQmF0Y2gSFAoMbGluZXNfdG9fYnV5GAIgASgFEhAKCGNvc3RfaWRyGAMgASgDIlcKDkNvbXBvbmVudFRvdGFsEhQKDGNvbXBvbmVudF9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhIKCnVuaXRfbGFiZWwYAyABKAkSDQoFdW5pdHMYBCABKAEidAoEUGFjaxITCgtzdXBwbGllcl9pZBgBIAEoCRIVCg1zdXBwbGllcl9uYW1lGAIgASgJEgwKBHNpemUYAyABKAESDAoEdW5pdBgEIAEoCRIWCglwcmljZV9pZHIYBSABKANIAIgBAUIMCgpfcHJpY2VfaWRyItUCCgxTaG9wcGluZ0xpbmUSFQoNaW5ncmVkaWVudF9pZBgBIAEoCRIXCg9pbmdyZWRpZW50X25hbWUYAiABKAkSMwoJYmFzZV91bml0GAMgASgOMiAua3VlcHJlb3JkZXIuY2F0YWxvZy52MS5CYXNlVW5pdBIOCgZuZWVkZWQYBCABKAMSFAoMdXNhYmxlX3N0b2NrGAUgASgDEg8KB29yZGVyZWQYBiABKAMSDgoGdG9fYnV5GAcgASgDEi4KBHBhY2sYCCABKAsyIC5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5QYWNrEg0KBXBhY2tzGAkgASgDEhUKCGNvc3RfaWRyGAogASgDSACIAQESNgoGc3RhdHVzGAsgASgOMiYua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuTGluZVN0YXR1c0ILCglfY29zdF9pZHIiOAoSTGlzdEJhdGNoZXNSZXF1ZXN0EhEKCWZyb21fZGF0ZRgBIAEoCRIPCgd0b19kYXRlGAIgASgJIlAKE0xpc3RCYXRjaGVzUmVzcG9uc2USOQoHYmF0Y2hlcxgBIAMoCzIoLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkJhdGNoU3VtbWFyeSIfCg9HZXRCYXRjaFJlcXVlc3QSDAoEZGF0ZRgBIAEoCSLcAQoLQmF0Y2hEZXRhaWwSMAoFYmF0Y2gYASABKAsyIS5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaBI+Cgpjb21wb25lbnRzGAIgAygLMioua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQ29tcG9uZW50VG90YWwSNwoFbGluZXMYAyADKAsyKC5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5TaG9wcGluZ0xpbmUSEAoIY29zdF9pZHIYBCABKAMSEAoIdW5wcmljZWQYBSABKAUiSgoQR2V0QmF0Y2hSZXNwb25zZRI2CgViYXRjaBgBIAEoCzInLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkJhdGNoRGV0YWlsIiUKFVJlY29tcHV0ZUJhdGNoUmVxdWVzdBIMCgRkYXRlGAEgASgJIlAKFlJlY29tcHV0ZUJhdGNoUmVzcG9uc2USNgoFYmF0Y2gYASABKAsyJy5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5CYXRjaERldGFpbCIkChRDb21wbGV0ZUJhdGNoUmVxdWVzdBIMCgRkYXRlGAEgASgJImIKDUluZ3JlZGllbnRVc2USFQoNaW5ncmVkaWVudF9pZBgBIAEoCRIXCg9pbmdyZWRpZW50X25hbWUYAiABKAkSEAoIY29uc3VtZWQYAyABKAMSDwoHbWlzc2luZxgEIAEoAyKIAQoVQ29tcGxldGVCYXRjaFJlc3BvbnNlEjYKBWJhdGNoGAEgASgLMicua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQmF0Y2hEZXRhaWwSNwoEdXNlcxgCIAMoCzIpLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkluZ3JlZGllbnRVc2UqkgEKC0JhdGNoU3RhdHVzEhwKGEJBVENIX1NUQVRVU19VTlNQRUNJRklFRBAAEhUKEUJBVENIX1NUQVRVU19PUEVOEAESFwoTQkFUQ0hfU1RBVFVTX0xPQ0tFRBACEh4KGkJBVENIX1NUQVRVU19JTl9QUk9EVUNUSU9OEAMSFQoRQkFUQ0hfU1RBVFVTX0RPTkUQBCp0CgpMaW5lU3RhdHVzEhsKF0xJTkVfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFgoSTElORV9TVEFUVVNfTkVFREVEEAESFwoTTElORV9TVEFUVVNfT1JERVJFRBACEhgKFExJTkVfU1RBVFVTX1JFQ0VJVkVEEAMy4wMKDEJhdGNoU2VydmljZRJzCgtMaXN0QmF0Y2hlcxIuLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkxpc3RCYXRjaGVzUmVxdWVzdBovLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkxpc3RCYXRjaGVzUmVzcG9uc2UiA5ACARJqCghHZXRCYXRjaBIrLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkdldEJhdGNoUmVxdWVzdBosLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLkdldEJhdGNoUmVzcG9uc2UiA5ACARJ8Cg5SZWNvbXB1dGVCYXRjaBIxLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLlJlY29tcHV0ZUJhdGNoUmVxdWVzdBoyLmt1ZXByZW9yZGVyLmFnZ3JlZ2F0aW9uLnYxLlJlY29tcHV0ZUJhdGNoUmVzcG9uc2UiA5ACAhJ0Cg1Db21wbGV0ZUJhdGNoEjAua3VlcHJlb3JkZXIuYWdncmVnYXRpb24udjEuQ29tcGxldGVCYXRjaFJlcXVlc3QaMS5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MS5Db21wbGV0ZUJhdGNoUmVzcG9uc2VCjwIKHmNvbS5rdWVwcmVvcmRlci5hZ2dyZWdhdGlvbi52MUIMQmF0Y2hlc1Byb3RvUAFaVWdpdGh1Yi5jb20vWmVmYW5yYWtoL2t1ZS1wcmVvcmRlci9hcGkvZ2VuL2dvL2t1ZXByZW9yZGVyL2FnZ3JlZ2F0aW9uL3YxO2FnZ3JlZ2F0aW9udjGiAgNLQViqAhpLdWVwcmVvcmRlci5BZ2dyZWdhdGlvbi5WMcoCGkt1ZXByZW9yZGVyXEFnZ3JlZ2F0aW9uXFYx4gImS3VlcHJlb3JkZXJcQWdncmVnYXRpb25cVjFcR1BCTWV0YWRhdGHqAhxLdWVwcmVvcmRlcjo6QWdncmVnYXRpb246OlYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_kuepreorder_catalog_v1_catalog]);
 
 /**
  * @generated from message kuepreorder.aggregation.v1.Batch
@@ -405,6 +405,85 @@ export const RecomputeBatchResponseSchema: GenMessage<RecomputeBatchResponse> = 
   messageDesc(file_kuepreorder_aggregation_v1_batches, 11);
 
 /**
+ * @generated from message kuepreorder.aggregation.v1.CompleteBatchRequest
+ */
+export type CompleteBatchRequest = Message<"kuepreorder.aggregation.v1.CompleteBatchRequest"> & {
+  /**
+   * @generated from field: string date = 1;
+   */
+  date: string;
+};
+
+/**
+ * Describes the message kuepreorder.aggregation.v1.CompleteBatchRequest.
+ * Use `create(CompleteBatchRequestSchema)` to create a new message.
+ */
+export const CompleteBatchRequestSchema: GenMessage<CompleteBatchRequest> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_aggregation_v1_batches, 12);
+
+/**
+ * IngredientUse is what a finished batch took of one ingredient.
+ *
+ * @generated from message kuepreorder.aggregation.v1.IngredientUse
+ */
+export type IngredientUse = Message<"kuepreorder.aggregation.v1.IngredientUse"> & {
+  /**
+   * @generated from field: string ingredient_id = 1;
+   */
+  ingredientId: string;
+
+  /**
+   * @generated from field: string ingredient_name = 2;
+   */
+  ingredientName: string;
+
+  /**
+   * Taken out of the stock.
+   *
+   * @generated from field: int64 consumed = 3;
+   */
+  consumed: bigint;
+
+  /**
+   * Used but not in the stock ledger, such as a delivery nobody recorded.
+   *
+   * @generated from field: int64 missing = 4;
+   */
+  missing: bigint;
+};
+
+/**
+ * Describes the message kuepreorder.aggregation.v1.IngredientUse.
+ * Use `create(IngredientUseSchema)` to create a new message.
+ */
+export const IngredientUseSchema: GenMessage<IngredientUse> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_aggregation_v1_batches, 13);
+
+/**
+ * @generated from message kuepreorder.aggregation.v1.CompleteBatchResponse
+ */
+export type CompleteBatchResponse = Message<"kuepreorder.aggregation.v1.CompleteBatchResponse"> & {
+  /**
+   * @generated from field: kuepreorder.aggregation.v1.BatchDetail batch = 1;
+   */
+  batch?: BatchDetail | undefined;
+
+  /**
+   * By ingredient name.
+   *
+   * @generated from field: repeated kuepreorder.aggregation.v1.IngredientUse uses = 2;
+   */
+  uses: IngredientUse[];
+};
+
+/**
+ * Describes the message kuepreorder.aggregation.v1.CompleteBatchResponse.
+ * Use `create(CompleteBatchResponseSchema)` to create a new message.
+ */
+export const CompleteBatchResponseSchema: GenMessage<CompleteBatchResponse> = /*@__PURE__*/
+  messageDesc(file_kuepreorder_aggregation_v1_batches, 14);
+
+/**
  * @generated from enum kuepreorder.aggregation.v1.BatchStatus
  */
 export enum BatchStatus {
@@ -522,6 +601,21 @@ export const BatchService: GenService<{
     methodKind: "unary";
     input: typeof RecomputeBatchRequestSchema;
     output: typeof RecomputeBatchResponseSchema;
+  },
+  /**
+   * CompleteBatch closes a day's production ("Produksi selesai"): what the
+   * recipes need comes out of the stock, oldest lot first, and the batch is
+   * done. The stock never goes below zero; what it lacked comes back as
+   * missing, to put right with a stock count. Only on or after the
+   * production day ("not_production_day"), and only once ("batch_done");
+   * there is no undo.
+   *
+   * @generated from rpc kuepreorder.aggregation.v1.BatchService.CompleteBatch
+   */
+  completeBatch: {
+    methodKind: "unary";
+    input: typeof CompleteBatchRequestSchema;
+    output: typeof CompleteBatchResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_kuepreorder_aggregation_v1_batches, 0);

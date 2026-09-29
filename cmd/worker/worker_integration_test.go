@@ -288,3 +288,33 @@ func TestWorker_StockLowersTheShoppingList(t *testing.T) {
 		return err == nil && usable == 60 && toBuy == 40
 	})
 }
+
+// Past its shopping cutoff a batch locks on the worker's sweep; the first
+// order moved into production puts it in production.
+func TestWorker_BatchLocksAndGoesIntoProduction(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := t.Context()
+	o := placed(t, d, wib(5, 10, 0)) // cutoff Wednesday 19.30
+	_, err := d.Pool().Exec(ctx, "update orders set status = 'confirmed', payment_status = 'dp_paid' where id = $1", o.ID)
+	noErr(t, err)
+	_, err = d.Pool().Exec(ctx, "insert into production_batches (tenant_id, batch_date, created_at, updated_at) values ($1, '2026-10-08', now(), now())", dbtest.DefaultTenantID)
+	noErr(t, err)
+	status := func() string {
+		var s string
+		if err := d.Pool().QueryRow(ctx, "select status from production_batches where batch_date = '2026-10-08'").Scan(&s); err != nil {
+			return ""
+		}
+		return s
+	}
+
+	publisher := start(t, d, wib(7, 19, 30)) // the sweep runs at start
+
+	eventually(t, "the batch locked", func() bool { return status() == "locked" })
+	noErr(t, outbox.Append(ctx, d.Pool(), outbox.Event{
+		TenantID: dbtest.DefaultTenantID, Aggregate: "order", Type: "order.status_changed", At: wib(8, 5, 0),
+		Payload: map[string]any{"order_id": o.ID, "code": o.Code, "production_date": "2026-10-08", "from": "confirmed", "to": "in_production"},
+	}))
+	_, err = publisher.PublishBatch(ctx)
+	noErr(t, err)
+	eventually(t, "the batch in production", func() bool { return status() == "in_production" })
+}

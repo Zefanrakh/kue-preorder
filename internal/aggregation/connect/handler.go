@@ -137,3 +137,23 @@ func viewToProto(v aggregation.View) *aggregationv1.BatchDetail {
 	}
 	return out
 }
+
+// CompleteBatch implements aggregationv1connect.BatchServiceHandler.
+func (h *Handler) CompleteBatch(ctx context.Context, req *connect.Request[aggregationv1.CompleteBatchRequest]) (*connect.Response[aggregationv1.CompleteBatchResponse], error) {
+	bad := apperr.Fields{}
+	d := date(bad, "date", req.Msg.GetDate())
+	if err := bad.Err(); err != nil {
+		return nil, rpcerr.Wrap(ctx, h.logger, err, nil)
+	}
+	c, err := h.svc.Complete(ctx, d)
+	if err != nil {
+		return nil, rpcerr.Wrap(ctx, h.logger, err, nil)
+	}
+	out := &aggregationv1.CompleteBatchResponse{Batch: viewToProto(c.View)}
+	for _, u := range c.Used {
+		out.Uses = append(out.Uses, &aggregationv1.IngredientUse{
+			IngredientId: u.IngredientID.String(), IngredientName: u.IngredientName, Consumed: u.Consumed, Missing: u.Missing,
+		})
+	}
+	return connect.NewResponse(out), nil
+}

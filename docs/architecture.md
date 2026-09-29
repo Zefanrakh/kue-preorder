@@ -284,7 +284,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
 | Setelan pembayaran: aturan DP dan tarif biaya admin per metode (`PaymentSettingsService`) | ✅ | ❌ (hanya lihat) | ❌ |
-| Batch dan daftar belanja per tanggal, termasuk "Hitung ulang" (`BatchService`) | ✅ | ✅ | ❌ |
+| Batch dan daftar belanja per tanggal, "Hitung ulang", dan "Produksi selesai" (`BatchService`) | ✅ | ✅ | ❌ |
 | Stok: belanja masuk, cek "masih bagus / buang", stok opname (`InventoryService`) | ✅ | ✅ | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
@@ -491,7 +491,7 @@ order_reschedules (
 
 ```sql
 production_batches ( id, tenant_id, batch_date date,
-                     status text default 'open',   -- 'open' | 'locked' | 'in_production' | 'done'
+                     status text default 'open',   -- 'open' → 'locked' (cutoff) → 'in_production' → 'done' (produksi selesai)
                      computed_at timestamptz null, -- hitungan terakhir yang berhasil
                      error text null,              -- alasan hitungan terakhir gagal; null setelah berhasil
                      unique (tenant_id, batch_date) )
@@ -727,6 +727,23 @@ RecomputeBatch(ctx, tenantID, date):
 - **Job hitungan ulang sengaja tidak dibuat unik.** River akan menolak job baru selama job yang sama masih berjalan, dan job yang sedang berjalan itu bisa belum melihat order terbaru. Hitungan tambahan hanya makan waktu, tidak mengubah hasil.
 - **Tampilan CMS** (`BatchService`): nama bahan dan komponen, kemasan dan supplier-nya, dan perkiraan biaya (jumlah kemasan × harga kemasan). Baris diurutkan per supplier lalu nama bahan, supaya ibu bisa belanja per toko. Bahan tanpa harga kemasan dihitung terpisah (`unpriced`).
 
+**Status batch dan produksi** (sejak M3.3):
+
+| Status | Kapan | Oleh |
+|---|---|---|
+| `open` | Batch dibuat saat order pertama untuk tanggal itu terkonfirmasi | Worker |
+| `locked` | Cutoff belanja batch lewat (cutoff paling awal di antara order-nya, §15) | Job `lock-batches`, tiap menit. Batch tanpa order yang dihitung tidak punya cutoff dan tetap `open` |
+| `in_production` | Order pertama hari itu ditandai "diproduksi" (event `order.status_changed`) | Worker. Tidak ada tombol terpisah (diputuskan 2026-09-29) |
+| `done` | Ibu menekan **"Produksi selesai"** (`CompleteBatch`) | Ibu atau owner |
+
+- Perpindahan status hanya maju dan dijaga di database (`SetBatchStatus` hanya dari status asal yang disebut), jadi langkah yang sudah terjadi tidak mengubah apa pun.
+- `locked` adalah tanda untuk ibu bahwa daftar belanja sudah final. Checkout sudah menolak order baru untuk tanggal itu sejak cutoff (§15). Hitungan ulang tetap berjalan, misalnya untuk DP yang masuk dalam masa jeda, dan selisihnya muncul sebagai tambahan belanja.
+- **"Produksi selesai"** berjalan dalam satu transaksi dengan baris batch dikunci, hanya pada hari produksi atau sesudahnya, dan hanya sekali:
+  1. Kebutuhan resep setiap bahan (`qty_needed`) diambil dari stok (§12).
+  2. Batch menjadi `done`, sehingga jatah stoknya dilepas dan batch berikutnya dihitung ulang dengan sisanya.
+  3. Tercatat di audit (`aggregation.batch.completed`) dan event `batch.completed`.
+- **Tidak ada "batalkan selesai".** Kesalahan diperbaiki lewat stok opname, supaya ledger tetap jujur.
+
 ---
 
 ## 12. Stok dan bahan rusak
@@ -751,7 +768,12 @@ Sisa produksi boleh dihitung untuk pesanan berikutnya, **tapi** kenyataannya bis
 
 **Pergerakan stok:**
 - Bahan dari supplier diterima (checklist `received`) → `receive` dan lot baru dengan `expires_at = received_at + shelf_life_days`.
-- Batch selesai → `consume` sesuai hasil agregasi, diambil dari lot tertua dulu (FIFO).
+- Batch selesai → `consume` sesuai hasil agregasi, diambil dari lot tertua dulu (FIFO). Sejak M3.3 (`inventory.Consumer`):
+  - Hanya lot `available` yang dipakai; lot kedaluwarsa tidak dianggap terpakai.
+  - Lot yang habis ditandai `exhausted`.
+  - Stok tidak pernah negatif. Kebutuhan yang tidak ada di ledger, misalnya belanjaan yang lupa dicatat, dilaporkan sebagai **tidak tercatat** (`missing`), supaya ibu membetulkannya lewat opname.
+  - Bahan dikunci urut ID, supaya dua pemakaian tidak saling menunggu.
+  - Satu event `inventory.stock_changed` ditulis untuk semua bahan yang berkurang.
 - Stok opname sewaktu-waktu → `adjust` dengan alasan.
 
 Semua perubahan lewat ledger, jadi selalu bisa dijawab "kenapa stok tepung sekarang 300 g". Data `waste` juga berguna untuk melihat bahan mana yang sering terbuang, misalnya supaya butter dibeli dalam kemasan lebih kecil.
@@ -1104,7 +1126,8 @@ type Adapter interface {
 |---|---|---|
 | `recompute-batch` (M3.1) | outbox `order.confirmed`, `order.cancelled`; nanti jadwal ulang | Batch itu lalu semua batch sesudahnya, urut tanggal (alokasi stok); baris batch dikunci; resep rusak → dibatalkan + alert |
 | `recompute-upcoming-batches` (M3.1) | outbox `catalog.recipe_changed`, `inventory.stock_changed` (M3.2) | Semua batch dari hari ini yang belum `done`, urut tanggal |
-| `lock-batch` | cutoff belanja per batch | No-op kalau sudah terkunci |
+| `lock-batches` (M3.3) | tiap menit, juga saat start: batch `open` yang cutoff belanjanya lewat | Hanya dari `open`; no-op kalau sudah terkunci |
+| `mark-batch-in-production` (M3.3) | outbox `order.status_changed` ke `in_production` | Hanya dari `open`/`locked`; batch yang sudah maju tetap |
 | `stock-check-reminder` | beberapa jam sebelum cutoff | Satu pengingat per batch |
 | `expire-lots` (M3.2) | harian 00.05 WIB, juga saat start | Tandai lot kedaluwarsa, idempoten |
 | `expire-unpaid-dp` (M2.7a) | tiap menit: tenggat DP + 30 menit lewat | Baris order dikunci dan status dicek ulang |
@@ -1169,6 +1192,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
       - stok opname (`inventory.stock.counted`, total sebelum dan sesudah, alasan wajib).
 
       Cek "masih bagus" tidak diaudit karena tidak mengubah stok; siapa yang mengecek tercatat di `stock_checks`.
+    - **Produksi selesai** (`aggregation.batch.completed`, sejak M3.3): status sebelum dan sesudah, jumlah bahan, total yang dipakai, dan total yang tidak tercatat. Setiap pergerakan `consume` membawa ID batch dan pelakunya.
     - **Setelan pembayaran** (sejak M2.8b): aturan DP (`payments.policy.changed`), tarif metode (`payments.method_fee.changed`), dan reset ke tarif Midtrans (`payments.method_fee.reset`), dengan nilai sebelum dan sesudah serta penanda apakah nilainya bawaan.
   - Jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
 
@@ -1333,6 +1357,8 @@ Diputuskan 2026-09-29:
 | Kapan stok terpakai | Saat ibu menekan "Produksi selesai" untuk batch hari itu; pemakaian dihitung dari hasil agregasi, selisih nyata lewat stok opname (M3.3) |
 | Biaya belanja | Daftar belanja menampilkan perkiraan biaya dari harga kemasan (§11) |
 | Stok opname | Per bahan, bukan per lot: kurang diambil dari lot tertua dulu, lebih ditambahkan ke lot terbaru (§12) |
+| Status "diproduksi" batch | Otomatis saat order pertama hari itu ditandai diproduksi; tidak ada tombol "Mulai produksi" (§11) |
+| "Produksi selesai" | Hanya pada hari produksi atau sesudahnya, sekali, tanpa pembatalan; kesalahan dibetulkan lewat opname (§11) |
 
 ### Masih terbuka
 

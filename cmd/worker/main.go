@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -151,10 +152,11 @@ func wire(database *db.DB, tenants identity.TenantResolver, provider payments.Pr
 
 	workers := river.NewWorkers()
 	ordersworker.Register(workers, ordersworker.Deps{Automation: automation, Tenants: tenants, Logger: logger})
-	aggregationworker.Register(workers, aggregationworker.Deps{Engine: engine, Logger: logger})
+	aggregationworker.Register(workers, aggregationworker.Deps{Engine: engine, Tenants: tenants, Logger: logger})
 	inventoryworker.Register(workers, inventoryworker.Deps{Stock: stock, Tenants: tenants, Logger: logger})
 	client, err := jobs.NewClient(database, jobs.Config{
-		Workers: workers, Periodic: append(ordersworker.Periodic(), inventoryworker.Periodic()...), Logger: logger, TracerProvider: tp,
+		Workers: workers, Periodic: slices.Concat(ordersworker.Periodic(), inventoryworker.Periodic(), aggregationworker.Periodic()),
+		Logger: logger, TracerProvider: tp,
 	})
 	if err != nil {
 		return nil, nil, err
