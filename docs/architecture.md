@@ -285,6 +285,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
 | Setelan pembayaran: aturan DP dan tarif biaya admin per metode (`PaymentSettingsService`) | ✅ | ❌ (hanya lihat) | ❌ |
 | Batch dan daftar belanja per tanggal, termasuk "Hitung ulang" (`BatchService`) | ✅ | ✅ | ❌ |
+| Stok: belanja masuk, cek "masih bagus / buang", stok opname (`InventoryService`) | ✅ | ✅ | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 | Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
@@ -405,19 +406,22 @@ Aturan menyimpan resep (M1.5):
 ```sql
 stock_lots (
   id, tenant_id, ingredient_id,
-  received_at timestamptz, expires_at timestamptz null,
-  source_procurement_item_id uuid null,
-  status text                        -- 'available' | 'needs_check' | 'exhausted' | 'discarded'
+  received_at timestamptz, expires_at timestamptz null,   -- null kalau umur simpan tidak diketahui
+  status text,                       -- 'available' | 'exhausted' | 'discarded' | 'expired'
+  source text,                       -- 'manual' (belanja masuk) | 'procurement' (M4) | 'adjustment' (opname)
+  note text null, created_by uuid, created_at, updated_at
 )
-stock_movements (                    -- APPEND-ONLY. Saldo = SUM(qty)
-  id, tenant_id, lot_id, ingredient_id,
-  kind text,                         -- 'receive' | 'consume' | 'waste' | 'adjust'
+stock_movements (                    -- APPEND-ONLY (trigger menolak UPDATE/DELETE). Saldo = SUM(qty)
+  id, tenant_id, lot_id, ingredient_id,   -- FK (lot_id, ingredient_id): bahan pergerakan = bahan lot-nya
+  kind text,                         -- 'receive' (>0) | 'consume' (<0, M3.3) | 'waste' (<0) | 'adjust'
   qty bigint,                        -- satuan dasar bahan (g, ml, pcs); positif masuk, negatif keluar
-  batch_id uuid null, reason text null,   -- mis. 'bau', 'berjamur', 'kedaluwarsa', 'opname'
+  batch_id uuid null,                -- consume: batch-nya
+  reason text null,                  -- wajib untuk waste dan adjust, mis. 'bau: ...', 'Stok opname'
   actor_id uuid, created_at timestamptz
 )
 stock_checks (                       -- hasil "cek stok" oleh ibu
   id, tenant_id, lot_id, result text,     -- 'ok' | 'discard'
+  reason text null,                  -- discard: 'smell' | 'mold' | 'expired' | 'other' (other wajib note)
   checked_by uuid, checked_at timestamptz, note text
 )
 ```
@@ -707,15 +711,18 @@ RecomputeBatch(ctx, tenantID, date):
   - Baris yang sudah `ordered` atau `received` tetap ada walaupun bahannya tidak dibutuhkan lagi.
   - Kalau kebutuhan naik setelah dipesan, selisihnya menjadi `qty_to_buy`.
   - Hanya baris `needed` yang tidak dibutuhkan lagi yang dihapus.
-- **Stok**: sampai M3.2, tidak ada stok yang dihitung (`aggregation.NoStock`), jadi semua dibeli. Ini juga jawaban aman menurut §12. Stok yang dihitung dibatasi sebesar kebutuhan.
-  - **Catatan untuk M3.2**: stok yang sama tidak boleh dihitung oleh dua batch sekaligus. Stok harus dialokasikan, misalnya ke batch yang paling awal dulu.
+- **Stok** (sejak M3.2): `inventory.Reader.Usable` memberi stok yang boleh dihitung untuk tanggal batch (§12). Stok yang dihitung dibatasi sebesar kebutuhan.
+- **Stok dialokasikan urut tanggal**, supaya satu gram tidak dihitung dua batch:
+  - Batch tanggal D hanya mendapat stok dikurangi jatah batch sebelum D yang belum `done` (`ClaimedBefore`, dari `qty_usable_stock` mereka).
+  - Karena itu, hitungan ulang batch D selalu diikuti batch-batch sesudahnya, berurutan (`Engine.RecomputeFrom`). Batch yang lebih awal bisa mengambil kembali jatah dari batch yang lebih akhir.
+  - Jatah batch sebelumnya dikurangkan utuh, walaupun sebagian berasal dari lot yang sudah tidak berlaku lagi di tanggal D. Akibatnya paling banter batch D membeli sedikit lebih banyak, tidak pernah kurang (§12).
 - **Kalau resep rusak**:
   - Daftar belanja terakhir yang benar tetap disimpan.
   - Batch mendapat `error` berbahasa Indonesia yang menyebut nama komponen dan bahannya.
   - Job-nya dibatalkan (tidak diulang) dengan alert ERROR, karena tidak akan sembuh sampai resepnya diperbaiki. Perbaikan resep sendiri akan memicu hitungan ulang.
 - **Pemicu hitungan ulang**:
-  - event `order.confirmed` dan `order.cancelled` → batch tanggal produksi order itu;
-  - `catalog.recipe_changed` → semua batch dari hari ini yang belum `done`;
+  - event `order.confirmed` dan `order.cancelled` → batch tanggal produksi order itu, lalu semua batch sesudahnya;
+  - `catalog.recipe_changed` dan `inventory.stock_changed` → semua batch dari hari ini yang belum `done`;
   - tombol "Hitung ulang" di CMS, misalnya setelah harga kemasan diubah (perubahan kemasan belum memicu event).
 - **Job hitungan ulang sengaja tidak dibuat unik.** River akan menolak job baru selama job yang sama masih berjalan, dan job yang sedang berjalan itu bisa belum melihat order terbaru. Hitungan tambahan hanya makan waktu, tidak mengubah hasil.
 - **Tampilan CMS** (`BatchService`): nama bahan dan komponen, kemasan dan supplier-nya, dan perkiraan biaya (jumlah kemasan × harga kemasan). Baris diurutkan per supplier lalu nama bahan, supaya ibu bisa belanja per toko. Bahan tanpa harga kemasan dihitung terpisah (`unpriced`).
@@ -748,6 +755,31 @@ Sisa produksi boleh dihitung untuk pesanan berikutnya, **tapi** kenyataannya bis
 - Stok opname sewaktu-waktu → `adjust` dengan alasan.
 
 Semua perubahan lewat ledger, jadi selalu bisa dijawab "kenapa stok tepung sekarang 300 g". Data `waste` juga berguna untuk melihat bahan mana yang sering terbuang, misalnya supaya butter dibeli dalam kemasan lebih kecil.
+
+**Implementasi** (sejak M3.2; modul `inventory`, `InventoryService`):
+- **Aturan tabel di atas** ada di satu fungsi murni, `inventory.Countable`, dengan test untuk setiap baris dan batasnya:
+  - Lot dihitung hanya kalau `available` dan masih ada isinya.
+  - "Belum lewat `expires_at` pada tanggal D" berarti lot masih berlaku sampai **akhir** hari D (00.00 WIB hari berikutnya).
+  - Cek "masih bagus" berlaku 24 jam dihitung dari saat batch dihitung. Kalau jendela 24 jam itu lewat, hitungan berikutnya berhenti menghitung lot itu, dan daftar belanja naik. Itu arah yang aman.
+- **Belanja masuk** (sebelum M4, diisi ibu dari PWA):
+  - Setiap belanjaan menjadi lot baru dan pergerakan `receive`.
+  - `expires_at` = tanggal belanja + umur simpan bahan, atau diisi manual. Tanggal belanja paling lama 30 hari ke belakang.
+- **Cek sisa bahan**:
+  - Daftarnya berisi lot bahan `confirm` yang belum dicek "masih bagus" dalam 24 jam, ditambah lot yang sudah kedaluwarsa.
+  - **Masih bagus** menambah catatan cek. Lot yang sudah kedaluwarsa tidak bisa dinyatakan masih bagus.
+  - **Buang** mencatat pergerakan `waste` sebesar semua sisa, dengan alasan (bau, berjamur, kedaluwarsa, atau lainnya dengan catatan), lalu menandai lot `discarded`.
+- **Stok opname per bahan** (diputuskan 2026-09-29). Ibu mengisi jumlah yang ada sekarang, dengan alasan wajib:
+  - Kalau lebih sedikit dari catatan, selisihnya dikurangi dari lot tertua dulu, dan lot yang habis ditandai `exhausted`.
+  - Kalau lebih banyak, selisihnya ditambahkan ke lot `available` terbaru, atau ke lot `adjustment` baru kalau tidak ada.
+  - Jumlah yang sama dengan catatan tidak mengubah apa pun.
+- **Kunci per bahan**: setiap perubahan stok memakai advisory lock per bahan dalam satu transaksi, jadi saldo yang dibaca tetap benar selama dipakai. Setiap perubahan diaudit (§22) dan menulis event `inventory.stock_changed`, sehingga daftar belanja mendatang dihitung ulang.
+- **Lot kedaluwarsa**: job `expire-lots` berjalan setiap hari pukul 00.05 WIB (juga saat worker start) dan menandai lot `expired`. Stoknya tetap di ledger sampai ibu menekan "Buang". Penandaan ini tidak mengubah daftar belanja, karena lot itu memang sudah tidak dihitung untuk batch sesudah tanggal kedaluwarsanya.
+- **Invariant yang diuji**:
+  - Saldo = jumlah ledger. Property test menjalankan belanja masuk, opname, cek, dan waktu yang maju secara acak.
+  - Lot tidak pernah negatif.
+  - Opname selalu menyisakan tepat jumlah yang dihitung.
+  - Ledger menolak UPDATE dan DELETE.
+  - Pergerakan tidak bisa mengaku milik bahan lain selain bahan lot-nya.
 
 ---
 
@@ -1070,11 +1102,11 @@ type Adapter interface {
 
 | Job | Pemicu | Cara aman diulang |
 |---|---|---|
-| `recompute-batch` (M3.1) | outbox `order.confirmed`, `order.cancelled`; nanti jadwal ulang dan bahan dibuang | Hitung ulang deterministik dengan baris batch dikunci; resep rusak → dibatalkan + alert |
-| `recompute-upcoming-batches` (M3.1) | outbox `catalog.recipe_changed` | Semua batch dari hari ini yang belum `done`, satu per satu |
+| `recompute-batch` (M3.1) | outbox `order.confirmed`, `order.cancelled`; nanti jadwal ulang | Batch itu lalu semua batch sesudahnya, urut tanggal (alokasi stok); baris batch dikunci; resep rusak → dibatalkan + alert |
+| `recompute-upcoming-batches` (M3.1) | outbox `catalog.recipe_changed`, `inventory.stock_changed` (M3.2) | Semua batch dari hari ini yang belum `done`, urut tanggal |
 | `lock-batch` | cutoff belanja per batch | No-op kalau sudah terkunci |
 | `stock-check-reminder` | beberapa jam sebelum cutoff | Satu pengingat per batch |
-| `expire-lots` | harian | Tandai lot kedaluwarsa, idempoten |
+| `expire-lots` (M3.2) | harian 00.05 WIB, juga saat start | Tandai lot kedaluwarsa, idempoten |
 | `expire-unpaid-dp` (M2.7a) | tiap menit: tenggat DP + 30 menit lewat | Baris order dikunci dan status dicek ulang |
 | `create-balance-invoice` (M2.7a) | outbox `order.confirmed`, `order.payment_received` | Tidak dibuat kalau sudah ada tagihan pelunasan terbuka; provider idempoten per pembayaran |
 | `balance-reminder` | H-2, H-1, 3 jam sebelum tenggat | Tandai terkirim per (order, tahap) |
@@ -1131,8 +1163,14 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
     - **Perubahan harga varian** (harga yang dibayar pelanggan), dengan harga lama, harga baru, dan alasan. Harga di luar `ChangeVariantPrice` tidak bisa diubah. Menyimpan harga yang sama tidak dicatat. Harga kemasan dari supplier tidak diaudit karena hanya perkiraan biaya belanja.
     - **Pembayaran manual** (`orders.payment.recorded_manually`, sejak M2.8a): status sebelum dan sesudah, jumlah terbayar, jenis, nominal, dan nomor referensi. Alasannya adalah catatan pembayaran.
     - **Pembatalan order** (`orders.order.cancelled`, sejak M2.8a): caranya (`unpaid`, `forfeit`, atau `refund`), status sebelum dan sesudah, serta nominal dan referensi refund.
+    - **Stok** (sejak M3.2):
+      - belanja masuk (`inventory.stock.received`, alasannya catatan atau "Belanja masuk");
+      - bahan dibuang (`inventory.stock.discarded`, dengan alasannya);
+      - stok opname (`inventory.stock.counted`, total sebelum dan sesudah, alasan wajib).
+
+      Cek "masih bagus" tidak diaudit karena tidak mengubah stok; siapa yang mengecek tercatat di `stock_checks`.
     - **Setelan pembayaran** (sejak M2.8b): aturan DP (`payments.policy.changed`), tarif metode (`payments.method_fee.changed`), dan reset ke tarif Midtrans (`payments.method_fee.reset`), dengan nilai sebelum dan sesudah serta penanda apakah nilainya bawaan.
-  - Stok (M3) dan jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
+  - Jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
 
 ---
 
@@ -1294,6 +1332,7 @@ Diputuskan 2026-09-29:
 | Belanjaan sebelum M4 | Ibu mencatat manual "Belanja masuk" (bahan, jumlah, tanggal) di PWA, supaya stok sudah ada sebelum procurement lewat WA (M3.2) |
 | Kapan stok terpakai | Saat ibu menekan "Produksi selesai" untuk batch hari itu; pemakaian dihitung dari hasil agregasi, selisih nyata lewat stok opname (M3.3) |
 | Biaya belanja | Daftar belanja menampilkan perkiraan biaya dari harga kemasan (§11) |
+| Stok opname | Per bahan, bukan per lot: kurang diambil dari lot tertua dulu, lebih ditambahkan ke lot terbaru (§12) |
 
 ### Masih terbuka
 

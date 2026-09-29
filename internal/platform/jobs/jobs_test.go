@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
 )
@@ -67,5 +69,26 @@ func TestMerge_KeepsEverySubscriber(t *testing.T) {
 
 	if len(got["order.confirmed"]) != 2 || len(got["order.cancelled"]) != 1 {
 		t.Errorf("Merge() = %d and %d subscribers, want 2 and 1", len(got["order.confirmed"]), len(got["order.cancelled"]))
+	}
+}
+
+// Daily jobs run at their time in Asia/Jakarta, whatever zone the clock is in.
+func TestDailyAt(t *testing.T) {
+	five := DailyAt(0, 5)
+	wib := func(day, hour, minute int) time.Time {
+		return time.Date(2026, time.October, day, hour, minute, 0, 0, clock.Jakarta)
+	}
+	for _, tt := range []struct {
+		now, want time.Time
+	}{
+		{wib(6, 0, 4), wib(6, 0, 5)},
+		{wib(6, 0, 5), wib(7, 0, 5)}, // just ran
+		{wib(6, 18, 0), wib(7, 0, 5)},
+		{wib(6, 18, 0).UTC(), wib(7, 0, 5)},
+		{time.Date(2026, time.October, 5, 17, 3, 0, 0, time.UTC), wib(6, 0, 5)}, // 00.03 WIB on the 6th
+	} {
+		if got := five.Next(tt.now); !got.Equal(tt.want) {
+			t.Errorf("Next(%v) = %v, want %v", tt.now, got, tt.want)
+		}
 	}
 }

@@ -24,9 +24,11 @@ func TestSubscriptions(t *testing.T) {
 			t.Errorf("%s started %#v, %v; want the batch of 8 October", typ, args, err)
 		}
 	}
-	args, err := subs["catalog.recipe_changed"][0](outbox.Stored{Seq: 2, TenantID: tenant, Payload: json.RawMessage(`{"component_id":"x"}`)})
-	if got, ok := args.(worker.RecomputeUpcomingArgs); err != nil || !ok || got.TenantID != tenant {
-		t.Errorf("recipe change started %#v, %v; want every upcoming batch", args, err)
+	for _, typ := range []string{"catalog.recipe_changed", "inventory.stock_changed"} {
+		args, err := subs[typ][0](outbox.Stored{Seq: 2, TenantID: tenant, Payload: json.RawMessage(`{"ingredient_id":"x"}`)})
+		if got, ok := args.(worker.RecomputeUpcomingArgs); err != nil || !ok || got.TenantID != tenant {
+			t.Errorf("%s started %#v, %v; want every upcoming batch", typ, args, err)
+		}
 	}
 	for _, bad := range []string{`{"order_id":"x"}`, `{"production_date":"8 Oktober"}`, `nope`} {
 		if _, err := subs["order.confirmed"][0](outbox.Stored{Seq: 3, Payload: json.RawMessage(bad)}); err == nil {

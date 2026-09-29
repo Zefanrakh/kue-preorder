@@ -15,6 +15,8 @@ import (
 	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/inventory"
+	inventorypg "github.com/Zefanrakh/kue-preorder/internal/inventory/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	orderspg "github.com/Zefanrakh/kue-preorder/internal/orders/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/payments"
@@ -245,5 +247,44 @@ func TestWorker_KeepsTheShoppingListCurrent(t *testing.T) {
 		err := d.Pool().QueryRow(ctx, `select count(*) from batch_requirements r join production_batches b on b.id = r.batch_id
 			where b.batch_date = '2026-10-08'`).Scan(&n)
 		return err == nil && n == 0
+	})
+}
+
+// Stock that arrives lowers the shopping list: inventory.stock_changed
+// recomputes the upcoming batches with what may be counted.
+func TestWorker_StockLowersTheShoppingList(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := t.Context()
+	o := placed(t, d, wib(5, 10, 0))
+	flour := withRecipe(t, d, o)
+	_, err := d.Pool().Exec(ctx, "update orders set status = 'confirmed', payment_status = 'dp_paid' where id = $1", o.ID)
+	noErr(t, err)
+	emit(t, d, "order.confirmed", o, wib(5, 10, 5))
+	publisher := start(t, d, wib(5, 10, 6))
+	_, err = publisher.PublishBatch(ctx)
+	noErr(t, err)
+	line := func() (usable, toBuy int64, err error) {
+		err = d.Pool().QueryRow(ctx, `select r.qty_usable_stock, r.qty_to_buy from batch_requirements r
+			join production_batches b on b.id = r.batch_id where b.batch_date = '2026-10-08' and r.ingredient_id = $1`, flour).Scan(&usable, &toBuy)
+		return usable, toBuy, err
+	}
+	eventually(t, "the flour on the shopping list", func() bool { _, toBuy, err := line(); return err == nil && toBuy == 100 })
+
+	repo := inventorypg.NewRepository(d)
+	lot := inventory.Lot{ID: uuid.New(), IngredientID: flour, ReceivedAt: wib(5, 10, 7), Status: inventory.LotAvailable, Source: inventory.SourceManual}
+	noErr(t, repo.InsertLot(ctx, dbtest.DefaultTenantID, lot, uuid.New(), wib(5, 10, 7)))
+	noErr(t, repo.InsertMovement(ctx, dbtest.DefaultTenantID, inventory.Movement{
+		LotID: lot.ID, IngredientID: flour, Kind: inventory.MoveReceive, Qty: 60, ActorID: uuid.New(), At: wib(5, 10, 7),
+	}))
+	noErr(t, outbox.Append(ctx, d.Pool(), outbox.Event{
+		TenantID: dbtest.DefaultTenantID, Aggregate: "ingredient", Type: "inventory.stock_changed", At: wib(5, 10, 7),
+		Payload: map[string]any{"ingredient_id": flour},
+	}))
+	_, err = publisher.PublishBatch(ctx)
+	noErr(t, err)
+
+	eventually(t, "the stock counted", func() bool {
+		usable, toBuy, err := line()
+		return err == nil && usable == 60 && toBuy == 40
 	})
 }

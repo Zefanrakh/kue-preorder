@@ -96,6 +96,19 @@ func (r *Repository) UpcomingDates(ctx context.Context, tenantID uuid.UUID, from
 	return out, nil
 }
 
+// ClaimedBefore implements aggregation.Repository.
+func (r *Repository) ClaimedBefore(ctx context.Context, tenantID uuid.UUID, date clock.Date, ingredientIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	rows, err := r.q(ctx).ClaimedBefore(ctx, ClaimedBeforeParams{TenantID: tenantID, BatchDate: db.Date(date), IngredientIds: ingredientIDs})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		out[row.IngredientID] = row.Claimed
+	}
+	return out, nil
+}
+
 // Components implements aggregation.Repository.
 func (r *Repository) Components(ctx context.Context, tenantID, batchID uuid.UUID) ([]aggregation.ComponentTotal, error) {
 	rows, err := r.q(ctx).BatchComponentTotals(ctx, BatchComponentTotalsParams{TenantID: tenantID, BatchID: batchID})

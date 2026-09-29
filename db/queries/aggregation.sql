@@ -77,3 +77,14 @@ set qty_needed = excluded.qty_needed, qty_usable_stock = excluded.qty_usable_sto
 delete from batch_requirements
 where tenant_id = sqlc.arg(tenant_id) and batch_id = sqlc.arg(batch_id) and status = 'needed'
   and not (ingredient_id = any(sqlc.arg(keep)::uuid[]));
+
+-- name: ClaimedBefore :many
+-- The stock the batches before a date count on, per ingredient: a batch
+-- only gets what they left (§11, allocated by date). Done batches have
+-- consumed theirs (M3.3) and claim nothing.
+select r.ingredient_id, sum(r.qty_usable_stock)::bigint as claimed
+from batch_requirements r
+join production_batches b on b.tenant_id = r.tenant_id and b.id = r.batch_id
+where r.tenant_id = sqlc.arg(tenant_id) and b.batch_date < sqlc.arg(batch_date) and b.status <> 'done'
+  and r.ingredient_id = any(sqlc.arg(ingredient_ids)::uuid[]) and r.qty_usable_stock > 0
+group by r.ingredient_id;

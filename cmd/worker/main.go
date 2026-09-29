@@ -24,6 +24,9 @@ import (
 	catalogpg "github.com/Zefanrakh/kue-preorder/internal/catalog/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/identity"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/inventory"
+	inventorypg "github.com/Zefanrakh/kue-preorder/internal/inventory/postgres"
+	inventoryworker "github.com/Zefanrakh/kue-preorder/internal/inventory/worker"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	orderspg "github.com/Zefanrakh/kue-preorder/internal/orders/postgres"
 	ordersworker "github.com/Zefanrakh/kue-preorder/internal/orders/worker"
@@ -139,17 +142,19 @@ func wire(database *db.DB, tenants identity.TenantResolver, provider payments.Pr
 		Provider: provider, Tx: database, Clock: clk,
 	})
 
+	catalogReader := catalog.NewReader(catalogpg.NewRepository(database))
+	stock := inventory.NewReader(inventorypg.NewRepository(database), catalogReader, clk)
 	engine := aggregation.NewEngine(aggregation.EngineDeps{
 		Repo: aggregationpg.NewRepository(database), Orders: orders.NewReader(ordersRepo),
-		Catalog: catalog.NewReader(catalogpg.NewRepository(database)), Stock: aggregation.NoStock{},
-		Tx: database, Clock: clk, Logger: logger,
+		Catalog: catalogReader, Stock: stock, Tx: database, Clock: clk, Logger: logger,
 	})
 
 	workers := river.NewWorkers()
 	ordersworker.Register(workers, ordersworker.Deps{Automation: automation, Tenants: tenants, Logger: logger})
 	aggregationworker.Register(workers, aggregationworker.Deps{Engine: engine, Logger: logger})
+	inventoryworker.Register(workers, inventoryworker.Deps{Stock: stock, Tenants: tenants, Logger: logger})
 	client, err := jobs.NewClient(database, jobs.Config{
-		Workers: workers, Periodic: ordersworker.Periodic(), Logger: logger, TracerProvider: tp,
+		Workers: workers, Periodic: append(ordersworker.Periodic(), inventoryworker.Periodic()...), Logger: logger, TracerProvider: tp,
 	})
 	if err != nil {
 		return nil, nil, err

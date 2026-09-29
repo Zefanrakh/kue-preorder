@@ -19,6 +19,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/aggregation/v1/aggregationv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/catalog/v1/catalogv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/identity/v1/identityv1connect"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/inventory/v1/inventoryv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/payments/v1/paymentsv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
@@ -33,6 +34,9 @@ import (
 	identityrpc "github.com/Zefanrakh/kue-preorder/internal/identity/connect"
 	"github.com/Zefanrakh/kue-preorder/internal/identity/otp"
 	identitypg "github.com/Zefanrakh/kue-preorder/internal/identity/postgres"
+	"github.com/Zefanrakh/kue-preorder/internal/inventory"
+	inventoryrpc "github.com/Zefanrakh/kue-preorder/internal/inventory/connect"
+	inventorypg "github.com/Zefanrakh/kue-preorder/internal/inventory/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/orders"
 	ordersrpc "github.com/Zefanrakh/kue-preorder/internal/orders/connect"
 	orderspg "github.com/Zefanrakh/kue-preorder/internal/orders/postgres"
@@ -159,10 +163,11 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 	paymentsRepo := paymentspg.NewRepository(database)
 	ledger := payments.NewLedger(paymentsRepo)
 	aggregationRepo := aggregationpg.NewRepository(database)
+	inventoryRepo := inventorypg.NewRepository(database)
 	catalogReader := catalog.NewReader(catalogRepo)
 	engine := aggregation.NewEngine(aggregation.EngineDeps{
-		Repo: aggregationRepo, Orders: orders.NewReader(ordersRepo), Catalog: catalogReader, Stock: aggregation.NoStock{},
-		Tx: database, Clock: clk, Logger: logger,
+		Repo: aggregationRepo, Orders: orders.NewReader(ordersRepo), Catalog: catalogReader,
+		Stock: inventory.NewReader(inventoryRepo, catalogReader, clk), Tx: database, Clock: clk, Logger: logger,
 	})
 	return handlerDeps{
 		logger:     logger,
@@ -184,6 +189,9 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 		}),
 		batches: aggregation.NewService(aggregation.ServiceDeps{
 			Engine: engine, Repo: aggregationRepo, Catalog: catalogReader, Principals: identitySvc,
+		}),
+		stock: inventory.NewService(inventory.ServiceDeps{
+			Repo: inventoryRepo, Catalog: catalogReader, Principals: identitySvc, Tx: database, Clock: clk,
 		}),
 		db: database,
 	}
@@ -227,6 +235,7 @@ type handlerDeps struct {
 	orderAdmin      *orders.Admin
 	paymentSettings *payments.Settings
 	batches         *aggregation.Service
+	stock           *inventory.Service
 	limiter         *ratelimit.Limiter
 	clientIPHeader  string
 	sendSMSHook     http.Handler // nil: not served
@@ -288,6 +297,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(ordersv1connect.NewOrderAdminServiceHandler(ordersrpc.NewAdminHandler(d.orderAdmin, d.logger), connectOpts...))
 	mux.Handle(paymentsv1connect.NewPaymentSettingsServiceHandler(paymentsrpc.NewSettingsHandler(d.paymentSettings, d.logger), connectOpts...))
 	mux.Handle(aggregationv1connect.NewBatchServiceHandler(aggregationrpc.NewHandler(d.batches, d.logger), connectOpts...))
+	mux.Handle(inventoryv1connect.NewInventoryServiceHandler(inventoryrpc.NewHandler(d.stock, d.logger), connectOpts...))
 
 	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil

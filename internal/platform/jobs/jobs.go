@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -17,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/Zefanrakh/kue-preorder/internal/platform/clock"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/db"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/log"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/outbox"
@@ -143,4 +145,23 @@ func Merge(all ...map[string][]Subscriber) map[string][]Subscriber {
 		}
 	}
 	return out
+}
+
+// DailyAt is a periodic schedule that runs once a day at hour:minute in
+// Asia/Jakarta, as every job schedule does (§21).
+func DailyAt(hour, minute int) river.PeriodicSchedule {
+	return dailyAt{minutes: hour*60 + minute}
+}
+
+type dailyAt struct {
+	minutes int
+}
+
+// Next implements river.PeriodicSchedule.
+func (d dailyAt) Next(current time.Time) time.Time {
+	day := clock.DateOf(current)
+	if next := day.At(d.minutes); next.After(current) {
+		return next
+	}
+	return day.AddDays(1).At(d.minutes)
 }
