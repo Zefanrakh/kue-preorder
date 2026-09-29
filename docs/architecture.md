@@ -284,6 +284,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Melihat yang dijual di storefront | ✅ | ✅ | ✅ |
 | Setelan jadwal (buffer belanja, jam ambil, kapasitas) | ✅ | ❌ (hanya lihat) | ❌ |
 | Setelan pembayaran: aturan DP dan tarif biaya admin per metode (`PaymentSettingsService`) | ✅ | ❌ (hanya lihat) | ❌ |
+| Batch dan daftar belanja per tanggal, termasuk "Hitung ulang" (`BatchService`) | ✅ | ✅ | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 | Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
@@ -411,7 +412,7 @@ stock_lots (
 stock_movements (                    -- APPEND-ONLY. Saldo = SUM(qty)
   id, tenant_id, lot_id, ingredient_id,
   kind text,                         -- 'receive' | 'consume' | 'waste' | 'adjust'
-  qty numeric,                       -- positif masuk, negatif keluar
+  qty bigint,                        -- satuan dasar bahan (g, ml, pcs); positif masuk, negatif keluar
   batch_id uuid null, reason text null,   -- mis. 'bau', 'berjamur', 'kedaluwarsa', 'opname'
   actor_id uuid, created_at timestamptz
 )
@@ -487,14 +488,19 @@ order_reschedules (
 ```sql
 production_batches ( id, tenant_id, batch_date date,
                      status text default 'open',   -- 'open' | 'locked' | 'in_production' | 'done'
-                     computed_at timestamptz null, error text null,
+                     computed_at timestamptz null, -- hitungan terakhir yang berhasil
+                     error text null,              -- alasan hitungan terakhir gagal; null setelah berhasil
                      unique (tenant_id, batch_date) )
-batch_component_totals ( id, tenant_id, batch_id, component_id, units numeric,
-                         unique (batch_id, component_id) )     -- jejak audit: U_c per batch
-batch_requirements ( id, tenant_id, batch_id, ingredient_id,
-                     qty_needed bigint, qty_usable_stock numeric, qty_to_buy numeric,
-                     supplier_id null, status text default 'needed',
-                     unique (batch_id, ingredient_id) )
+batch_component_totals ( tenant_id, batch_id, component_id, units numeric,
+                         primary key (batch_id, component_id) )  -- jejak audit: U_c per batch
+batch_requirements ( tenant_id, batch_id, ingredient_id,     -- jumlah dalam satuan dasar (g, ml, pcs)
+                     qty_needed bigint, qty_usable_stock bigint,
+                     qty_ordered bigint,                       -- diisi procurement (M4); hitungan tidak mengubahnya
+                     qty_to_buy bigint,                        -- needed - usable - ordered, minimal 0
+                     supplier_id, pack_size numeric, pack_unit, pack_price_idr bigint,  -- kemasan default saat dihitung
+                     packs_to_buy bigint,                      -- to_buy dibulatkan ke atas per kemasan
+                     status text default 'needed',             -- 'needed' | 'ordered' | 'received'; diubah procurement
+                     primary key (batch_id, ingredient_id) )
 procurement_orders ( id, tenant_id, batch_id, supplier_id, adapter_key text,
                      external_ref text null, status text default 'draft',
                      sent_at timestamptz null )
@@ -689,6 +695,30 @@ RecomputeBatch(ctx, tenantID, date):
 - Recompute idempoten: dua kali jalan, hasil sama.
 - Baris berstatus `ordered` atau `received` tidak ditimpa diam-diam. Kalau kebutuhan naik setelah bahan dipesan, selisihnya muncul sebagai kebutuhan tambahan.
 - Kalau resep gagal dievaluasi, batch ditandai `error`, job gagal dengan pesan jelas (komponen dan bahan mana), dan alert dikirim. Sistem tidak menebak.
+
+**Implementasi** (sejak M3.1):
+- **Inti hitungan murni**, tanpa database:
+  - `aggregation.Totals` menghitung tingkat 1 dan 2.
+  - `aggregation.Shop` menghitung tingkat 3: kurangi stok yang boleh dihitung dan yang sudah dipesan, lalu bulatkan ke atas per kemasan default.
+  - Urutan input tidak mengubah hasil; ini dibuktikan dengan golden test dan test urutan acak.
+- **`aggregation.Engine.Recompute`** menjalankan satu tanggal dalam satu transaksi dengan baris `production_batches` dikunci. Semua data dibaca ulang, lalu seluruh hasil ditulis. Karena itu hitungan idempoten, termasuk kalau dua hitungan berjalan bersamaan: yang kedua menunggu, lalu menulis hasil yang sama.
+- **Yang dipesan procurement tidak pernah ditimpa**:
+  - Hitungan tidak pernah mengubah `qty_ordered` dan `status`.
+  - Baris yang sudah `ordered` atau `received` tetap ada walaupun bahannya tidak dibutuhkan lagi.
+  - Kalau kebutuhan naik setelah dipesan, selisihnya menjadi `qty_to_buy`.
+  - Hanya baris `needed` yang tidak dibutuhkan lagi yang dihapus.
+- **Stok**: sampai M3.2, tidak ada stok yang dihitung (`aggregation.NoStock`), jadi semua dibeli. Ini juga jawaban aman menurut §12. Stok yang dihitung dibatasi sebesar kebutuhan.
+  - **Catatan untuk M3.2**: stok yang sama tidak boleh dihitung oleh dua batch sekaligus. Stok harus dialokasikan, misalnya ke batch yang paling awal dulu.
+- **Kalau resep rusak**:
+  - Daftar belanja terakhir yang benar tetap disimpan.
+  - Batch mendapat `error` berbahasa Indonesia yang menyebut nama komponen dan bahannya.
+  - Job-nya dibatalkan (tidak diulang) dengan alert ERROR, karena tidak akan sembuh sampai resepnya diperbaiki. Perbaikan resep sendiri akan memicu hitungan ulang.
+- **Pemicu hitungan ulang**:
+  - event `order.confirmed` dan `order.cancelled` → batch tanggal produksi order itu;
+  - `catalog.recipe_changed` → semua batch dari hari ini yang belum `done`;
+  - tombol "Hitung ulang" di CMS, misalnya setelah harga kemasan diubah (perubahan kemasan belum memicu event).
+- **Job hitungan ulang sengaja tidak dibuat unik.** River akan menolak job baru selama job yang sama masih berjalan, dan job yang sedang berjalan itu bisa belum melihat order terbaru. Hitungan tambahan hanya makan waktu, tidak mengubah hasil.
+- **Tampilan CMS** (`BatchService`): nama bahan dan komponen, kemasan dan supplier-nya, dan perkiraan biaya (jumlah kemasan × harga kemasan). Baris diurutkan per supplier lalu nama bahan, supaya ibu bisa belanja per toko. Bahan tanpa harga kemasan dihitung terpisah (`unpriced`).
 
 ---
 
@@ -1040,7 +1070,8 @@ type Adapter interface {
 
 | Job | Pemicu | Cara aman diulang |
 |---|---|---|
-| `recompute-batch` | order confirmed/berubah/batal, jadwal ulang, resep berubah (event outbox `catalog.recipe_changed`), bahan dibuang | Hitung ulang deterministik |
+| `recompute-batch` (M3.1) | outbox `order.confirmed`, `order.cancelled`; nanti jadwal ulang dan bahan dibuang | Hitung ulang deterministik dengan baris batch dikunci; resep rusak → dibatalkan + alert |
+| `recompute-upcoming-batches` (M3.1) | outbox `catalog.recipe_changed` | Semua batch dari hari ini yang belum `done`, satu per satu |
 | `lock-batch` | cutoff belanja per batch | No-op kalau sudah terkunci |
 | `stock-check-reminder` | beberapa jam sebelum cutoff | Satu pengingat per batch |
 | `expire-lots` | harian | Tandai lot kedaluwarsa, idempoten |
@@ -1162,7 +1193,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | **M0 Fondasi** | Skeleton repo, `platform`, verifikasi JWT Supabase, migrasi awal, CI | `/healthz` hijau, pipeline CI lengkap |
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
 | **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.7a worker (outbox, kedaluwarsa, DP hangus, tagihan pelunasan), M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7b notifikasi WA dan email serta pengingat pelunasan (setelah template WA disetujui Meta dan API key Resend ada), M2.7c rekonsiliasi Midtrans (setelah M2.6b) | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
-| **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang | Golden test dan test stok lulus |
+| **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang. Potongan: M3.1 agregasi dan daftar belanja, M3.2 stok (lot, ledger, cek stok, belanja masuk manual), M3.3 produksi (kunci batch di cutoff, "produksi selesai" → pemakaian stok FIFO) | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
 | **M6 Jadwal ulang + Biteship** | Aksi massal, permintaan maaf, pilihan pelanggan, refund, pengiriman | Uji ujung ke ujung dengan kurir sungguhan |
@@ -1254,6 +1285,15 @@ Diputuskan 2026-09-28:
 | DP hangus | Hanya setelah tenggat pelunasan lewat. Pembatalan sebelum tenggat, termasuk atas permintaan pelanggan, berarti refund penuh (§13, §14) |
 | Cara bayar pelunasan | Otomatis sama dengan metode yang dipilih saat checkout; QRIS kalau metode itu sudah dimatikan. Tombol "ganti cara bayar" menyusul (M2.6b atau M5) (§14) |
 | Pemecahan M2.7 | M2.7a mesin worker dan tenggat; M2.7b notifikasi dan pengingat; M2.7c rekonsiliasi Midtrans (§26) |
+
+Diputuskan 2026-09-29:
+
+| Topik | Keputusan |
+|---|---|
+| Pemecahan M3 | M3.1 agregasi dan daftar belanja; M3.2 stok; M3.3 produksi dan pemakaian stok (§26) |
+| Belanjaan sebelum M4 | Ibu mencatat manual "Belanja masuk" (bahan, jumlah, tanggal) di PWA, supaya stok sudah ada sebelum procurement lewat WA (M3.2) |
+| Kapan stok terpakai | Saat ibu menekan "Produksi selesai" untuk batch hari itu; pemakaian dihitung dari hasil agregasi, selisih nyata lewat stok opname (M3.3) |
+| Biaya belanja | Daftar belanja menampilkan perkiraan biaya dari harga kemasan (§11) |
 
 ### Masih terbuka
 

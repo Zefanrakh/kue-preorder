@@ -114,6 +114,55 @@ func (q *Queries) BatchCutoffs(ctx context.Context, arg BatchCutoffsParams) ([]B
 	return items, nil
 }
 
+const committedItems = `-- name: CommittedItems :many
+select i.variant_id, sum(i.quantity)::bigint as quantity
+from order_items i
+join orders o on o.tenant_id = i.tenant_id and o.id = i.order_id
+where o.tenant_id = $1 and o.production_date = $2
+  and o.status = any($3::text[]) and o.payment_status = any($4::text[])
+group by i.variant_id
+order by i.variant_id
+`
+
+type CommittedItemsParams struct {
+	TenantID        uuid.UUID
+	ProductionDate  pgtype.Date
+	Statuses        []string
+	PaymentStatuses []string
+}
+
+type CommittedItemsRow struct {
+	VariantID uuid.UUID
+	Quantity  int64
+}
+
+// What a batch makes (§11): the variants and summed quantities of the orders
+// produced on a date whose status and payment status count for production.
+func (q *Queries) CommittedItems(ctx context.Context, arg CommittedItemsParams) ([]CommittedItemsRow, error) {
+	rows, err := q.db.Query(ctx, committedItems,
+		arg.TenantID,
+		arg.ProductionDate,
+		arg.Statuses,
+		arg.PaymentStatuses,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CommittedItemsRow{}
+	for rows.Next() {
+		var i CommittedItemsRow
+		if err := rows.Scan(&i.VariantID, &i.Quantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countCustomerOrders = `-- name: CountCustomerOrders :one
 select count(*)::int from orders
 where tenant_id = $1 and customer_id = $2 and status = $3

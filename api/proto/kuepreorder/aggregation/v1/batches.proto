@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package kuepreorder.aggregation.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kuepreorder/catalog/v1/catalog.proto";
+
+// BatchService shows the kitchen what each production date makes and what
+// to buy for it (docs/architecture.md §11). The worker computes a batch
+// again whenever its orders or a recipe change; staff (owner and kitchen)
+// read batches and may compute one again now. Anyone else gets
+// PermissionDenied.
+//
+// Quantities are whole units of the ingredient's base unit (g, ml, pcs).
+// Money is int64 rupiah.
+service BatchService {
+  // ListBatches lists the batches of a range of at most 92 days, by date.
+  rpc ListBatches(ListBatchesRequest) returns (ListBatchesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // GetBatch returns a date's batch with its shopping list; NotFound when
+  // no order was ever confirmed for that date.
+  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // RecomputeBatch computes a date's batch again now, such as after fixing
+  // a recipe or a pack price. FailedPrecondition "broken_recipe" when a
+  // recipe cannot be evaluated; the batch's error then names it.
+  rpc RecomputeBatch(RecomputeBatchRequest) returns (RecomputeBatchResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+}
+
+enum BatchStatus {
+  BATCH_STATUS_UNSPECIFIED = 0;
+  // Orders may still change it.
+  BATCH_STATUS_OPEN = 1;
+  // Past the shopping cutoff (M3.3).
+  BATCH_STATUS_LOCKED = 2;
+  BATCH_STATUS_IN_PRODUCTION = 3;
+  BATCH_STATUS_DONE = 4;
+}
+
+message Batch {
+  // Asia/Jakarta, such as "2026-10-07".
+  string date = 1;
+  BatchStatus status = 2;
+  // When the last computation succeeded; unset before one has.
+  google.protobuf.Timestamp computed_at = 3;
+  // Why the last computation failed, for the CMS to show as it is; empty
+  // once one succeeds. The shopping list is then the last good one.
+  string error = 4;
+}
+
+message BatchSummary {
+  Batch batch = 1;
+  // Lines with something still to buy.
+  int32 lines_to_buy = 2;
+  // What the lines with a pack price cost.
+  int64 cost_idr = 3;
+}
+
+// ComponentTotal is how many units of a component the batch makes, such as
+// 12 portions of donut dough.
+message ComponentTotal {
+  string component_id = 1;
+  string name = 2;
+  // Such as "porsi".
+  string unit_label = 3;
+  double units = 4;
+}
+
+enum LineStatus {
+  LINE_STATUS_UNSPECIFIED = 0;
+  LINE_STATUS_NEEDED = 1;
+  // Ordered from the supplier (M4); never dropped by a computation.
+  LINE_STATUS_ORDERED = 2;
+  LINE_STATUS_RECEIVED = 3;
+}
+
+// Pack is the ingredient's default pack, what a line is bought in.
+message Pack {
+  string supplier_id = 1;
+  string supplier_name = 2;
+  // In the ingredient's base unit, such as 1000 (g).
+  double size = 3;
+  // Such as "kg" or "pack".
+  string unit = 4;
+  // Unset when the pack has no price.
+  optional int64 price_idr = 5;
+}
+
+// ShoppingLine is one ingredient of a batch.
+message ShoppingLine {
+  string ingredient_id = 1;
+  string ingredient_name = 2;
+  kuepreorder.catalog.v1.BaseUnit base_unit = 3;
+  // What the batch's recipes need.
+  int64 needed = 4;
+  // The stock the batch counts on (from M3.2), at most needed.
+  int64 usable_stock = 5;
+  // What was ordered already (from M4).
+  int64 ordered = 6;
+  // needed - usable_stock - ordered, at least 0.
+  int64 to_buy = 7;
+  // Unset without a default pack: to_buy is then bought in base units.
+  Pack pack = 8;
+  // to_buy rounded up to whole packs; 0 without a pack.
+  int64 packs = 9;
+  // packs × the pack's price; unset without one.
+  optional int64 cost_idr = 10;
+  LineStatus status = 11;
+}
+
+message ListBatchesRequest {
+  // Such as "2026-10-05", both included.
+  string from_date = 1;
+  string to_date = 2;
+}
+
+message ListBatchesResponse {
+  repeated BatchSummary batches = 1;
+}
+
+message GetBatchRequest {
+  string date = 1;
+}
+
+// BatchDetail is a batch with what it makes and its shopping list, lines by
+// supplier then ingredient name, lines without a supplier last.
+message BatchDetail {
+  Batch batch = 1;
+  repeated ComponentTotal components = 2;
+  repeated ShoppingLine lines = 3;
+  // What the lines with a pack price cost.
+  int64 cost_idr = 4;
+  // Lines to buy whose cost is unknown.
+  int32 unpriced = 5;
+}
+
+message GetBatchResponse {
+  BatchDetail batch = 1;
+}
+
+message RecomputeBatchRequest {
+  string date = 1;
+}
+
+message RecomputeBatchResponse {
+  BatchDetail batch = 1;
+}

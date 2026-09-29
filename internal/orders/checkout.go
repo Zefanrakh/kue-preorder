@@ -89,6 +89,9 @@ type Repository interface {
 	// LockByID returns the order with its items and holds its row until the
 	// transaction ends, or apperr.ErrNotFound.
 	LockByID(ctx context.Context, tenantID, id uuid.UUID) (Order, error)
+	// CommittedItems returns the variants and summed quantities of the
+	// orders produced on date in any of statuses with any of pays.
+	CommittedItems(ctx context.Context, tenantID uuid.UUID, date clock.Date, statuses []Status, pays []payments.Status) ([]CommittedItem, error)
 	// PastDPDue and PastBalanceDue return up to limit orders in status s
 	// with payment status p whose DP or balance deadline is at or before
 	// before, oldest deadline first.

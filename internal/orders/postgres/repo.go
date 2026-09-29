@@ -269,3 +269,22 @@ func (r *Repository) PastBalanceDue(ctx context.Context, tenantID uuid.UUID, s o
 		TenantID: tenantID, Status: string(s), PaymentStatus: string(p), Before: before, MaxRows: limit,
 	})
 }
+
+// CommittedItems implements orders.Repository.
+func (r *Repository) CommittedItems(ctx context.Context, tenantID uuid.UUID, date clock.Date, statuses []orders.Status, pays []payments.Status) ([]orders.CommittedItem, error) {
+	names := make([]string, len(pays))
+	for i, p := range pays {
+		names[i] = string(p)
+	}
+	rows, err := r.q(ctx).CommittedItems(ctx, CommittedItemsParams{
+		TenantID: tenantID, ProductionDate: db.Date(date), Statuses: statusNames(statuses), PaymentStatuses: names,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]orders.CommittedItem, len(rows))
+	for i, row := range rows {
+		out[i] = orders.CommittedItem{VariantID: row.VariantID, Quantity: row.Quantity}
+	}
+	return out, nil
+}

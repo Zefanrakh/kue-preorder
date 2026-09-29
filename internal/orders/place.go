@@ -290,6 +290,26 @@ func NewReader(repo Repository) *Reader {
 	return &Reader{repo: repo}
 }
 
+// CommittedItem is a variant and how many of it a batch makes.
+type CommittedItem struct {
+	VariantID uuid.UUID
+	Quantity  int64
+}
+
+// CommittedItems returns what the batch of date makes (§11): the items of
+// the orders produced that day that count for production and have their DP
+// or more paid, summed per variant, by variant id. A refund stops an order
+// from counting even where its status stays.
+func (r *Reader) CommittedItems(ctx context.Context, tenantID uuid.UUID, date clock.Date) ([]CommittedItem, error) {
+	var counting []Status
+	for _, s := range Statuses {
+		if s.CountsForProduction() {
+			counting = append(counting, s)
+		}
+	}
+	return r.repo.CommittedItems(ctx, tenantID, date, counting, []payments.Status{payments.DPPaid, payments.PaidInFull})
+}
+
 // ActiveOrders counts, for each day from..to, the active orders produced or
 // picked up that day: a closed day with any is on hold (§15).
 func (r *Reader) ActiveOrders(ctx context.Context, tenantID uuid.UUID, from, to clock.Date) (map[clock.Date]int, error) {

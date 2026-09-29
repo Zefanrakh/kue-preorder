@@ -231,6 +231,26 @@ func (f *fakeRepo) pastDue(s orders.Status, p payments.Status, before time.Time,
 	return ids, nil
 }
 
+func (f *fakeRepo) CommittedItems(_ context.Context, _ uuid.UUID, date clock.Date, statuses []orders.Status, pays []payments.Status) ([]orders.CommittedItem, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sums := map[uuid.UUID]int64{}
+	for _, o := range f.orders {
+		if o.ProductionDate != date || !slices.Contains(statuses, o.Status) || !slices.Contains(pays, o.Payment) {
+			continue
+		}
+		for _, it := range o.Items {
+			sums[it.VariantID] += int64(it.Quantity)
+		}
+	}
+	out := []orders.CommittedItem{}
+	for id, q := range sums {
+		out = append(out, orders.CommittedItem{VariantID: id, Quantity: q})
+	}
+	slices.SortFunc(out, func(a, b orders.CommittedItem) int { return slices.Compare(a.VariantID[:], b.VariantID[:]) })
+	return out, nil
+}
+
 // eventTypes lists the types of the events published so far.
 func (f *fakeRepo) eventTypes() []string {
 	f.mu.Lock()

@@ -16,6 +16,22 @@ import (
 // The batch job marks its batch as failed and alerts; it never guesses (§11).
 var ErrBrokenRecipe = errors.New("stored recipe cannot be evaluated")
 
+// BrokenRecipeError names the recipe line behind ErrBrokenRecipe.
+type BrokenRecipeError struct {
+	ComponentID  uuid.UUID
+	IngredientID uuid.UUID
+	Err          error
+}
+
+func (e *BrokenRecipeError) Error() string {
+	return fmt.Sprintf("%v: component %s, ingredient %s: %v", ErrBrokenRecipe, e.ComponentID, e.IngredientID, e.Err)
+}
+
+// Is makes errors.Is(err, ErrBrokenRecipe) hold.
+func (e *BrokenRecipeError) Is(target error) bool { return target == ErrBrokenRecipe }
+
+func (e *BrokenRecipeError) Unwrap() error { return e.Err }
+
 // ComponentUse is one component of one variant, per item of the variant.
 type ComponentUse struct {
 	VariantID    uuid.UUID
@@ -121,7 +137,7 @@ func (r *Reader) RecipeModels(ctx context.Context, tenantID uuid.UUID, component
 	for i, l := range lines {
 		m, err := recipe.Build(l.ModelType, l.Params)
 		if err != nil {
-			return nil, fmt.Errorf("%w: component %s, ingredient %s: %w", ErrBrokenRecipe, l.ComponentID, l.IngredientID, err)
+			return nil, &BrokenRecipeError{ComponentID: l.ComponentID, IngredientID: l.IngredientID, Err: err}
 		}
 		models[i] = RecipeModel{
 			ComponentID: l.ComponentID, IngredientID: l.IngredientID, Model: m,
@@ -129,6 +145,41 @@ func (r *Reader) RecipeModels(ctx context.Context, tenantID uuid.UUID, component
 		}
 	}
 	return models, nil
+}
+
+// Labels are the names a shopping list shows next to the ids it holds.
+type Labels struct {
+	Components  map[uuid.UUID]Component
+	Ingredients map[uuid.UUID]Ingredient
+	Suppliers   map[uuid.UUID]Supplier
+}
+
+// Labels returns every component, ingredient, and supplier of the tenant by
+// id; a shop has tens of each.
+func (r *Reader) Labels(ctx context.Context, tenantID uuid.UUID) (Labels, error) {
+	components, err := r.repo.ListComponents(ctx, tenantID)
+	if err != nil {
+		return Labels{}, err
+	}
+	ingredients, err := r.repo.ListIngredients(ctx, tenantID)
+	if err != nil {
+		return Labels{}, err
+	}
+	suppliers, err := r.repo.ListSuppliers(ctx, tenantID)
+	if err != nil {
+		return Labels{}, err
+	}
+	l := Labels{Components: map[uuid.UUID]Component{}, Ingredients: map[uuid.UUID]Ingredient{}, Suppliers: map[uuid.UUID]Supplier{}}
+	for _, c := range components {
+		l.Components[c.ID] = c
+	}
+	for _, i := range ingredients {
+		l.Ingredients[i.ID] = i
+	}
+	for _, s := range suppliers {
+		l.Suppliers[s.ID] = s
+	}
+	return l, nil
 }
 
 // DefaultPacks returns the default pack of each ingredient that has one
