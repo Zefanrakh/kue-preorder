@@ -842,7 +842,7 @@ stateDiagram-v2
 **Alur:**
 1. Checkout → pelanggan memilih **bayar DP** atau **bayar penuh**. Syarat dan ketentuan DP (termasuk DP hangus) wajib dicentang; versi S&K disimpan di order.
 2. DP masuk → order `confirmed` → invoice pelunasan dibuat otomatis dengan tenggat yang sudah dikunci (worker, sejak M2.7a).
-3. Pengingat pelunasan: H-2, H-1, dan 3 jam sebelum tenggat (WA + email, dengan link bayar). Menyusul di M2.7b.
+3. Pengingat pelunasan: H-2, H-1, dan 3 jam sebelum tenggat (WA + email, dengan link bayar). Menyusul di M2.7b. Teks semua template WhatsApp ada di `docs/whatsapp-templates.md`.
 4. Lewat tenggat tanpa pelunasan → order `cancelled`, pembayaran `forfeited`, batch dihitung ulang. Bahan yang sudah dibeli masuk stok.
 5. Kalau pembatalan atau jadwal ulang berasal dari **pihak toko**, pelanggan berhak refund penuh (lihat §16).
 
@@ -1266,6 +1266,7 @@ Diputuskan 2026-09-28:
    Dari sana: total adonan per hari → jumlah loyang → putaran panggang per oven → muat atau tidak. `daily_capacity_minutes` diganti model ini.
 2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order. Teksnya harus sesuai dengan aturan yang sudah diputuskan: DP hangus hanya setelah tenggat pelunasan, dan pembatalan sebelum tenggat berarti refund penuh.
 3. **Akun Midtrans atas nama siapa** (ibu atau Zefan). Rekening pencairan harus atas nama yang sama dengan KTP. Didaftarkan pemilik pada 30 September 2026, bersama domain dan Cloudflare.
+4. **Template WhatsApp dan nomor toko** (untuk M2.7b): domain untuk tombol bayar, kontak toko di pesan pembatalan, dan apakah nomor WhatsApp toko memakai *coexistence* (aplikasi WhatsApp Business dan Cloud API di nomor yang sama). Lihat "Yang masih perlu diputuskan" di `docs/whatsapp-templates.md`.
 
 ### 27.1 Pertimbangan: email transaksional
 
