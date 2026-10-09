@@ -13,3 +13,7 @@ globs: "web/**"
 - Teks UI dalam bahasa Indonesia, kalimat biasa (bukan Title Case).
 - PWA dashboard ibu: tombol besar, bisa dipakai satu tangan, tetap bisa checklist saat offline lalu sinkron.
 - Checkout delivery wajib pin lokasi di peta (koordinat dibutuhkan kurir instan Biteship).
+- Tampilan mengikuti Design System Zielfan (tautan di §26.1 `docs/architecture.md`): warna, huruf, spasi, dan sudut dari token-nya, bukan nilai yang ditulis langsung. Isi tiap layar mengikuti `docs/screens.md`.
+- Takaran gaya per area: storefront penuh (kertas, hiasan, sudut gambar tangan), PWA ibu sedikit (palet dan huruf saja; tombol 56 px, teks minimal 17 px), CMS netral dengan tema gelap.
+- Ilustrasi hanya yang dibuat sendiri (`docs/design/illustrations/`). Dilarang memakai karakter, nama, atau gambar dari buku cerita mana pun (lihat `docs/design/brief.md`). Foto produk wajib foto kue asli.
+- Grafik data memakai palet grafik tervalidasi (biru, oranye, aqua), bukan warna buku cerita.

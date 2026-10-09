@@ -142,6 +142,12 @@ Alur utama: pelanggan bayar DP → webhook Midtrans masuk ke `api` → order jad
   /queries             # file .sql untuk sqlc
 /web                   # Next.js (memakai /api/gen/ts)
 /deploy                # Dockerfile, config deploy
+/docs
+  architecture.md      # dokumen ini
+  screens.md           # rencana layar M5: isi tiap layar, RPC-nya, celah API
+  whatsapp-templates.md
+  /design              # brief desain, logo, ilustrasi buatan sendiri
+    /moodboard         # gambar referensi; tidak di-commit (.gitignore)
 ```
 
 **Aturan dependensi:**
@@ -1285,7 +1291,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.7a worker (outbox, kedaluwarsa, DP hangus, tagihan pelunasan), M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7b notifikasi WA dan email serta pengingat pelunasan (setelah template WA disetujui Meta dan API key Resend ada), M2.7c rekonsiliasi Midtrans (setelah M2.6b) | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang. Potongan: M3.1 agregasi dan daftar belanja, M3.2 stok (lot, ledger, cek stok, belanja masuk manual), M3.3 produksi (kunci batch di cutoff, "produksi selesai" → pemakaian stok FIFO) | Golden test dan test stok lulus |
 | **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok. Potongan: M4.1 adapter manual (pesan, terima, batal); M4.2 adapter WhatsApp (setelah template Meta siap) | State machine lengkap |
-| **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
+| **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim). Celah API yang ditemukan saat merencanakan layar (`docs/screens.md`, bagian "Celah API") dikerjakan sebagai potongan backend sebelum layar yang membutuhkannya | Ibu memakai dari HP untuk order sungguhan |
 | **M6 Jadwal ulang + Biteship** | Aksi massal, permintaan maaf, pilihan pelanggan, refund, pengiriman | Uji ujung ke ujung dengan kurir sungguhan |
 | **M7 Channels** | Integrasi Tokopedia | Order Tokopedia ikut batch yang sama |
 | **Nanti** | Resolusi tenant + billing → SaaS | Setelah divalidasi 2–3 design partner yang bayar |
@@ -1295,22 +1301,27 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 Sebelum menulis kode apa pun di `web/`, agent wajib berhenti dan mengingatkan pengguna
 bahwa langkah desain berikut harus selesai dan disetujui:
 
+0. **Brief dan rencana layar** (ditambahkan 2026-10-08): `docs/design/brief.md` (untuk siapa, arah gaya,
+   takaran per area, batasan) dan `docs/screens.md` (isi setiap layar, RPC-nya, dan celah API).
 1. **Design System toko** (tipe artifact *Design System* di Claude): warna, tipografi, spasi,
    radius, komponen dasar, logo kalau ada.
 2. **Mockup Design** (tipe artifact *Design* di Claude, atau claude.ai/design) untuk tiga area:
    - PWA ibu: cek sisa bahan, daftar belanja, daftar produksi, siap kirim (prioritas utama)
    - Storefront: katalog varian, masuk dengan OTP WhatsApp, checkout dengan pilihan DP/lunas dan pin peta, lacak pesanan
    - CMS: editor resep + grafik fit, jadwal ulang massal dengan pratinjau dampak
-3. **Tautan artifact** Design System dan mockup yang disetujui dicatat di bagian ini.
+3. **Uji dengan ibu**: mockup PWA dibuka di HP ibu, dengan tiga tugas tanpa diajari (catatan di kanvasnya).
+4. **Tautan artifact** Design System dan mockup yang disetujui dicatat di bagian ini.
 
 Gambar raster (banner, ilustrasi) boleh dibuat dengan model gambar lain. Foto produk wajib
 foto kue asli, bukan buatan AI.
 
-Tautan desain yang disetujui:
-- Design System: _(belum ada)_
-- Mockup PWA ibu: _(belum ada)_
-- Mockup storefront: _(belum ada)_
-- Mockup CMS: _(belum ada)_
+Tautan desain (draf 2026-10-08, **belum disetujui**; menunggu review pemilik dan uji dengan ibu):
+- Design System: https://claude.ai/artifact/Sw9b6VQvWkMfeMTt4L7gpn
+- Mockup PWA ibu: https://claude.ai/artifact/QyLJCTL5KHgJLFLsyAc8Jk
+- Mockup storefront: https://claude.ai/artifact/T3SQBwLkqGhrJxM2okuhmp
+- Mockup CMS: https://claude.ai/artifact/VCAJyPPBVTAhgjDGKfcN2Q
+
+Artifact di atas privat milik pemilik; orang lain (termasuk ibu) baru bisa membukanya setelah dibagikan lewat menu Share.
 
 ---
 
@@ -1390,6 +1401,17 @@ Diputuskan 2026-09-29:
 | Barang segar | Dianggap sudah dicek "masih bagus" saat diterima, baik lewat belanja masuk maupun pesanan; 24 jam kemudian perlu cek ulang (§12) |
 | Pesanan pembelian | Satu per supplier dari daftar belanja, dalam kemasan; "Belanja sendiri" untuk bahan tanpa supplier; barang yang datang kurang otomatis masuk daftar belanja lagi (§19) |
 
+Diputuskan 2026-10-08 (desain M5, §26.1):
+
+| Topik | Keputusan |
+|---|---|
+| Alur desain | Brief → rencana layar (`docs/screens.md`) → Design System → mockup → uji dengan ibu → revisi, baru kode `web/` |
+| Arah gaya | Suasana buku cerita klasik bergaya ilustrasi lama Winnie-the-Pooh (bukan Disney): kertas krem, garis tinta coklat, sapuan cat air, warna madu. Hanya suasananya: tanpa karakter, nama, atau gambar dari buku itu, karena hak cipta ilustrasi masih berlaku di Indonesia sampai 2046 (`docs/design/brief.md`) |
+| Takaran per area | Storefront penuh, PWA ibu sedikit (palet dan huruf saja), CMS netral dengan tema gelap |
+| Nama toko | Zielfan Cake & Bakery, sesuai tulisan di logo |
+| Asumsi perangkat | HP ibu Android kelas menengah (tetap diuji di iPhone); CMS dirancang untuk laptop, tetap bisa di HP |
+| Warna grafik | Grafik data (misalnya grafik fit) memakai palet grafik tervalidasi (biru, oranye, aqua), bukan palet buku cerita, supaya tetap terbedakan oleh pembaca buta warna |
+
 ### Masih terbuka
 
 1. **Model kapasitas produksi berbasis loyang dan oven**, dirancang setelah M3, karena total adonan per hari baru dihitung di sana. Yang sudah disepakati:
@@ -1400,8 +1422,9 @@ Diputuskan 2026-09-29:
 
    Dari sana: total adonan per hari → jumlah loyang → putaran panggang per oven → muat atau tidak. `daily_capacity_minutes` diganti model ini.
 2. **Teks Syarat & Ketentuan DP**, termasuk aturan DP hangus. Isinya ditulis pemilik sebelum go-live; sistem menyimpan versi yang disetujui pelanggan di setiap order. Teksnya harus sesuai dengan aturan yang sudah diputuskan: DP hangus hanya setelah tenggat pelunasan, dan pembatalan sebelum tenggat berarti refund penuh.
-3. **Akun Midtrans atas nama siapa** (ibu atau Zefan). Rekening pencairan harus atas nama yang sama dengan KTP. Didaftarkan pemilik pada 30 September 2026, bersama domain dan Cloudflare.
+3. **Akun Midtrans atas nama siapa** (ibu atau Zefan). Rekening pencairan harus atas nama yang sama dengan KTP. Rencananya didaftarkan pemilik pada 30 September 2026, bersama domain dan Cloudflare; per 8 Oktober 2026 belum didaftarkan.
 4. **Template WhatsApp dan nomor toko** (untuk M2.7b): domain untuk tombol bayar, kontak toko di pesan pembatalan, dan apakah nomor WhatsApp toko memakai *coexistence* (aplikasi WhatsApp Business dan Cloud API di nomor yang sama). Lihat "Yang masih perlu diputuskan" di `docs/whatsapp-templates.md`.
+5. **Cara masuk staf** (M5, `docs/screens.md` celah 4). Usul: email dan kata sandi Supabase, supaya PWA ibu dan CMS tidak bergantung pada template WhatsApp; owner mengundang staf dari CMS.
 
 ### 27.1 Pertimbangan: email transaksional
 
