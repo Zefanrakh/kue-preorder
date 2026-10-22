@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# pre-commit: gofmt and golangci-lint on what is staged, then a secret scan.
+# Turned on by `make setup` (git config core.hooksPath .githooks).
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+gofiles=$(echo "$staged" | grep -E '\.go$' || true)
+if [ -n "$gofiles" ]; then
+  unformatted=$(echo "$gofiles" | xargs gofmt -l)
+  if [ -n "$unformatted" ]; then
+    echo "pre-commit: not gofmt'ed:"; echo "$unformatted"; exit 1
+  fi
+  # Only issues in lines this commit adds; the full run is in `make check`.
+  golangci-lint run --new-from-rev=HEAD
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --pre-commit --staged --redact --no-banner
+else
+  echo "pre-commit: gitleaks not installed - secret scan skipped"
+fi
