@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 72" width="64" height="72" role="img" aria-label="Uap hangat">
+  <path d="M12 44c-5-12 2-26 13-31 9-4 20-1 25 7 6 9 4 22-3 30-6 7-16 10-24 7-5-2-9-7-11-13z" fill="#D6E4EA" opacity="0.6"/>
+  <g fill="none" stroke="#512914" stroke-width="1.8" stroke-linecap="round">
+    <path d="M18 66c-6-8 6-13 0-21s5-13 1-22"/>
+    <path d="M32 68c-7-9 7-14 0-24s6-15 1-26s3-12 1-15"/>
+    <path d="M46 66c-6-8 6-13 0-21s5-13 1-22"/>
+  </g>
+</svg>
