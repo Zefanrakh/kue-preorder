@@ -257,7 +257,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 
 **Mengaktifkan login OTP** (pekerjaan pemilik, setelah `api` di-deploy dengan HTTPS):
 1. **Meta**:
-   - Selesaikan verifikasi bisnis dan daftarkan nomor WhatsApp toko.
+   - Buat portofolio bisnis dan daftarkan nomor WhatsApp toko. **Verifikasi bisnis (NIB) tidak wajib untuk mulai** (diputuskan 2026-10-19, §27): akun yang belum terverifikasi dibatasi sekitar 250 percakapan yang dimulai toko per 24 jam. Saat membuat akun, cek apakah template Authentication disetujui untuk akun yang belum terverifikasi; kalau ditolak, login memakai OTP email dulu (§27).
    - Buat template kategori **Authentication**, bahasa **Indonesian**, tombol **Copy code**, dengan kalimat keamanan dan masa berlaku 5 menit.
    - Buat *system user* dengan token permanen.
    - Isi `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (ID nomor, bukan nomornya), dan `WHATSAPP_OTP_TEMPLATE` (nama template) di environment server.
@@ -1411,6 +1411,15 @@ Diputuskan 2026-10-08 (desain M5, §26.1):
 | Nama toko | Zielfan Cake & Bakery, sesuai tulisan di logo |
 | Asumsi perangkat | HP ibu Android kelas menengah (tetap diuji di iPhone); CMS dirancang untuk laptop, tetap bisa di HP |
 | Warna grafik | Grafik data (misalnya grafik fit) memakai palet grafik tervalidasi (biru, oranye, aqua), bukan palet buku cerita, supaya tetap terbedakan oleh pembaca buta warna |
+
+Diputuskan 2026-10-19:
+
+| Topik | Keputusan |
+|---|---|
+| WhatsApp tanpa NIB | Pemilik belum mengurus NIB, jadi **WhatsApp Cloud API dipakai tanpa verifikasi bisnis** dengan batas sekitar 250 percakapan yang dimulai toko per 24 jam (cukup untuk skala sekarang). Desain OTP dan notifikasi (§8, M2.7b) tidak berubah. NIB dan verifikasi menyusul kalau batas itu mulai sempit |
+| Jembatan sebelum Cloud API siap | Notifikasi pesanan dikirim **manual lewat tautan `wa.me`**: CMS dan PWA menampilkan tombol "Kirim lewat WhatsApp" berisi pesan yang sudah terisi dari teks template (`docs/whatsapp-templates.md`), lalu ibu atau owner menekan Kirim dari aplikasi WhatsApp Business. Teks tetap dibuat di Go; frontend hanya membuka tautannya. Tidak bisa untuk OTP |
+| Cadangan login | Kalau template Authentication tidak disetujui untuk akun yang belum terverifikasi, pelanggan masuk dengan **OTP email** (Supabase + Resend) sampai WhatsApp siap. Konsekuensinya, nomor HP pelanggan belum terverifikasi selama masa itu |
+| Gateway WA tidak resmi | **Tidak dipakai** (Fonnte, Wablas, dan sejenisnya): melanggar ketentuan WhatsApp dan nomor toko bisa diblokir permanen |
 
 ### Masih terbuka
 

@@ -6,6 +6,8 @@ Daftar template pesan WhatsApp yang dikirim sistem ke pelanggan. Setiap template
 
 Kalau teks diubah saat pengajuan, ubah juga dokumen ini di commit yang sama.
 
+**Akun tanpa verifikasi bisnis** (diputuskan 2026-10-19, `architecture.md` §27): toko memakai Cloud API tanpa NIB, dengan batas sekitar 250 percakapan yang dimulai toko per 24 jam. Sebelum Cloud API siap, teks template 1–8 juga dipakai untuk tombol manual "Kirim lewat WhatsApp" (`wa.me`), jadi teksnya cukup dirawat di satu tempat ini.
+
 ## Ringkasan
 
 | # | Nama template | Kategori | Dikirim saat | Tombol |
