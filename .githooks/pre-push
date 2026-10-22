@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# pre-push: vet + the unit tests of the packages changed against main.
+# The full gate (race, integration with Docker, codegen) is `make check`.
+set -euo pipefail
+
+git fetch -q origin main 2>/dev/null || true
+go vet ./...
+make --no-print-directory test-changed
