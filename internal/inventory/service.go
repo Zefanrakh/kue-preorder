@@ -3,6 +3,7 @@ package inventory
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -162,11 +163,7 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 	if err := f.Err(); err != nil {
 		return Lot{}, err
 	}
-	expires := in.ExpiresAt
-	if expires == nil && ing.ShelfLifeDays != nil {
-		e := in.ReceivedAt.AddDate(0, 0, int(*ing.ShelfLifeDays))
-		expires = &e
-	}
+	expires := expiry(ing, in.ReceivedAt, in.ExpiresAt)
 	lot := Lot{
 		ID: uuid.New(), IngredientID: in.IngredientID, ReceivedAt: in.ReceivedAt, ExpiresAt: expires,
 		Status: LotAvailable, Source: SourceManual, Note: in.Note,
@@ -176,30 +173,112 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 		reason = "Belanja masuk"
 	}
 	err = s.tx.Tx(ctx, func(ctx context.Context) error {
-		if err := s.repo.LockIngredient(ctx, lot.IngredientID); err != nil {
-			return err
-		}
-		if err := s.repo.InsertLot(ctx, p.TenantID, lot, p.AuthUserID, now); err != nil {
-			return err
-		}
-		if err := s.repo.InsertMovement(ctx, p.TenantID, Movement{
-			LotID: lot.ID, IngredientID: lot.IngredientID, Kind: MoveReceive, Qty: in.Qty, ActorID: p.AuthUserID, At: now,
-		}); err != nil {
-			return err
-		}
-		if err := s.repo.Audit(ctx, audit.Entry{
-			TenantID: p.TenantID, ActorID: p.AuthUserID, Action: "inventory.stock.received", Entity: "stock_lot", EntityID: lot.ID,
-			After:  map[string]any{"ingredient_id": lot.IngredientID, "qty": in.Qty, "received_at": lot.ReceivedAt, "expires_at": lot.ExpiresAt},
-			Reason: reason, At: now,
-		}); err != nil {
-			return err
-		}
-		return s.repo.Publish(ctx, stockChanged(p.TenantID, lot.IngredientID, now))
+		return intake(ctx, s.repo, p.TenantID, ing, lot, in.Qty, p.AuthUserID, reason, now)
 	})
 	if err != nil {
 		return Lot{}, err
 	}
 	return s.repo.GetLot(ctx, p.TenantID, lot.ID)
+}
+
+// intake records a delivery as the new lot l under the ingredient's lock:
+// its receive movement, its audit entry, and the stock change. A perishable
+// delivery is fresh from the shop, so it counts as checked "masih bagus" at
+// its arrival (decided 2026-09-29): it counts at once, and needs a new check
+// 24 hours later like any other (§12).
+func intake(ctx context.Context, repo Repository, tenant uuid.UUID, ing catalog.Ingredient, l Lot, qty int64, actor uuid.UUID, reason string, now time.Time) error {
+	if err := repo.LockIngredient(ctx, l.IngredientID); err != nil {
+		return err
+	}
+	if err := repo.InsertLot(ctx, tenant, l, actor, now); err != nil {
+		return err
+	}
+	if err := repo.InsertMovement(ctx, tenant, Movement{
+		LotID: l.ID, IngredientID: l.IngredientID, Kind: MoveReceive, Qty: qty, ActorID: actor, At: now,
+	}); err != nil {
+		return err
+	}
+	if ing.LeftoverPolicy == catalog.LeftoverConfirm {
+		if err := repo.InsertCheck(ctx, tenant, Check{LotID: l.ID, OK: true, CheckedBy: actor, At: l.ReceivedAt}); err != nil {
+			return err
+		}
+	}
+	after := map[string]any{"ingredient_id": l.IngredientID, "qty": qty, "received_at": l.ReceivedAt, "expires_at": l.ExpiresAt}
+	if l.ProcurementItemID != nil {
+		after["procurement_item_id"] = *l.ProcurementItemID
+	}
+	if err := repo.Audit(ctx, audit.Entry{
+		TenantID: tenant, ActorID: actor, Action: "inventory.stock.received", Entity: "stock_lot", EntityID: l.ID,
+		After: after, Reason: reason, At: now,
+	}); err != nil {
+		return err
+	}
+	return repo.Publish(ctx, stockChanged(tenant, l.IngredientID, now))
+}
+
+// expiry is when a delivery of ing received at expires: given, or its shelf
+// life after it; nil when neither is known.
+func expiry(ing catalog.Ingredient, receivedAt time.Time, given *time.Time) *time.Time {
+	if given != nil {
+		return given
+	}
+	if ing.ShelfLifeDays == nil {
+		return nil
+	}
+	e := receivedAt.AddDate(0, 0, int(*ing.ShelfLifeDays))
+	return &e
+}
+
+// Delivery is what arrived for one item of a purchase order.
+type Delivery struct {
+	IngredientID      uuid.UUID
+	Qty               int64
+	ReceivedAt        time.Time
+	ExpiresAt         *time.Time // nil: the shelf life after ReceivedAt
+	ProcurementItemID uuid.UUID
+	Note              string
+}
+
+// Receiver puts what a purchase order brought into the stock (M4). It acts
+// for a person procurement already authorized, in procurement's
+// transaction.
+type Receiver struct {
+	repo    Repository
+	catalog Catalog
+}
+
+// NewReceiver returns a Receiver over repo.
+func NewReceiver(repo Repository, cat Catalog) *Receiver {
+	return &Receiver{repo: repo, catalog: cat}
+}
+
+// ReceiveOrdered records a delivery as a new lot from procurement, as
+// "Belanja masuk" does.
+func (r *Receiver) ReceiveOrdered(ctx context.Context, tenant uuid.UUID, d Delivery, actor uuid.UUID, at time.Time) (Lot, error) {
+	labels, err := r.catalog.Labels(ctx, tenant)
+	if err != nil {
+		return Lot{}, err
+	}
+	ing, ok := labels.Ingredients[d.IngredientID]
+	if !ok || d.Qty <= 0 || d.Qty > maxQty {
+		return Lot{}, fmt.Errorf("delivery of %d of ingredient %s", d.Qty, d.IngredientID)
+	}
+	if d.ExpiresAt != nil && !d.ExpiresAt.After(d.ReceivedAt) {
+		return Lot{}, &apperr.ValidationError{Fields: map[string]string{"expires_at": "Tanggal kedaluwarsa harus setelah tanggal terima."}}
+	}
+	item := d.ProcurementItemID
+	lot := Lot{
+		ID: uuid.New(), IngredientID: d.IngredientID, ReceivedAt: d.ReceivedAt, ExpiresAt: expiry(ing, d.ReceivedAt, d.ExpiresAt),
+		Status: LotAvailable, Source: SourceProcurement, ProcurementItemID: &item, Note: d.Note,
+	}
+	reason := d.Note
+	if reason == "" {
+		reason = "Diterima dari pesanan pembelian"
+	}
+	if err := intake(ctx, r.repo, tenant, ing, lot, d.Qty, actor, reason, at); err != nil {
+		return Lot{}, err
+	}
+	return r.repo.GetLot(ctx, tenant, lot.ID)
 }
 
 // IngredientStock is one ingredient's stock as the PWA shows it.

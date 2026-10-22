@@ -428,7 +428,7 @@ type ShoppingLine struct {
 	Needed int64 `protobuf:"varint,4,opt,name=needed,proto3" json:"needed,omitempty"`
 	// The stock the batch counts on (from M3.2), at most needed.
 	UsableStock int64 `protobuf:"varint,5,opt,name=usable_stock,json=usableStock,proto3" json:"usable_stock,omitempty"`
-	// What was ordered already (from M4).
+	// What was ordered and has not arrived yet (M4).
 	Ordered int64 `protobuf:"varint,6,opt,name=ordered,proto3" json:"ordered,omitempty"`
 	// needed - usable_stock - ordered, at least 0.
 	ToBuy int64 `protobuf:"varint,7,opt,name=to_buy,json=toBuy,proto3" json:"to_buy,omitempty"`
@@ -437,8 +437,11 @@ type ShoppingLine struct {
 	// to_buy rounded up to whole packs; 0 without a pack.
 	Packs int64 `protobuf:"varint,9,opt,name=packs,proto3" json:"packs,omitempty"`
 	// packs × the pack's price; unset without one.
-	CostIdr       *int64     `protobuf:"varint,10,opt,name=cost_idr,json=costIdr,proto3,oneof" json:"cost_idr,omitempty"`
-	Status        LineStatus `protobuf:"varint,11,opt,name=status,proto3,enum=kuepreorder.aggregation.v1.LineStatus" json:"status,omitempty"`
+	CostIdr *int64     `protobuf:"varint,10,opt,name=cost_idr,json=costIdr,proto3,oneof" json:"cost_idr,omitempty"`
+	Status  LineStatus `protobuf:"varint,11,opt,name=status,proto3,enum=kuepreorder.aggregation.v1.LineStatus" json:"status,omitempty"`
+	// What arrived for the line (M4); it is in the stock, counted through
+	// usable_stock.
+	Received      int64 `protobuf:"varint,12,opt,name=received,proto3" json:"received,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -548,6 +551,13 @@ func (x *ShoppingLine) GetStatus() LineStatus {
 		return x.Status
 	}
 	return LineStatus_LINE_STATUS_UNSPECIFIED
+}
+
+func (x *ShoppingLine) GetReceived() int64 {
+	if x != nil {
+		return x.Received
+	}
+	return 0
 }
 
 type ListBatchesRequest struct {
@@ -1101,7 +1111,7 @@ const file_kuepreorder_aggregation_v1_batches_proto_rawDesc = "" +
 	"\x04unit\x18\x04 \x01(\tR\x04unit\x12 \n" +
 	"\tprice_idr\x18\x05 \x01(\x03H\x00R\bpriceIdr\x88\x01\x01B\f\n" +
 	"\n" +
-	"_price_idr\"\xc0\x03\n" +
+	"_price_idr\"\xdc\x03\n" +
 	"\fShoppingLine\x12#\n" +
 	"\ringredient_id\x18\x01 \x01(\tR\fingredientId\x12'\n" +
 	"\x0fingredient_name\x18\x02 \x01(\tR\x0eingredientName\x12=\n" +
@@ -1114,7 +1124,8 @@ const file_kuepreorder_aggregation_v1_batches_proto_rawDesc = "" +
 	"\x05packs\x18\t \x01(\x03R\x05packs\x12\x1e\n" +
 	"\bcost_idr\x18\n" +
 	" \x01(\x03H\x00R\acostIdr\x88\x01\x01\x12>\n" +
-	"\x06status\x18\v \x01(\x0e2&.kuepreorder.aggregation.v1.LineStatusR\x06statusB\v\n" +
+	"\x06status\x18\v \x01(\x0e2&.kuepreorder.aggregation.v1.LineStatusR\x06status\x12\x1a\n" +
+	"\breceived\x18\f \x01(\x03R\breceivedB\v\n" +
 	"\t_cost_idr\"J\n" +
 	"\x12ListBatchesRequest\x12\x1b\n" +
 	"\tfrom_date\x18\x01 \x01(\tR\bfromDate\x12\x17\n" +

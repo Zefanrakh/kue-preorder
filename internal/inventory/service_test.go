@@ -161,16 +161,20 @@ type pantry struct {
 	clock      *clock.Fake
 	service    *inventory.Service
 	reader     *inventory.Reader
+	catalog    catalog.Labels
 	flour, egg uuid.UUID
 }
+
+func (p *pantry) labels() catalog.Labels { return p.catalog }
 
 func newPantry() *pantry {
 	p := &pantry{repo: newMemStock(), caller: &caller{roles: []identity.Role{identity.RoleKitchen}, user: uuid.New()}, clock: clock.NewFake(wib(6, 10, 0)), flour: uuid.New(), egg: uuid.New()}
 	months, days := int32(180), int32(14)
-	cat := fixedCatalog{labels: catalog.Labels{Ingredients: map[uuid.UUID]catalog.Ingredient{
+	p.catalog = catalog.Labels{Ingredients: map[uuid.UUID]catalog.Ingredient{
 		p.flour: {ID: p.flour, Name: "Tepung", BaseUnit: catalog.Gram, ShelfLifeDays: &months, LeftoverPolicy: catalog.LeftoverAuto},
 		p.egg:   {ID: p.egg, Name: "Telur", BaseUnit: catalog.Piece, Perishable: true, ShelfLifeDays: &days, LeftoverPolicy: catalog.LeftoverConfirm},
-	}}}
+	}}
+	cat := fixedCatalog{labels: p.catalog}
 	p.service = inventory.NewService(inventory.ServiceDeps{Repo: p.repo, Catalog: cat, Principals: p.caller, Tx: directTx{}, Clock: p.clock})
 	p.reader = inventory.NewReader(p.repo, cat, p.clock)
 	return p
@@ -247,8 +251,13 @@ func TestCheck(t *testing.T) {
 		got, _ := p.reader.Usable(t.Context(), tenant, date, []uuid.UUID{p.egg})
 		return got[p.egg]
 	}
+	// Fresh from the shop, the eggs count as checked on arrival.
+	if usable() != 12 {
+		t.Fatalf("fresh eggs count %d, want 12", usable())
+	}
+	p.clock.Advance(24*time.Hour + time.Minute)
 	if usable() != 0 {
-		t.Fatal("unchecked eggs counted")
+		t.Fatal("eggs a day old count without a new check")
 	}
 
 	if _, err := p.service.Check(t.Context(), eggs.ID, inventory.CheckInput{OK: true}); err != nil {
@@ -368,15 +377,19 @@ func TestLotsToCheck(t *testing.T) {
 	p := newPantry()
 	eggs := p.receive(t, p.egg, 12)
 	p.receive(t, p.flour, 1000) // flour needs no check
-	checked := p.receive(t, p.egg, 6)
-	if _, err := p.service.Check(t.Context(), checked.ID, inventory.CheckInput{OK: true}); err != nil {
-		t.Fatal(err)
+	if got, _ := p.service.LotsToCheck(t.Context()); len(got) != 0 {
+		t.Fatalf("LotsToCheck() = %+v, want nothing: the eggs are fresh", got)
 	}
+	p.clock.Advance(25 * time.Hour)
+	checked := p.receive(t, p.egg, 6) // a new delivery, fresh again
 
 	got, err := p.service.LotsToCheck(t.Context())
 
 	if err != nil || len(got) != 1 || got[0].ID != eggs.ID || got[0].IngredientName != "Telur" || got[0].Expired {
-		t.Fatalf("LotsToCheck() = %+v, %v; want the unchecked eggs only", got, err)
+		t.Fatalf("LotsToCheck() = %+v, %v; want the day-old eggs only", got, err)
+	}
+	if got[0].ID == checked.ID {
+		t.Error("the fresh delivery needs a check")
 	}
 	p.clock.Advance(15 * 24 * time.Hour) // past the eggs' 14 days, not the flour's 180
 	got, _ = p.service.LotsToCheck(t.Context())
@@ -536,5 +549,31 @@ func TestConsumer_LocksInIDOrder(t *testing.T) {
 	}
 	if !slices.Equal(p.repo.locks, want) {
 		t.Errorf("locks = %v, want %v", p.repo.locks, want)
+	}
+}
+
+// A delivery for an order becomes a procurement lot linked to its item; a
+// perishable one counts as checked on arrival.
+func TestReceiver_ReceiveOrdered(t *testing.T) {
+	p := newPantry()
+	item, cook := uuid.New(), uuid.New()
+	received := p.clock.Now().Add(-time.Hour)
+
+	l, err := inventory.NewReceiver(p.repo, fixedCatalog{labels: p.labels()}).ReceiveOrdered(t.Context(), tenant,
+		inventory.Delivery{IngredientID: p.egg, Qty: 30, ReceivedAt: received, ProcurementItemID: item}, cook, p.clock.Now())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Source != inventory.SourceProcurement || l.ProcurementItemID == nil || *l.ProcurementItemID != item || l.Balance != 30 ||
+		l.LastOKAt == nil || !l.LastOKAt.Equal(received) || l.ExpiresAt == nil || !l.ExpiresAt.Equal(received.AddDate(0, 0, 14)) {
+		t.Errorf("lot = %+v, want 30 eggs from the order, checked on arrival, expiring in 14 days", l)
+	}
+	if a := p.repo.audits[len(p.repo.audits)-1]; a.Action != "inventory.stock.received" || a.ActorID != cook || a.Reason != "Diterima dari pesanan pembelian" {
+		t.Errorf("audit = %+v", a)
+	}
+	if _, err := inventory.NewReceiver(p.repo, fixedCatalog{labels: p.labels()}).ReceiveOrdered(t.Context(), tenant,
+		inventory.Delivery{IngredientID: p.egg, Qty: 0, ReceivedAt: received, ProcurementItemID: item}, cook, p.clock.Now()); err == nil {
+		t.Error("an empty delivery was received")
 	}
 }

@@ -121,9 +121,12 @@ type Line struct {
 	Needed       int64
 	// UsableStock is the stock this batch counts on (§12), at most Needed.
 	UsableStock int64
-	// Ordered is what procurement has ordered already; a computation never
-	// changes it.
+	// Ordered is what procurement ordered and has not arrived yet; a
+	// computation never changes it.
 	Ordered int64
+	// Received is what arrived for the line; it is in the stock now, and
+	// counts through UsableStock. A computation never changes it.
+	Received int64
 	// ToBuy is Needed - UsableStock - Ordered, at least 0.
 	ToBuy int64
 	// Pack is the ingredient's default pack; nil when it has none, and the
@@ -153,7 +156,7 @@ func Shop(needs []Need, stock map[uuid.UUID]int64, existing []Line, packs map[uu
 	lines := map[uuid.UUID]*Line{}
 	for _, e := range existing {
 		if e.Status != LineNeeded {
-			lines[e.IngredientID] = &Line{IngredientID: e.IngredientID, Ordered: e.Ordered, Status: e.Status}
+			lines[e.IngredientID] = &Line{IngredientID: e.IngredientID, Ordered: e.Ordered, Received: e.Received, Status: e.Status}
 		}
 	}
 	for _, n := range needs {

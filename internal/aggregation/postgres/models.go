@@ -33,6 +33,7 @@ type BatchRequirement struct {
 	PacksToBuy     *int64
 	Status         string
 	UpdatedAt      time.Time
+	QtyReceived    int64
 }
 
 type ProductionBatch struct {

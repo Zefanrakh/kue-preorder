@@ -106,7 +106,7 @@ message ShoppingLine {
   int64 needed = 4;
   // The stock the batch counts on (from M3.2), at most needed.
   int64 usable_stock = 5;
-  // What was ordered already (from M4).
+  // What was ordered and has not arrived yet (M4).
   int64 ordered = 6;
   // needed - usable_stock - ordered, at least 0.
   int64 to_buy = 7;
@@ -117,6 +117,9 @@ message ShoppingLine {
   // packs × the pack's price; unset without one.
   optional int64 cost_idr = 10;
   LineStatus status = 11;
+  // What arrived for the line (M4); it is in the stock, counted through
+  // usable_stock.
+  int64 received = 12;
 }
 
 message ListBatchesRequest {

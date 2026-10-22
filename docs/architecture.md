@@ -286,6 +286,7 @@ Service yang sudah ada: `kuepreorder.identity.v1.IdentityService` (`WhoAmI`), `k
 | Setelan pembayaran: aturan DP dan tarif biaya admin per metode (`PaymentSettingsService`) | ✅ | ❌ (hanya lihat) | ❌ |
 | Batch dan daftar belanja per tanggal, "Hitung ulang", dan "Produksi selesai" (`BatchService`) | ✅ | ✅ | ❌ |
 | Stok: belanja masuk, cek "masih bagus / buang", stok opname (`InventoryService`) | ✅ | ✅ | ❌ |
+| Pesanan pembelian ke supplier: pesan, terima, batal (`ProcurementService`) | ✅ | ✅ | ❌ |
 | Tanggal libur | ✅ | ✅ | ❌ |
 | Penawaran order: harga, DP, dan jadwal (`QuoteOrder`) | ✅ | ✅ | ✅ |
 | Memesan dan melihat order sendiri (`PlaceOrder`, `ListMyOrders`, `GetMyOrder`) | ❌ tanpa nomor HP | ❌ tanpa nomor HP | ✅ pelanggan dengan nomor terverifikasi; anonim ❌ |
@@ -409,6 +410,7 @@ stock_lots (
   received_at timestamptz, expires_at timestamptz null,   -- null kalau umur simpan tidak diketahui
   status text,                       -- 'available' | 'exhausted' | 'discarded' | 'expired'
   source text,                       -- 'manual' (belanja masuk) | 'procurement' (M4) | 'adjustment' (opname)
+  procurement_item_id uuid null,     -- wajib tepat untuk source 'procurement': item pesanan asalnya
   note text null, created_by uuid, created_at, updated_at
 )
 stock_movements (                    -- APPEND-ONLY (trigger menolak UPDATE/DELETE). Saldo = SUM(qty)
@@ -499,17 +501,25 @@ batch_component_totals ( tenant_id, batch_id, component_id, units numeric,
                          primary key (batch_id, component_id) )  -- jejak audit: U_c per batch
 batch_requirements ( tenant_id, batch_id, ingredient_id,     -- jumlah dalam satuan dasar (g, ml, pcs)
                      qty_needed bigint, qty_usable_stock bigint,
-                     qty_ordered bigint,                       -- diisi procurement (M4); hitungan tidak mengubahnya
+                     qty_ordered bigint,                       -- dipesan tapi belum datang (M4); hitungan tidak mengubahnya
+                     qty_received bigint,                      -- sudah datang untuk baris ini (M4); sudah masuk stok
                      qty_to_buy bigint,                        -- needed - usable - ordered, minimal 0
                      supplier_id, pack_size numeric, pack_unit, pack_price_idr bigint,  -- kemasan default saat dihitung
                      packs_to_buy bigint,                      -- to_buy dibulatkan ke atas per kemasan
                      status text default 'needed',             -- 'needed' | 'ordered' | 'received'; diubah procurement
                      primary key (batch_id, ingredient_id) )
-procurement_orders ( id, tenant_id, batch_id, supplier_id, adapter_key text,
-                     external_ref text null, status text default 'draft',
-                     sent_at timestamptz null )
-procurement_order_items ( id, tenant_id, procurement_order_id, ingredient_id,
-                          qty numeric, pack_unit text )
+procurement_orders ( id, tenant_id, batch_id, batch_date date,
+                     supplier_id null,                         -- null: "Belanja sendiri"
+                     adapter_key text,                         -- 'manual' | 'whatsapp' (M4.2)
+                     external_ref text null,                   -- mis. id pesan WhatsApp (M4.2)
+                     status text,                              -- 'ordered' | 'received' | 'cancelled'
+                     note, created_by, sent_at null, created_at, updated_at )
+procurement_order_items ( id, tenant_id, order_id, ingredient_id,
+                          qty bigint,                           -- dipesan, satuan dasar
+                          packs, pack_size, pack_unit, pack_price_idr,   -- kemasannya; null tanpa kemasan
+                          status text,                          -- 'ordered' | 'received' | 'cancelled'
+                          qty_received bigint null, received_at null,
+                          unique (order_id, ingredient_id) )
 ```
 
 ### 9.8 Pembayaran (ledger)
@@ -707,7 +717,8 @@ RecomputeBatch(ctx, tenantID, date):
   - Urutan input tidak mengubah hasil; ini dibuktikan dengan golden test dan test urutan acak.
 - **`aggregation.Engine.Recompute`** menjalankan satu tanggal dalam satu transaksi dengan baris `production_batches` dikunci. Semua data dibaca ulang, lalu seluruh hasil ditulis. Karena itu hitungan idempoten, termasuk kalau dua hitungan berjalan bersamaan: yang kedua menunggu, lalu menulis hasil yang sama.
 - **Yang dipesan procurement tidak pernah ditimpa**:
-  - Hitungan tidak pernah mengubah `qty_ordered` dan `status`.
+  - Hitungan tidak pernah mengubah `qty_ordered`, `qty_received`, dan `status`. Kolom-kolom itu hanya diubah procurement lewat `aggregation.Purchasing`, yang langsung menghitung ulang batch-nya dalam transaksi yang sama.
+  - `qty_ordered` berarti **dipesan tapi belum datang**. Begitu barang datang, jumlahnya pindah ke stok (dihitung lewat `qty_usable_stock`), sehingga barang yang sama tidak pernah terhitung dua kali.
   - Baris yang sudah `ordered` atau `received` tetap ada walaupun bahannya tidak dibutuhkan lagi.
   - Kalau kebutuhan naik setelah dipesan, selisihnya menjadi `qty_to_buy`.
   - Hanya baris `needed` yang tidak dibutuhkan lagi yang dihapus.
@@ -785,6 +796,7 @@ Semua perubahan lewat ledger, jadi selalu bisa dijawab "kenapa stok tepung sekar
   - Cek "masih bagus" berlaku 24 jam dihitung dari saat batch dihitung. Kalau jendela 24 jam itu lewat, hitungan berikutnya berhenti menghitung lot itu, dan daftar belanja naik. Itu arah yang aman.
 - **Belanja masuk** (sebelum M4, diisi ibu dari PWA):
   - Setiap belanjaan menjadi lot baru dan pergerakan `receive`.
+  - **Barang segar dianggap sudah dicek "masih bagus" saat diterima** (diputuskan 2026-09-29), sehingga langsung dihitung. Setelah 24 jam, aturan cek ulang tetap berlaku. Ini juga berlaku untuk barang yang diterima dari pesanan pembelian (§19).
   - `expires_at` = tanggal belanja + umur simpan bahan, atau diisi manual. Tanggal belanja paling lama 30 hari ke belakang.
 - **Cek sisa bahan**:
   - Daftarnya berisi lot bahan `confirm` yang belum dicek "masih bagus" dalam 24 jam, ditambah lot yang sudah kedaluwarsa.
@@ -1093,6 +1105,21 @@ type Adapter interface {
 
 Pesan pertama ke supplier di luar jendela 24 jam wajib memakai template yang disetujui Meta.
 
+**Implementasi** (M4.1, adapter manual; `ProcurementService`):
+- **Pesan**: dari daftar belanja satu tanggal, ibu memilih supplier.
+  - Sistem membuat pesanan berisi baris supplier itu yang masih perlu dibeli, dalam kemasan (jumlah kemasan × isi).
+  - Tanpa supplier berarti **"Belanja sendiri"**, untuk bahan yang tidak punya kemasan default.
+  - Baris daftar belanja menjadi `ordered`, dan sisa yang perlu dibeli langsung turun.
+  - Menekan dua kali tidak memesan dua kali: baris batch dikunci, dan setelah pesanan pertama tidak ada lagi yang perlu dibeli (`nothing_to_order`).
+  - Batch yang sudah `done` tidak bisa dipesankan.
+- **Terima (checklist)**: per item, ibu mengisi jumlah yang datang (boleh kurang, lebih, atau 0).
+  - Yang datang masuk stok sebagai lot `procurement` yang tertaut ke item-nya (`inventory.Receiver`).
+  - Item ditutup, dan daftar belanja memindahkan item itu dari "dipesan" ke "diterima". Kekurangannya otomatis menjadi "perlu dibeli" lagi.
+  - Item yang tidak dicentang tetap menunggu. Pesanan tertutup (`received`) setelah tidak ada item yang menunggu.
+- **Batal**: item yang masih menunggu dikembalikan ke daftar belanja; yang sudah datang tetap. Pesanan menjadi `cancelled` kalau tidak ada yang datang sama sekali, atau `received` kalau ada.
+- **Transaksi**: setiap langkah berjalan dalam satu transaksi (pesanan dan stok dan daftar belanja bersama-sama), diaudit (`procurement.order.created`, `.received`, `.cancelled`), dan menulis event outbox.
+- **Adapter**: `ManualAdapter` tidak mengirim apa-apa, jadi boleh dipanggil di dalam transaksi. Adapter yang benar-benar mengirim (WhatsApp, M4.2) mengirim setelah commit lewat outbox (`send-procurement-order`), supaya transaksi yang batal tidak meninggalkan pesan terkirim.
+
 ```mermaid
 stateDiagram-v2
   [*] --> needed
@@ -1192,6 +1219,7 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
       - stok opname (`inventory.stock.counted`, total sebelum dan sesudah, alasan wajib).
 
       Cek "masih bagus" tidak diaudit karena tidak mengubah stok; siapa yang mengecek tercatat di `stock_checks`.
+    - **Pesanan pembelian** (sejak M4.1): dibuat (`procurement.order.created`, supplier, jumlah item, biaya), diterima (`procurement.order.received`, per item: dipesan dan datang), dibatalkan (`procurement.order.cancelled`, alasan wajib). Barang yang datang juga tercatat sebagai `inventory.stock.received`.
     - **Produksi selesai** (`aggregation.batch.completed`, sejak M3.3): status sebelum dan sesudah, jumlah bahan, total yang dipakai, dan total yang tidak tercatat. Setiap pergerakan `consume` membawa ID batch dan pelakunya.
     - **Setelan pembayaran** (sejak M2.8b): aturan DP (`payments.policy.changed`), tarif metode (`payments.method_fee.changed`), dan reset ke tarif Midtrans (`payments.method_fee.reset`), dengan nilai sebelum dan sesudah serta penanda apakah nilainya bawaan.
   - Jadwal (M6) menyusul memakai helper yang sama. Langkah produksi tidak diaudit karena tidak mengubah uang, stok, atau jadwal; pelakunya tetap tercatat di event `order.status_changed`.
@@ -1256,7 +1284,7 @@ Belum dibangun: resolusi tenant dari login atau domain, onboarding mandiri, bill
 | **M1 Engine** | `catalog` (varian + komponen) + `recipe` | Property test lulus, coverage tinggi |
 | **M2 Order + pembayaran** | Lifecycle, `scheduling`, DP + pelunasan + hangus, Midtrans, outbox. Potongan: M2.1 aturan order dan pembayaran, M2.2 jadwal, M2.3 penawaran order, M2.4 checkout, M2.5 login OTP WhatsApp, M2.6a metode bayar dan biaya, M2.8a operasional order (daftar, status produksi, pembayaran manual, pembatalan), M2.8b setelan pembayaran di CMS, M2.7a worker (outbox, kedaluwarsa, DP hangus, tagihan pelunasan), M2.6b adapter Midtrans dan deploy (setelah akun siap), M2.7b notifikasi WA dan email serta pengingat pelunasan (setelah template WA disetujui Meta dan API key Resend ada), M2.7c rekonsiliasi Midtrans (setelah M2.6b) | Tidak ada jalur serah terima tanpa lunas; webhook ulang aman |
 | **M3 Agregasi + stok** | Batch 2 tingkat, `inventory` + cek stok + bahan dibuang. Potongan: M3.1 agregasi dan daftar belanja, M3.2 stok (lot, ledger, cek stok, belanja masuk manual), M3.3 produksi (kunci batch di cutoff, "produksi selesai" → pemakaian stok FIFO) | Golden test dan test stok lulus |
-| **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok | State machine lengkap |
+| **M4 Procurement** | Adapter manual + WhatsApp, penerimaan → lot stok. Potongan: M4.1 adapter manual (pesan, terima, batal); M4.2 adapter WhatsApp (setelah template Meta siap) | State machine lengkap |
 | **M5 Frontend** | **Prasyarat: lihat §26.1.** Storefront, CMS (editor resep + grafik fit), PWA ibu (cek stok, belanja, siap kirim) | Ibu memakai dari HP untuk order sungguhan |
 | **M6 Jadwal ulang + Biteship** | Aksi massal, permintaan maaf, pilihan pelanggan, refund, pengiriman | Uji ujung ke ujung dengan kurir sungguhan |
 | **M7 Channels** | Integrasi Tokopedia | Order Tokopedia ikut batch yang sama |
@@ -1359,6 +1387,8 @@ Diputuskan 2026-09-29:
 | Stok opname | Per bahan, bukan per lot: kurang diambil dari lot tertua dulu, lebih ditambahkan ke lot terbaru (§12) |
 | Status "diproduksi" batch | Otomatis saat order pertama hari itu ditandai diproduksi; tidak ada tombol "Mulai produksi" (§11) |
 | "Produksi selesai" | Hanya pada hari produksi atau sesudahnya, sekali, tanpa pembatalan; kesalahan dibetulkan lewat opname (§11) |
+| Barang segar | Dianggap sudah dicek "masih bagus" saat diterima, baik lewat belanja masuk maupun pesanan; 24 jam kemudian perlu cek ulang (§12) |
+| Pesanan pembelian | Satu per supplier dari daftar belanja, dalam kemasan; "Belanja sendiri" untuk bahan tanpa supplier; barang yang datang kurang otomatis masuk daftar belanja lagi (§19) |
 
 ### Masih terbuka
 

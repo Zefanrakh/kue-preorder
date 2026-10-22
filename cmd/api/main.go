@@ -22,6 +22,7 @@ import (
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/inventory/v1/inventoryv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/orders/v1/ordersv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/payments/v1/paymentsv1connect"
+	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/procurement/v1/procurementv1connect"
 	"github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/scheduling/v1/schedulingv1connect"
 	"github.com/Zefanrakh/kue-preorder/cmd/internal/app"
 	"github.com/Zefanrakh/kue-preorder/internal/aggregation"
@@ -52,6 +53,9 @@ import (
 	"github.com/Zefanrakh/kue-preorder/internal/platform/telemetry"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/webhook"
 	"github.com/Zefanrakh/kue-preorder/internal/platform/whatsapp"
+	"github.com/Zefanrakh/kue-preorder/internal/procurement"
+	procurementrpc "github.com/Zefanrakh/kue-preorder/internal/procurement/connect"
+	procurementpg "github.com/Zefanrakh/kue-preorder/internal/procurement/postgres"
 	"github.com/Zefanrakh/kue-preorder/internal/scheduling"
 	schedulingrpc "github.com/Zefanrakh/kue-preorder/internal/scheduling/connect"
 	schedulingpg "github.com/Zefanrakh/kue-preorder/internal/scheduling/postgres"
@@ -194,6 +198,11 @@ func wire(database *db.DB, identitySvc *identity.Service, tenants identity.Tenan
 		stock: inventory.NewService(inventory.ServiceDeps{
 			Repo: inventoryRepo, Catalog: catalogReader, Principals: identitySvc, Tx: database, Clock: clk,
 		}),
+		purchasing: procurement.NewService(procurement.ServiceDeps{
+			Repo: procurementpg.NewRepository(database), Shopping: aggregation.NewPurchasing(engine),
+			Stock: inventory.NewReceiver(inventoryRepo, catalogReader), Catalog: catalogReader, Adapter: procurement.ManualAdapter{},
+			Principals: identitySvc, Tx: database, Clock: clk,
+		}),
 		db: database,
 	}
 }
@@ -237,6 +246,7 @@ type handlerDeps struct {
 	paymentSettings *payments.Settings
 	batches         *aggregation.Service
 	stock           *inventory.Service
+	purchasing      *procurement.Service
 	limiter         *ratelimit.Limiter
 	clientIPHeader  string
 	sendSMSHook     http.Handler // nil: not served
@@ -299,6 +309,7 @@ func newHandler(d handlerDeps) (http.Handler, error) {
 	mux.Handle(paymentsv1connect.NewPaymentSettingsServiceHandler(paymentsrpc.NewSettingsHandler(d.paymentSettings, d.logger), connectOpts...))
 	mux.Handle(aggregationv1connect.NewBatchServiceHandler(aggregationrpc.NewHandler(d.batches, d.logger), connectOpts...))
 	mux.Handle(inventoryv1connect.NewInventoryServiceHandler(inventoryrpc.NewHandler(d.stock, d.logger), connectOpts...))
+	mux.Handle(procurementv1connect.NewProcurementServiceHandler(procurementrpc.NewHandler(d.purchasing, d.logger), connectOpts...))
 
 	routes := httpserver.ClientIP(d.clientIPHeader, httpserver.CacheControl(cacheable, mux))
 	return httpserver.CorrelationID(httpserver.Recover(d.logger, routes)), nil

@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package kuepreorder.procurement.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kuepreorder/catalog/v1/catalog.proto";
+
+// ProcurementService is the kitchen's purchasing (docs/architecture.md
+// §19): purchase orders made from a production date's shopping list, one
+// per supplier, and the checklist of what arrived, which goes into the
+// stock. Staff (owner and kitchen) only; anyone else gets PermissionDenied.
+// Every change updates the shopping list at once and is audited.
+//
+// In M4.1 orders are manual: nothing is sent to the supplier.
+// Quantities are whole units of the ingredient's base unit (g, ml, pcs).
+// Money is int64 rupiah.
+service ProcurementService {
+  // CreateOrder orders what is still to buy from one supplier, in its
+  // packs; without supplier_id, the ingredients without a supplier
+  // ("Belanja sendiri"). FailedPrecondition "nothing_to_order" when nothing
+  // is left to buy from it, "batch_done" after the day's production.
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  // ListOrders lists a production date's orders, oldest first.
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // ReceiveOrder ticks what arrived: each item goes into the stock and is
+  // closed; what arrived short is to buy again. Items left out keep
+  // waiting. FailedPrecondition "order_closed" or "item_closed".
+  rpc ReceiveOrder(ReceiveOrderRequest) returns (ReceiveOrderResponse);
+  // CancelOrder gives what still waits back to the shopping list; what
+  // arrived stays.
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_ORDERED = 1;
+  // Closed; something arrived.
+  ORDER_STATUS_RECEIVED = 2;
+  // Closed; nothing arrived.
+  ORDER_STATUS_CANCELLED = 3;
+}
+
+enum ItemStatus {
+  ITEM_STATUS_UNSPECIFIED = 0;
+  ITEM_STATUS_ORDERED = 1;
+  ITEM_STATUS_RECEIVED = 2;
+  ITEM_STATUS_CANCELLED = 3;
+}
+
+// Pack is what an item is bought in.
+message Pack {
+  int64 count = 1;
+  // In the base unit, such as 1000 (g).
+  double size = 2;
+  // Such as "kg".
+  string unit = 3;
+  optional int64 price_idr = 4;
+}
+
+message PurchaseItem {
+  string id = 1;
+  string ingredient_id = 2;
+  string ingredient_name = 3;
+  kuepreorder.catalog.v1.BaseUnit base_unit = 4;
+  // Ordered.
+  int64 qty = 5;
+  // Unset for an ingredient bought without a pack.
+  Pack pack = 6;
+  ItemStatus status = 7;
+  // What arrived, once received; may be more or less than qty.
+  optional int64 qty_received = 8;
+  google.protobuf.Timestamp received_at = 9;
+}
+
+message PurchaseOrder {
+  string id = 1;
+  // The production date, such as "2026-10-08".
+  string date = 2;
+  // Empty for "Belanja sendiri".
+  string supplier_id = 3;
+  // "Belanja sendiri" without a supplier.
+  string supplier_name = 4;
+  // "manual" in M4.1.
+  string adapter = 5;
+  OrderStatus status = 6;
+  string note = 7;
+  google.protobuf.Timestamp created_at = 8;
+  // What the items with a pack price cost.
+  int64 cost_idr = 9;
+  // By ingredient name.
+  repeated PurchaseItem items = 10;
+}
+
+message CreateOrderRequest {
+  string date = 1;
+  // Empty for "Belanja sendiri".
+  string supplier_id = 2;
+  // Up to 500 characters.
+  string note = 3;
+}
+
+message CreateOrderResponse {
+  PurchaseOrder order = 1;
+}
+
+message ListOrdersRequest {
+  string date = 1;
+}
+
+message ListOrdersResponse {
+  repeated PurchaseOrder orders = 1;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  PurchaseOrder order = 1;
+}
+
+message ReceivedItem {
+  string item_id = 1;
+  // What arrived, in the base unit; 0 when nothing came.
+  int64 qty = 2;
+  // Defaults to the ingredient's shelf life after arrival.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ReceiveOrderRequest {
+  string order_id = 1;
+  repeated ReceivedItem items = 2;
+  // Defaults to now; up to 30 days back.
+  google.protobuf.Timestamp received_at = 3;
+}
+
+message ReceiveOrderResponse {
+  PurchaseOrder order = 1;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  // Required, up to 500 characters.
+  string reason = 2;
+}
+
+message CancelOrderResponse {
+  PurchaseOrder order = 1;
+}

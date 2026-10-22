@@ -6,9 +6,10 @@
 select pg_advisory_xact_lock(hashtextextended('stock:' || sqlc.arg(ingredient_id)::text, 0));
 
 -- name: InsertLot :exec
-insert into stock_lots (id, tenant_id, ingredient_id, received_at, expires_at, source, note, created_by, created_at, updated_at)
+insert into stock_lots (id, tenant_id, ingredient_id, received_at, expires_at, source, procurement_item_id, note,
+                        created_by, created_at, updated_at)
 values (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(ingredient_id), sqlc.arg(received_at), sqlc.narg(expires_at),
-        sqlc.arg(source), sqlc.narg(note), sqlc.arg(created_by), sqlc.arg(now), sqlc.arg(now));
+        sqlc.arg(source), sqlc.narg(procurement_item_id), sqlc.narg(note), sqlc.arg(created_by), sqlc.arg(now), sqlc.arg(now));
 
 -- name: InsertMovement :exec
 insert into stock_movements (tenant_id, lot_id, ingredient_id, kind, qty, batch_id, reason, actor_id, created_at)
@@ -28,7 +29,7 @@ where tenant_id = sqlc.arg(tenant_id) and id = sqlc.arg(id);
 -- The lots of the ingredients (every ingredient when none is given) in any
 -- of statuses, oldest first, each with its balance: the sum of its
 -- movements.
-select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.note, l.created_at,
+select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.procurement_item_id, l.note, l.created_at,
        coalesce((select sum(m.qty) from stock_movements m where m.tenant_id = l.tenant_id and m.lot_id = l.id), 0)::bigint as balance
 from stock_lots l
 where l.tenant_id = sqlc.arg(tenant_id)
@@ -37,7 +38,7 @@ where l.tenant_id = sqlc.arg(tenant_id)
 order by l.ingredient_id, l.received_at, l.id;
 
 -- name: GetLot :one
-select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.note, l.created_at,
+select l.id, l.ingredient_id, l.received_at, l.expires_at, l.status, l.source, l.procurement_item_id, l.note, l.created_at,
        coalesce((select sum(m.qty) from stock_movements m where m.tenant_id = l.tenant_id and m.lot_id = l.id), 0)::bigint as balance
 from stock_lots l
 where l.tenant_id = sqlc.arg(tenant_id) and l.id = sqlc.arg(id);

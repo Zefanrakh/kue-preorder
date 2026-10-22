@@ -121,7 +121,7 @@ func viewToProto(v aggregation.View) *aggregationv1.BatchDetail {
 	for _, l := range v.Lines {
 		line := &aggregationv1.ShoppingLine{
 			IngredientId: l.IngredientID.String(), IngredientName: l.IngredientName, BaseUnit: baseUnits[l.BaseUnit],
-			Needed: l.Needed, UsableStock: l.UsableStock, Ordered: l.Ordered, ToBuy: l.ToBuy, Packs: l.Packs,
+			Needed: l.Needed, UsableStock: l.UsableStock, Ordered: l.Ordered, Received: l.Received, ToBuy: l.ToBuy, Packs: l.Packs,
 			Status: lineStatuses[l.Status],
 		}
 		if l.Pack != nil {

@@ -116,9 +116,9 @@ func (m *memBatches) SaveResult(_ context.Context, _, batchID uuid.UUID, compone
 	next := map[uuid.UUID]aggregation.Line{}
 	for _, l := range lines {
 		if prev, ok := old[l.IngredientID]; ok { // procurement's columns are kept
-			l.Ordered, l.Status = prev.Ordered, prev.Status
+			l.Ordered, l.Received, l.Status = prev.Ordered, prev.Received, prev.Status
 		} else {
-			l.Ordered, l.Status = 0, aggregation.LineNeeded
+			l.Ordered, l.Received, l.Status = 0, 0, aggregation.LineNeeded
 		}
 		next[l.IngredientID] = l
 	}
@@ -143,6 +143,25 @@ func (m *memBatches) SetStatus(_ context.Context, _ uuid.UUID, date clock.Date, 
 	}
 	b.Status, b.UpdatedAt = to, at
 	return true, nil
+}
+
+func (m *memBatches) AddProcured(_ context.Context, _, batchID, ingredientID uuid.UUID, ordered, received int64, _ time.Time) error {
+	l, ok := m.lines[batchID][ingredientID]
+	if !ok {
+		return apperr.ErrNotFound
+	}
+	l.Ordered += ordered
+	l.Received += received
+	switch {
+	case l.Ordered > 0:
+		l.Status = aggregation.LineOrdered
+	case l.Received > 0:
+		l.Status = aggregation.LineReceived
+	default:
+		l.Status = aggregation.LineNeeded
+	}
+	m.lines[batchID][ingredientID] = l
+	return nil
 }
 
 func (m *memBatches) OpenDates(context.Context, uuid.UUID) ([]clock.Date, error) {
