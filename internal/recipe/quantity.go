@@ -23,6 +23,14 @@ const maxExactAmount = 1 << 53
 // ErrInvalidWasteFactor means a waste factor below 1, NaN, or infinite.
 var ErrInvalidWasteFactor = errors.New("waste factor must be a finite number >= 1")
 
+// floatNoise is the rounding error a resolved amount can carry: a few
+// thousand ulps, far below one unit at any amount Quantity accepts (2^53).
+// slack (validate.go) is wider on purpose and must not be used here: at
+// 10^9 it reaches a whole unit and would round some amounts down.
+func floatNoise(x float64) float64 {
+	return 1e-12 * math.Max(1, math.Abs(x))
+}
+
 // Quantity applies §10's precision rule to one component and one ingredient:
 // resolve in float64, multiply by the waste factor, then round to whole units.
 // Callers sum the results across components as int64 and round to pack size
@@ -44,7 +52,7 @@ func Quantity(m Model, u, wasteFactor float64, r Rounding) (int64, error) {
 	case RoundUp:
 		// Float arithmetic can turn exactly 3 eggs into 3.0000000000000004;
 		// that is still 3, not 4.
-		rounded = math.Ceil(x - slack(x))
+		rounded = math.Ceil(x - floatNoise(x))
 	default:
 		return 0, fmt.Errorf("unknown rounding %d", r)
 	}

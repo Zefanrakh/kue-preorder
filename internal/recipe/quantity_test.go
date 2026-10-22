@@ -22,6 +22,9 @@ func TestQuantity(t *testing.T) {
 		{"eggs round up: a dough cannot use 0.4 egg", recipe.AffineModel{B: 0.4}, 6, 1, recipe.RoundUp, 3},            // 2.4
 		{"eggs to nearest would under-buy", recipe.AffineModel{B: 0.4}, 6, 1, recipe.RoundNearest, 2},
 		{"float noise: 3.0000000000000004 eggs are 3", recipe.AffineModel{B: 0.1}, 30, 1, recipe.RoundUp, 3},
+		// 649381631.6: the noise allowance must stay far below one unit, or
+		// rounding up lands under rounding to the nearest (found by rapid).
+		{"large amounts still round up", recipe.PowerModel{A: 1000, B: 1.9375}, 1000, 1, recipe.RoundUp, 649381632},
 		{"no units, nothing to buy", recipe.AffineModel{A: 10, B: 90}, 0, 1.2, recipe.RoundUp, 0},
 	}
 	for _, tt := range tests {
