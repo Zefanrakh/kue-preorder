@@ -23,3 +23,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Design references: usually other people's work, never committed
+docs/design/moodboard/
