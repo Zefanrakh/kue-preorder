@@ -3,6 +3,12 @@
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 BASE ?= origin/main
+
+# Docker Desktop on Windows never brings testcontainers' reaper (Ryuk) up; the tests
+# terminate their own containers, so it is not needed there.
+ifeq ($(OS),Windows_NT)
+export TESTCONTAINERS_RYUK_DISABLED := true
+endif
 .PHONY: help setup check lint test test-changed codegen eod session-start session-close
 
 help: ## list the targets

@@ -14,7 +14,7 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 
 ## Alur satu potongan
 
-1. **Mulai sesi:** `make session-start`, lalu agent memilih pekerjaan (`/next`, menyusul di SDLC-3).
+1. **Mulai sesi:** `/zefan-sdlc:start` (memanggil `make session-start`), lalu agent memilih pekerjaan dengan `/zefan-sdlc:next`. Perintah plugin lain: `build-issue <N>`, `review-pr <N>`, `close` (lihat "Sesi Claude Code dan kerja jarak jauh").
 2. **Issue:** satu potongan = satu issue, berisi AC yang bisa diuji. Branch `m<N>.<n>-<slug>` (fitur) atau `sdlc-<n>-<slug>` (alat kerja).
 3. **Rencana:** ikuti `.agents/workflows/implement-milestone.md`; tunggu persetujuan sebelum kode.
 4. **Kerja:** test dulu atau bersamaan untuk modul inti. Dokumen modul (Handoff dan Changelog) dan keputusan baru (ADR) diperbarui di PR yang sama (SDLC-4).
@@ -44,6 +44,39 @@ Jalankan dari akar repo di **Git Bash** (Makefile dan hooks butuh `bash`).
 | `make check` | Gerbang penuh | Sebelum commit terakhir sebuah potongan |
 | CI GitHub | Isi yang sama | **Belum jalan**: GitHub Actions terkunci billing. Begitu terbuka, jadikan check wajib di `main` (branch protection di repo private butuh GitHub Pro) |
 
+## Sesi Claude Code dan kerja jarak jauh
+
+Perintah SDLC tersedia sebagai plugin pribadi `zefan-sdlc` (repo private `Zefanrakh/zefan-plugins`, terpasang dengan scope user): `/zefan-sdlc:start`, `next`, `build-issue <N>`, `review-pr <N>`, `close`.
+
+**Sekali per laptop** (harus di depan layar atau lewat Chrome Remote Desktop, karena ada dialog yang perlu diklik):
+
+1. CLI native ada di `%USERPROFILE%\.local\bin\claude.exe`. Tambahkan folder itu ke PATH user, lalu tutup dan buka lagi terminal **dan IDE** (terminal di dalam IDE mewarisi PATH lama): `claude --version`. Jangan memakai binary di folder ekstensi editor, karena path-nya berubah setiap kali ekstensi diperbarui.
+2. Remote control untuk semua sesi: `/config` → **Enable Remote Control for all sessions** = `true` (tersimpan sebagai `"remoteControlAtStartup": true` di `%USERPROFILE%\.claude\settings.json`). Hanya bisa di scope user; settings repo tidak boleh menyalakannya. Sejak itu **setiap sesi baru** (terminal, panel IDE, Claude Desktop) otomatis muncul di sidebar claude.ai/code dengan ikon laptop.
+3. Untuk setiap repo, jalankan `claude` sekali di akar repo dan jawab **Yes** pada dialog *trust*. Tanpa itu, sesi remote untuk repo tersebut ditolak ("Workspace not trusted").
+4. Pasang plugin: `/plugin install zefan-sdlc --marketplace Zefanrakh/zefan-plugins`, pilih scope **user**.
+
+**Sesi induk per repo.** Setiap repo punya satu sesi yang dibiarkan hidup dan dipakai terus, dari laptop maupun claude.ai/code. Langkahnya sama untuk semua repo:
+
+1. Buka **terminal terpisah** (Git Bash atau Windows Terminal, bukan terminal di dalam IDE) di akar repo.
+2. `claude --continue` untuk melanjutkan percakapan terakhir repo itu, atau `claude` untuk percakapan baru. Beri nama sekali dengan `/rename <repo>` supaya mudah dikenali di sidebar.
+3. `/zefan-sdlc:start`. Di antara dua potongan kerja: `/zefan-sdlc:close`, lalu `/clear` (konteks bersih, sesi dan koneksinya tetap), lalu `/zefan-sdlc:start` lagi.
+4. Biarkan terminal itu terbuka. Sesi lain (IDE, Claude Desktop) boleh dibuka dan ditutup kapan saja tanpa memengaruhinya.
+
+| Sesi berjalan di | Saat IDE ditutup lalu dibuka lagi |
+|---|---|
+| Terminal terpisah (sesi induk) | Tidak terpengaruh |
+| Panel Claude Code di IDE | Biasanya dipulihkan dan tersambung lagi; plugin yang baru dipasang ikut termuat |
+| Terminal di dalam IDE | Mati. Lanjutkan di terminal terpisah dengan `claude --continue` (atau `claude --resume` untuk memilih percakapan) |
+
+Tombol **New** di claude.ai/code membuat sesi *cloud* (repo di-clone dari GitHub, bukan laptop ini). Plugin user, Docker, dan alat lokal tidak ada di sana. Untuk bekerja di laptop dari jauh, pakai sesi induk di sidebar.
+
+**Kalau sedang jauh dari laptop:**
+
+- Dari claude.ai/code tidak bisa menjawab dialog Windows atau dialog *trust*. Agent bertanya dulu sebelum menjalankan instalasi, perintah admin, atau apa pun yang memunculkan dialog (UAC, Docker pertama kali, firewall). Hal yang perlu diklik dikerjakan lewat **Chrome Remote Desktop**.
+- Sesi induk mati (laptop restart, terminal tertutup, sidebar menunjukkan *Remote Control disconnected*): lewat Chrome Remote Desktop, buka terminal terpisah di akar repo dan jalankan `claude --continue`.
+- Laptop jangan tidur saat tercolok listrik (Settings → System → Power).
+- Plugin hanya termuat di sesi yang dimulai setelah plugin dipasang atau diperbarui, dan `/reload-plugins` diblokir lewat koneksi remote. Di sesi lama, minta dengan kalimat biasa ("jalankan zefan-sdlc start"): agent membaca `SKILL.md`-nya dari disk dan mengikutinya. Setelah CLI diperbarui ("Update installed · Restart to update"), mulai ulang sesi induk dengan `/exit` lalu `claude --continue`.
+
 ## Belajar dari kesalahan
 
 - Kesalahan yang berulang atau aturan yang kurang → issue berlabel `lesson` (lewat `session-close --lesson`).
@@ -63,5 +96,5 @@ Batasan akun Pro yang terasa hanya kuota pemakaian. Penawarnya: sesi pendek, Han
 
 - **SDLC-1** (ini): dokumen ini, `Makefile`, `.githooks/`, `scripts/`.
 - **SDLC-2:** template PR dan issue, label (`lesson`, `blocker`, `risk:high`), Dependabot.
-- **SDLC-3:** skill `/next` dan hook `SessionStart` Claude Code.
+- ~~**SDLC-3:** skill `/next` dan hook `SessionStart` Claude Code.~~ Digantikan plugin pribadi `zefan-sdlc` (2026-10-23), yang dipakai bersama satb-lab.
 - **SDLC-4:** `docs/features/` (Handoff dan Changelog per modul) dan `docs/decisions/` (ADR untuk keputusan baru).

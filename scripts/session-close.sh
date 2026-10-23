@@ -18,7 +18,7 @@ while (($#)); do
   esac
 done
 branch=$(git branch --show-current)
-read -r d t start_sha < .git/kp-session 2>/dev/null || true
+read -r d t start_sha 2>/dev/null < .git/kp-session || true
 started=${d:+$d $t}
 [[ -z "${start_sha:-}" ]] && start_sha=$(git merge-base HEAD origin/main 2>/dev/null)
 
