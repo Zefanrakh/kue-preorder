@@ -17,7 +17,7 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 1. **Mulai sesi:** `/zefan-sdlc:start` (memanggil `make session-start`), lalu agent memilih pekerjaan dengan `/zefan-sdlc:next`. Perintah plugin lain: `build-issue <N>`, `review-pr <N>`, `close` (lihat "Sesi Claude Code dan kerja jarak jauh").
 2. **Issue:** satu potongan = satu issue, berisi AC yang bisa diuji. Branch `m<N>.<n>-<slug>` (fitur) atau `sdlc-<n>-<slug>` (alat kerja).
 3. **Rencana:** ikuti `.agents/workflows/implement-milestone.md`; tunggu persetujuan sebelum kode.
-4. **Kerja:** test dulu atau bersamaan untuk modul inti. Dokumen modul (Handoff dan Changelog) dan keputusan baru (ADR) diperbarui di PR yang sama (SDLC-4).
+4. **Kerja:** sebelum menyentuh modul, baca Handoff-nya di `docs/features/<modul>.md`; belum ada, buat dari `docs/features/_TEMPLATE.md`. Test dulu atau bersamaan untuk modul inti. Handoff dan Changelog modul diperbarui di PR yang sama. Keputusan arsitektur baru ditulis sebagai ADR di `docs/decisions/`; keputusan lama tetap di §27 `docs/architecture.md`.
 5. **Gerbang lokal:** hook pre-commit dan pre-push berjalan sendiri; `make check` hijau sebelum commit terakhir.
 6. **Commit dan PR:** commit hanya setelah Lead setuju. Agent push dan membuka PR (`gh pr create`). PR yang dasarnya belum di-merge ditumpuk di atas branch-nya.
 7. **Tutup sesi:** `make session-close ARGS='--done "…" --tests "…" --next "…" --apply'` menulis *Session log* ke PR. Pelajaran: tambah `--lesson "apa · akar masalah · usul"`.
@@ -97,4 +97,4 @@ Batasan akun Pro yang terasa hanya kuota pemakaian. Penawarnya: sesi pendek, Han
 - **SDLC-1** (ini): dokumen ini, `Makefile`, `.githooks/`, `scripts/`.
 - **SDLC-2:** template PR dan issue, label (`lesson`, `blocker`, `risk:high`), Dependabot.
 - ~~**SDLC-3:** skill `/next` dan hook `SessionStart` Claude Code.~~ Digantikan plugin pribadi `zefan-sdlc` (2026-10-23), yang dipakai bersama satb-lab.
-- **SDLC-4:** `docs/features/` (Handoff dan Changelog per modul) dan `docs/decisions/` (ADR untuk keputusan baru).
+- **SDLC-4:** `docs/features/` (Handoff dan Changelog per modul, contoh lengkap: `recipe.md`) dan `docs/decisions/` (ADR untuk keputusan baru). Modul lain mendapat dokumennya saat pertama kali disentuh.

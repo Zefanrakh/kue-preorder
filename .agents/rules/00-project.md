@@ -73,12 +73,13 @@ di commit yang sama.
 
 0. Ikuti SDLC di `docs/sdlc.md`: mulai dengan `make session-start`, tutup dengan `make session-close` (Session log di PR).
 1. Kerjakan per milestone (lihat §26 `docs/architecture.md`). Satu PR = satu potongan kecil yang bisa di-review.
-2. Untuk `recipe`, `aggregation`, `inventory`, `payments`, `scheduling`: tulis test dulu atau bersamaan. Invariant di dokumen harus punya test.
-3. Perubahan skema: migrasi goose baru, lalu `sqlc generate`. Jangan edit migrasi yang sudah di-merge.
-4. Perubahan kontrak: edit `.proto`, jalankan `buf generate`, pastikan `buf breaking` lulus.
-5. Sebelum menyatakan selesai, jalankan quality gate `make check` (Git Bash, Docker menyala): tidy, vet, govulncheck, `golangci-lint`, `go test -race` dengan integrasi, kode hasil generate (`buf`, `sqlc`) sudah ter-commit, `buf breaking`, typecheck TS.
-6. Jangan menambah dependency baru tanpa menyebutkan alasannya.
-7. Jangan menyimpan secret di repo. Semua lewat environment variable (§28).
+2. Sebelum menyentuh modul, baca Handoff-nya di `docs/features/<modul>.md`; belum ada, buat dari `docs/features/_TEMPLATE.md`. Perbarui Handoff dan Changelog-nya di PR yang sama. Keputusan arsitektur baru ditulis sebagai ADR di `docs/decisions/` (lihat README-nya); keputusan lama tetap di §27.
+3. Untuk `recipe`, `aggregation`, `inventory`, `payments`, `scheduling`: tulis test dulu atau bersamaan. Invariant di dokumen harus punya test.
+4. Perubahan skema: migrasi goose baru, lalu `sqlc generate`. Jangan edit migrasi yang sudah di-merge.
+5. Perubahan kontrak: edit `.proto`, jalankan `buf generate`, pastikan `buf breaking` lulus.
+6. Sebelum menyatakan selesai, jalankan quality gate `make check` (Git Bash, Docker menyala): tidy, vet, govulncheck, `golangci-lint`, `go test -race` dengan integrasi, kode hasil generate (`buf`, `sqlc`) sudah ter-commit, `buf breaking`, typecheck TS.
+7. Jangan menambah dependency baru tanpa menyebutkan alasannya.
+8. Jangan menyimpan secret di repo. Semua lewat environment variable (§28).
 
 ## Bahasa
 
