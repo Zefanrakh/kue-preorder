@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 24" width="240" height="24" role="img" aria-label="Pembatas">
+  <ellipse cx="112" cy="11" rx="7" ry="3.4" transform="rotate(-14 112 11)" fill="#DCE4C9"/>
+  <ellipse cx="128" cy="11" rx="7" ry="3.4" transform="rotate(14 128 11)" fill="#DCE4C9"/>
+  <g fill="none" stroke="#512914" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 12c22-2 44 2 66-1s20 1 28 0"/>
+    <path d="M234 12c-22-2-44 2-66-1s-20 1-28 0"/>
+    <path d="M120 12c-4-5-11-6-16-2 5 4 12 5 16 2z"/>
+    <path d="M120 12c4-5 11-6 16-2-5 4-12 5-16 2z"/>
+  </g>
+  <circle cx="120" cy="12" r="2.2" fill="#BF843A"/>
+</svg>

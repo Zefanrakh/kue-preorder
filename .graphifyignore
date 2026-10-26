@@ -1,0 +1,11 @@
+# graphify also honours .gitignore (node_modules/, bin/, .env, ...).
+
+# Generated code: protobuf/Connect output is mostly boilerplate getters that
+# drown the real call graph. Read the contracts in api/proto instead.
+api/gen/
+
+# Type-check scaffold for the generated TS client.
+api/tscheck/
+
+# Graph output itself.
+graphify-out/

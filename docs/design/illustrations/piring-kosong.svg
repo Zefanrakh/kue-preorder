@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 90" width="140" height="90" role="img" aria-label="Piring kosong dengan remah kue">
+  <ellipse cx="72" cy="62" rx="58" ry="20" fill="#D6E4EA"/>
+  <ellipse cx="70" cy="58" rx="40" ry="11" fill="#FFFDF8"/>
+  <g fill="none" stroke="#512914" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 60c0-10 26-18 58-18s58 8 58 18-26 18-58 18-58-8-58-18z"/>
+    <path d="M30 59c0-6 18-11 40-11s40 5 40 11"/>
+    <path d="M54 22c-4-5 4-8 0-13M70 20c-4-5 4-8 0-13M86 22c-4-5 4-8 0-13" stroke-width="1.5" opacity="0.8"/>
+  </g>
+  <g fill="#C49765">
+    <circle cx="60" cy="57" r="2"/>
+    <circle cx="67" cy="60" r="1.4"/>
+    <circle cx="82" cy="56" r="1.7"/>
+    <circle cx="76" cy="61" r="1.1"/>
+  </g>
+</svg>
