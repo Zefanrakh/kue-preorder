@@ -16,10 +16,10 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 
 1. **Mulai sesi:** `/zefan-sdlc:start` (memanggil `make session-start`), lalu agent memilih pekerjaan dengan `/zefan-sdlc:next`. Perintah plugin lain: `build-issue <N>`, `review-pr <N>`, `close` (lihat "Sesi Claude Code dan kerja jarak jauh").
 2. **Issue:** satu potongan = satu issue, berisi AC yang bisa diuji. Branch `m<N>.<n>-<slug>` (fitur) atau `sdlc-<n>-<slug>` (alat kerja).
-3. **Rencana:** ikuti `.agents/workflows/implement-milestone.md`; tunggu persetujuan sebelum kode.
+3. **Rencana:** ikuti `.agents/workflows/implement-milestone.md`. Agent menyampaikan rencana singkat lalu langsung mengerjakannya; berhenti dan bertanya hanya untuk keputusan bisnis, yang memakan biaya, atau yang sulit dibalik.
 4. **Kerja:** sebelum menyentuh modul, baca Handoff-nya di `docs/features/<modul>.md`; belum ada, buat dari `docs/features/_TEMPLATE.md`. Test dulu atau bersamaan untuk modul inti. Handoff dan Changelog modul diperbarui di PR yang sama. Keputusan arsitektur baru ditulis sebagai ADR di `docs/decisions/`; keputusan lama tetap di §27 `docs/architecture.md`.
 5. **Gerbang lokal:** hook pre-commit dan pre-push berjalan sendiri; `make check` hijau sebelum commit terakhir.
-6. **Commit dan PR:** commit hanya setelah Lead setuju. Agent push dan membuka PR (`gh pr create`). PR yang dasarnya belum di-merge ditumpuk di atas branch-nya.
+6. **Commit dan PR:** agent commit, push, dan membuka PR (`gh pr create`) tanpa menunggu persetujuan; Lead menilai di PR. PR yang dasarnya belum di-merge ditumpuk di atas branch-nya.
 7. **Tutup sesi:** `make session-close ARGS='--done "…" --tests "…" --next "…" --apply'` menulis *Session log* ke PR. Pelajaran: tambah `--lesson "apa · akar masalah · usul"`.
 8. **Merge:** hanya Lead, di GitHub. Setelah itu `git pull --ff-only` di `main`.
 
