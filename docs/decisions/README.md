@@ -28,10 +28,13 @@ Detail implementasi yang mudah diubah cukup ditandai `[Operator]` di badan PR.
 ## Aturan
 
 - Nama file `NNNN-<slug>.md`, nomor naik dari `0001`. Mulai dari `_TEMPLATE.md`.
+- ADR ditulis langsung berstatus **diterima**, di PR yang sama dengan perubahan
+  yang ditimbulkannya; merge oleh Lead adalah penerimaannya. Status **usulan**
+  hanya untuk ADR yang dibuka untuk dibahas dulu, tanpa perubahan lain.
 - ADR berstatus **diterima** tidak pernah diedit. Kalau keputusannya berubah,
   tulis ADR baru yang menggantikannya; di ADR lama hanya baris Status yang
-  diubah menjadi "digantikan oleh NNNN".
-- ADR ditulis dan diterima di PR yang sama dengan perubahan yang ditimbulkannya.
+  diubah menjadi "digantikan oleh NNNN". Perubahan baris Status itu satu-satunya
+  pengecualian, bukan pelanggaran.
 - `docs/architecture.md` tetap sumber kebenaran desain. ADR menjelaskan
   *kenapa*; desain yang dihasilkan tetap ditulis di bagian architecture.md
   yang relevan.

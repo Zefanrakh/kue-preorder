@@ -2,7 +2,7 @@
 
 ## Handoff
 
-- **Posisi:** engine selesai dan stabil (M1.1, M1.2); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Perbaikan terakhir: pembulatan `pcs` di jumlah besar (#31).
+- **Posisi:** engine selesai dan stabil (M1.1, M1.2, M1.6); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Perbaikan terakhir: pembulatan `pcs` di jumlah besar (#31).
 - **Berikutnya:** tidak ada pekerjaan terjadwal. Modul ini disentuh lagi hanya kalau ada model baru atau bug.
 - **Jebakan:** pembulatan ke atas memakai `floatNoise`, bukan `slack` (Traps 1). `Resolve(0) == 0` walau affine punya `a` (Traps 2). Fit wajib lolos `Validate` (Traps 3).
 - **Menunggu keputusan:** tidak ada.
@@ -11,7 +11,7 @@
 
 Mengubah jumlah unit **komponen** (adonan, isian, topping) menjadi jumlah satu bahan, dengan rumus non-linear (adonan bersama lebih hemat daripada adonan terpisah). Desain lengkap: §10 `docs/architecture.md`; posisinya di resep dua tingkat: §9.3.
 
-Engine murni: tanpa DB, tanpa HTTP, tidak mengimpor paket `internal/` lain (dijaga `internal/archtest`). Dependency luar hanya `expr-lang/expr`.
+Engine murni: tanpa DB, tanpa HTTP, tidak mengimpor paket `internal/` lain. Penjaganya depguard `recipe-is-pure` di `.golangci.yml` (hanya stdlib, `expr-lang/expr`, dan `pgregory.net/rapid` untuk test) dan `internal/archtest`. Stdlib tetap mencakup `net/http` dan `database/sql`, jadi "tanpa DB, tanpa HTTP" dijaga lewat review.
 
 ## Data
 
@@ -30,11 +30,11 @@ Aturan pembulatan per bahan berasal dari satuan dasarnya: `catalog.BaseUnit.Roun
 
 1. **Simpan resep** (`catalog.RecipeLineInput.resolve`): dari `params` → `Build` → `Validate`; atau dari titik ukur → `FitAffine`/`FitPower`/`FitPiecewise`. Hasilnya disimpan lewat `Params`. Baris yang gagal tidak pernah tersimpan (§9.3, "Aturan menyimpan resep").
 2. **Pratinjau fit** (`catalog.Service.FitPreview`): `FitAll` mengembalikan ketiga model plus `FitReport` (R², selisih per titik) untuk grafik CMS, tanpa menyimpan.
-3. **Hitung batch** (`aggregation`, §11): `catalog.Reader` merakit baris menjadi `recipe.Model` dengan `Build`. `aggregation.Totals` (`compute.go`) memanggil `Quantity` dengan **total unit komponen per batch**, lalu menjumlahkan hasil `int64` lintas komponen dan membulatkan ke `pack_size` paling akhir. Error engine menjadi `RecipeError` dan batch ditandai error, tidak ditebak.
+3. **Hitung batch** (`aggregation`, §11): `catalog.Reader` merakit baris menjadi `recipe.Model` dengan `Build`; baris yang gagal dirakit menjadi `catalog.BrokenRecipeError` (`ErrBrokenRecipe`, §9.3). `aggregation.Totals` (`compute.go`) memanggil `Quantity` dengan **total unit komponen per batch** dan menjumlahkan hasil `int64` lintas komponen menjadi `Need` per bahan. Error dari `Quantity`, dan `BrokenRecipeError` yang dibungkus di `engine.go`, menjadi `RecipeError`: batch ditandai error, tidak ditebak. Pembulatan ke `pack_size` terjadi belakangan, di `aggregation.Shop` (`packsFor`) setelah stok dikurangi.
 
 ## Akses
 
-Engine tidak punya endpoint. Endpoint yang memakainya ada di `catalog.v1.CatalogService` (`SetRecipeLine`, `RemoveRecipeLine`, `ListRecipeLines`, `FitPreview`), untuk peran `owner` dan `kitchen` (§8).
+Engine tidak punya endpoint. Endpoint yang memakainya ada di `kuepreorder.catalog.v1.CatalogAdminService` (`SetRecipeLine`, `RemoveRecipeLine`, `ListRecipeLines`, `FitPreview`), untuk peran `owner` dan `kitchen` (§8).
 
 ## Peta kode
 
@@ -51,7 +51,12 @@ Engine tidak punya endpoint. Endpoint yang memakainya ada di `catalog.v1.Catalog
 | `internal/recipe/testdata/rapid/` | kasus gagal yang ditemukan `rapid`, diputar ulang setiap test |
 
 **Dipakai oleh:**
-- `catalog`: `Build`, `Validate`, `Params`, `Fit*`, `FitAll`, `MaxPoints`, `Point`, `Rounding`, error (`recipes.go`, `reader.go`, `domain.go`, `connect/convert.go`).
+- `catalog`:
+  - `recipes.go` (simpan baris resep): `Build`, `Validate`, `Params`, `FitAffine`/`FitPower`/`FitPiecewise`, `MaxPoints`, `ErrDecreasing`, `ErrFit`, `ErrInvalidResult`.
+  - `service_recipes.go` (pratinjau fit): `FitAll`, `FitResult`.
+  - `reader.go` (model untuk agregasi): `Build`, `Model`, `Rounding`.
+  - `domain.go`: `Rounding`, `RoundNearest`, `RoundUp`.
+  - `connect/convert.go`, `postgres/recipes.go` (konversi proto dan DB): `ModelType` dan konstantanya, `Point`, `FitResult`, `Params`.
 - `aggregation`: `Quantity` (`compute.go`).
 
 ## Verifikasi
@@ -80,7 +85,7 @@ go test -run '^$' -fuzz FuzzFormula -fuzztime 60s ./internal/recipe/   # sandbox
 
 ## Changelog
 
-- 2026-10-26 · #36 · Dokumen modul ini dibuat (SDLC-4).
+- 2026-10-26 · #38 · Dokumen modul ini dibuat (SDLC-4).
 - 2026-10-22 · #31 · `RoundUp` memakai `floatNoise`, tidak lagi kehilangan satu unit di jumlah besar.
 - 2026-09-25 · M1.6 (`82b6a8d`) · Batas `MaxPoints` = 100 titik untuk fit dan `piecewise`.
 - 2026-09-25 · M1.2 (`d86436b`) · Fit model dari titik ukur (`FitAffine`, `FitPower`, `FitPiecewise`, `FitAll`, `Params`).
