@@ -20,8 +20,9 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 4. **Kerja:** sebelum menyentuh modul, baca Handoff-nya di `docs/features/<modul>.md`; belum ada, buat dari `docs/features/_TEMPLATE.md`. Test dulu atau bersamaan untuk modul inti. Handoff dan Changelog modul diperbarui di PR yang sama. Keputusan arsitektur baru ditulis sebagai ADR di `docs/decisions/`; keputusan lama tetap di §27 `docs/architecture.md`.
 5. **Gerbang lokal:** hook pre-commit dan pre-push berjalan sendiri; `make check` hijau sebelum commit terakhir.
 6. **Commit dan PR:** agent commit, push, dan membuka PR (`gh pr create`) tanpa menunggu persetujuan; Lead menilai di PR. PR yang dasarnya belum di-merge ditumpuk di atas branch-nya.
-7. **Tutup sesi:** `make session-close ARGS='--done "…" --tests "…" --next "…" --apply'` menulis *Session log* ke PR. Pelajaran: tambah `--lesson "apa · akar masalah · usul"`.
-8. **Merge:** hanya Lead, di GitHub. Setelah itu `git pull --ff-only` di `main`.
+7. **Review:** PR `risk:high` (uang, stok, status order, auth, migrasi): setelah PR dibuka, agent langsung menjalankan `/zefan-sdlc:review-pr <N>` di konteks bersih (subagent atau sesi baru, bukan konteks yang menulis PR), ditambah `/code-review <N>` kalau ada kode, lalu menulis hasilnya sebagai komentar di PR sebelum Lead merge. PR `risk:low`: pesan penutup agent menyebut bahwa review-pr dilewati beserta perintahnya.
+8. **Tutup sesi:** `make session-close ARGS='--done "…" --tests "…" --next "…" --apply'` menulis *Session log* ke PR. Pelajaran: tambah `--lesson "apa · akar masalah · usul"`.
+9. **Merge:** hanya Lead, di GitHub. Setelah itu `git pull --ff-only` di `main`.
 
 ## Perintah
 
