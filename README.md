@@ -12,8 +12,8 @@ Status: **M0 (fondasi) selesai**: skeleton + `platform`, migrasi awal + sqlc, ko
 
 | Tool | Versi | Untuk |
 |---|---|---|
-| Go | 1.26 (`go.mod` memasang toolchain go1.26.8 otomatis) | build dan test |
-| golangci-lint | v2.13.2 | lint |
+| Go | 1.26 (`go.mod` memasang toolchain go1.26.10 otomatis; Go lokal yang lebih baru juga boleh) | build dan test |
+| golangci-lint | v2.15.0 (v2.13.x tidak bisa membaca paket Go 1.27.3) | lint |
 | goose | v3.28.0 | migrasi |
 | buf | v1.73.0 | kontrak API (mulai M0.3) |
 | sqlc | v1.31.1 | query bertipe (butuh gcc untuk dipasang) |
@@ -24,7 +24,7 @@ Status: **M0 (fondasi) selesai**: skeleton + `platform`, migrasi awal + sqlc, ko
 Pasang tool Go dengan versi yang sama seperti CI:
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 go install github.com/pressly/goose/v3/cmd/goose@v3.28.0
 go install github.com/bufbuild/buf/cmd/buf@v1.73.0
 go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
