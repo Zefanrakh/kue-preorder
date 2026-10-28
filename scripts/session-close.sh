@@ -35,10 +35,22 @@ else
 fi
 commits=$(git rev-list --count "${start_sha:-HEAD}..HEAD" 2>/dev/null || echo 0)
 
-pr=""
+pr="" pr_state="" pr_base=""
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 && [[ "$branch" != "main" ]]; then
-  pr=$(gh pr view --json number -q .number 2>/dev/null || true)
+  IFS=$'\t' read -r pr pr_state pr_base < <(gh pr view --json number,state,baseRefName \
+    -q '[.number, .state, .baseRefName] | @tsv' 2>/dev/null) || true
   [[ -z "$pr" ]] && { echo "!  no PR for this branch yet - gh pr create (the template fills the body)"; warn=1; }
+  # Lesson #34: commits pushed after a merge, or a stacked PR merged into its base, never reach main.
+  if [[ "$pr_state" == "MERGED" ]]; then
+    git fetch -q origin main 2>/dev/null
+    missing=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+    ((missing > 0)) && { echo "!  PR #$pr is merged but $missing commit(s) here are not on main - open a new PR from a new branch (git switch -c <new>; gh pr create)"; warn=1; }
+  fi
+  if [[ "$pr_state" == "OPEN" && -n "$pr_base" && "$pr_base" != "main" ]]; then
+    below=$(gh pr list --head "$pr_base" --state all -L 1 --json number,title,state \
+      -q '.[] | "#\(.number) \(.title) (\(.state))"' 2>/dev/null)
+    echo "!  PR #$pr is stacked on $pr_base${below:+ - PR below: $below}; merge #$pr only after GitHub shows base main"; warn=1
+  fi
 fi
 
 log=$(cat <<LOG
