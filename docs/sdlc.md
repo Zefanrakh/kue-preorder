@@ -29,12 +29,15 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 | Perintah | Isi |
 |---|---|
 | `make setup` | Menyalakan git hooks, memasang paket client TS |
-| `make check` | Gerbang penuh, sama dengan `.github/workflows/ci.yml`: tidy, vet, govulncheck, golangci-lint, codegen (sqlc, buf lint/format/breaking/generate), test `-race` dengan integrasi (butuh Docker), typecheck TS |
+| `make check` | Gerbang penuh, sama dengan `.github/workflows/ci.yml`: versi alat lokal (`make versions`), tidy, vet, govulncheck, golangci-lint, codegen (sqlc, buf lint/format/breaking/generate), actionlint, test `-race` dengan integrasi (butuh Docker), `npm audit signatures`, typecheck TS |
+| `make versions` | Gagal kalau golangci-lint, sqlc atau buf lokal berbeda dari versi yang di-pin `ci.yml`. govulncheck dan actionlint jalan lewat `go run` dengan versi yang dibaca dari `ci.yml` |
 | `make test-changed` | Unit test paket yang berubah dibanding `origin/main` (dipakai pre-push) |
 | `make eod` | Status proyek tanpa token: PR terbuka, merge hari ini, blocker, lesson, alert Dependabot |
 | `make session-start` / `session-close` | Rutinitas sesi, lihat atas |
 
 Jalankan dari akar repo di **Git Bash** (Makefile dan hooks butuh `bash`).
+
+Yang masih berbeda dari CI: CI berjalan di Linux dengan Node 22 (lokal memakai Node yang terpasang, tidak dicek), dan `buf breaking` di CI membandingkan dengan base PR, bukan `origin/main`. Langkah CI lainnya dijalankan `make check` juga.
 
 ## Gerbang
 

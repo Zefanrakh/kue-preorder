@@ -9,7 +9,9 @@ BASE ?= origin/main
 ifeq ($(OS),Windows_NT)
 export TESTCONTAINERS_RYUK_DISABLED := true
 endif
-.PHONY: help setup check lint test test-changed codegen eod session-start session-close
+# Tools run with `go run` take their version from ci.yml, so the two cannot drift.
+ci_tool = $(shell grep -oE '$(1)@v[0-9.]+' .github/workflows/ci.yml | head -1)
+.PHONY: help setup check versions lint test test-changed codegen eod session-start session-close
 
 help: ## list the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/'
@@ -18,13 +20,17 @@ setup: ## turn on the git hooks and install the TypeScript client's packages
 	git config core.hooksPath .githooks
 	cd api && npm ci --ignore-scripts
 
-check: lint codegen test ## the full quality gate, the same as .github/workflows/ci.yml
+check: versions lint codegen test ## the full quality gate, the same as .github/workflows/ci.yml
+	cd api && npm audit signatures
 	cd api && npm run typecheck
+
+versions: ## local golangci-lint, sqlc and buf are the versions ci.yml pins
+	@bash scripts/check-versions.sh
 
 lint: ## go.mod tidy, vet, govulncheck, golangci-lint
 	go mod tidy -diff
 	go vet -tags=integration ./...
-	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+	go run $(call ci_tool,golang.org/x/vuln/cmd/govulncheck) ./...
 	golangci-lint run
 
 test: ## every test with the race detector; integration tests need Docker running
@@ -34,7 +40,7 @@ test-changed: ## unit tests of the packages changed against $(BASE) (pre-push)
 	@pkgs=$$(git diff --name-only $(BASE)...HEAD -- '*.go' | xargs -r -n1 dirname | sort -u | sed 's#^#./#'); \
 	if [ -z "$$pkgs" ]; then echo "no Go package changed against $(BASE)"; else go test -count=1 $$pkgs; fi
 
-codegen: ## generated code is committed and the contract is clean
+codegen: ## generated code is committed, the contract is clean, the workflows pass actionlint
 	sqlc diff
 	buf lint
 	buf format --diff --exit-code
@@ -42,6 +48,7 @@ codegen: ## generated code is committed and the contract is clean
 	buf generate
 	@if [ -n "$$(git status --porcelain -- api/gen)" ]; then git status --short -- api/gen; \
 	  echo "api/gen is out of date: run 'buf generate' and commit the result"; exit 1; fi
+	go run $(call ci_tool,github.com/rhysd/actionlint/cmd/actionlint)
 
 eod: ## project state in a few lines, without tokens
 	@bash scripts/eod.sh
