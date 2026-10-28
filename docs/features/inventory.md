@@ -2,9 +2,9 @@
 
 ## Handoff
 
-- **Posisi:** stok berbasis ledger (M3.2), pemakaian FIFO saat produksi selesai (M3.3), penerimaan dari procurement (M4.1). `ReceiveStock` dan `CountStock` punya `idempotency_key` untuk antrean offline PWA (M5.1, #45).
+- **Posisi:** stok berbasis ledger (M3.2), pemakaian FIFO saat produksi selesai (M3.3), penerimaan dari procurement (M4.1). `ReceiveStock` dan `CountStock` punya `idempotency_key` untuk antrean offline PWA (M5.1, #46).
 - **Berikutnya:** tidak ada potongan terjadwal. Layar PWA A4/A5 (M5, menunggu desain disetujui) harus membuat satu kunci per isian dan mengirim ulang kunci yang sama.
-- **Jebakan:** kunci diklaim sebelum kunci bahan (Traps 1). Body kiriman dibandingkan sebelum default diisi (Traps 2).
+- **Jebakan:** kunci diklaim sebelum kunci bahan dan bergantung pada Read Committed (Traps 1). Body kiriman dibandingkan sebelum default diisi (Traps 2). Kiriman ulang dicari sebelum validasi (Traps 3).
 - **Menunggu keputusan:** tidak ada.
 
 ## Tujuan
@@ -19,10 +19,10 @@ Tabel di §9.4 (migrasi `00012_inventory.sql`, `00013_procurement.sql` untuk `pr
 
 ## Alur
 
-1. **Belanja masuk** (`Service.Receive`): validasi → transaksi: klaim kunci → kunci bahan → lot + movement `receive` + (bahan `confirm`) cek ok saat tiba + audit + outbox `inventory.stock_changed`.
+1. **Belanja masuk** (`Service.Receive`): cari kiriman ulang → validasi → transaksi: klaim kunci → kunci bahan → lot + movement `receive` + (bahan `confirm`) cek ok saat tiba + audit + outbox `inventory.stock_changed`.
 2. **Cek stok** (`Service.Check`): "Masih bagus" mencatat cek; "Buang" menulis movement `waste` dan lot menjadi `discarded`.
-3. **Stok opname** (`Service.Count`): transaksi: klaim kunci → kunci bahan → selisih keluar dari lot tertua atau masuk ke lot terbaru (atau lot `adjustment` baru) → audit + outbox. Selisih nol tidak menulis apa pun selain klaim.
-4. **Kiriman ulang**: kunci yang sudah diklaim dengan body sama tidak menimbulkan efek; `Receive` mengembalikan lot pertama, `Count` mengembalikan stok saat ini. Body berbeda → `ErrKeyReused` (FailedPrecondition `idempotency_key_reused`).
+3. **Stok opname** (`Service.Count`): cari kiriman ulang → validasi → transaksi: klaim kunci → kunci bahan → selisih keluar dari lot tertua atau masuk ke lot terbaru (atau lot `adjustment` baru) → audit + outbox. Selisih nol tidak menulis apa pun selain klaim.
+4. **Kiriman ulang**: kunci yang sudah diklaim dengan body dan orang yang sama tidak menimbulkan efek; `Receive` mengembalikan lot pertama, `Count` mengembalikan stok saat ini. Body atau orang berbeda → `ErrKeyReused` (FailedPrecondition `idempotency_key_reused`). Pencarian awal (`retried`) menjawab kiriman ulang yang datang telat; klaim di transaksi (`claim`) menjawab dua kiriman yang datang bersamaan.
 5. **Produksi selesai** (`Consumer.Consume`, dipanggil `aggregation`): FIFO, kunci bahan urut id, yang kurang dilaporkan sebagai `Missing`.
 6. **Procurement** (`Receiver.ReceiveOrdered`): seperti belanja masuk, di transaksi procurement, tanpa kunci idempotensi (procurement menjaga state item-nya sendiri).
 
@@ -44,8 +44,8 @@ Tabel di §9.4 (migrasi `00012_inventory.sql`, `00013_procurement.sql` untuk `pr
 
 ## Verifikasi
 
-- `go test ./internal/inventory/`: ledger = stok (property test), FIFO, opname, cek, kiriman ulang (`TestRetry_*`).
-- `make test` (integrasi): `internal/inventory/postgres` (append-only, `TestClaimRequest`), `cmd/api` (`TestInventory_*`, termasuk empat kiriman bersamaan dengan kunci sama → satu lot).
+- `go test ./internal/inventory/`: ledger = stok (property test), FIFO, opname, cek, kiriman ulang (`TestRetry_*`, termasuk yang datang setelah kedaluwarsa, lewat 30 hari, atau setelah bahannya dihapus).
+- `make test` (integrasi): `internal/inventory/postgres` (append-only, `TestClaimRequest`), `cmd/api` (`TestInventory_*`, termasuk empat `ReceiveStock` bersamaan dengan kunci sama → satu lot, dan empat `CountStock` bersamaan → satu penyesuaian).
 
 ## Celah
 
@@ -54,11 +54,12 @@ Tabel di §9.4 (migrasi `00012_inventory.sql`, `00013_procurement.sql` untuk `pr
 
 ## Traps
 
-1. **Urutan kunci.** Klaim (`ClaimRequest`, insert `on conflict do nothing`) dijalankan sebelum `LockIngredient`. Kiriman kedua menunggu di primary key sampai transaksi pertama selesai, lalu membaca klaimnya. Kalau urutannya dibalik di satu jalur saja, dua jalur bisa saling menunggu.
+1. **Urutan kunci.** Klaim (`ClaimRequest`, insert `on conflict do nothing`) dijalankan sebelum `LockIngredient`. Kiriman kedua menunggu di primary key sampai transaksi pertama selesai, lalu membaca klaimnya. Kalau urutannya dibalik di satu jalur saja, dua jalur bisa saling menunggu. Membaca klaim setelah menunggu hanya bekerja di Read Committed (bawaan `db.Tx`); di Repeatable Read kiriman kedua gagal dengan serialization error.
 2. **Body kiriman, bukan hasil default.** `Receive` menyusun body sebelum `received_at` diisi `now`. Kalau body memakai nilai yang sudah di-default, kiriman ulang beberapa menit kemudian akan dianggap berbeda dan ditolak `idempotency_key_reused`.
+3. **Kiriman ulang sebelum validasi.** Validasi `received_at` (paling lama 30 hari), `expires_at` setelah `now`, dan bahan yang dikenal bergantung pada jam dan katalog saat itu. Kiriman ulang dicari lebih dulu (`retried`), supaya yang datang berhari-hari kemudian tetap mendapat hasil pertama, bukan error yang membuat antrean macet.
 
 ## Changelog
 
 <!-- Terbaru di atas. Satu baris per PR: tanggal · PR/commit · apa yang berubah. -->
 
-- 2026-10-28 · #45 · `idempotency_key` di `ReceiveStock` dan `CountStock`, tabel `inventory_requests`; dokumen ini dibuat.
+- 2026-10-28 · #46 · `idempotency_key` di `ReceiveStock` dan `CountStock`, tabel `inventory_requests`; dokumen ini dibuat.

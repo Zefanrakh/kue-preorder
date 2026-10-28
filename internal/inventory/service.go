@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -60,6 +61,8 @@ type Repository interface {
 	// ExpireLots marks the available lots past their expiry at now and
 	// returns how many.
 	ExpireLots(ctx context.Context, tenantID uuid.UUID, now time.Time) (int64, error)
+	// GetRequest returns the request holding a key, or apperr.ErrNotFound.
+	GetRequest(ctx context.Context, tenantID uuid.UUID, kind RequestKind, key uuid.UUID) (Request, error)
 	// ClaimRequest claims r's key for r. It returns the request holding the
 	// key and whether r just claimed it. A claim in another transaction
 	// still in flight makes it wait for that transaction to end.
@@ -160,11 +163,6 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 	if err != nil {
 		return Lot{}, err
 	}
-	labels, err := s.catalog.Labels(ctx, p.TenantID)
-	if err != nil {
-		return Lot{}, err
-	}
-	now := s.clock.Now()
 	in.Note = strings.TrimSpace(in.Note)
 	sent := receiveBody{IngredientID: in.IngredientID, Qty: in.Qty, Note: in.Note}
 	if !in.ReceivedAt.IsZero() {
@@ -175,6 +173,21 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 		t := in.ExpiresAt.UTC()
 		sent.ExpiresAt = &t
 	}
+	body, err := json.Marshal(sent)
+	if err != nil {
+		return Lot{}, err
+	}
+	if first, err := s.retried(ctx, p, RequestReceive, in.IdempotencyKey, string(body)); err != nil || first != nil {
+		if err != nil {
+			return Lot{}, err
+		}
+		return s.repo.GetLot(ctx, p.TenantID, first.ResultID)
+	}
+	labels, err := s.catalog.Labels(ctx, p.TenantID)
+	if err != nil {
+		return Lot{}, err
+	}
+	now := s.clock.Now()
 	if in.ReceivedAt.IsZero() {
 		in.ReceivedAt = now
 	}
@@ -199,11 +212,13 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 	if reason == "" {
 		reason = "Belanja masuk"
 	}
-	var first *Request
+	id := lot.ID
 	err = s.tx.Tx(ctx, func(ctx context.Context) error {
-		var err error
-		first, err = s.claim(ctx, p, Request{Kind: RequestReceive, Key: in.IdempotencyKey, ResultID: lot.ID, At: now}, sent)
+		first, err := s.claim(ctx, p, Request{Kind: RequestReceive, Key: in.IdempotencyKey, Body: string(body), ResultID: lot.ID, At: now})
 		if err != nil || first != nil {
+			if first != nil {
+				id = first.ResultID
+			}
 			return err
 		}
 		return intake(ctx, s.repo, p.TenantID, ing, lot, in.Qty, p.AuthUserID, reason, now)
@@ -211,30 +226,53 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 	if err != nil {
 		return Lot{}, err
 	}
-	if first != nil {
-		return s.repo.GetLot(ctx, p.TenantID, first.ResultID)
-	}
-	return s.repo.GetLot(ctx, p.TenantID, lot.ID)
+	return s.repo.GetLot(ctx, p.TenantID, id)
 }
 
-// claim claims r's key for the request sent, in the caller's transaction.
-// It returns nil when r claimed it, so its effect follows, and the first
-// request when this is a retry of it, which has no effect again. The key
-// used for other fields is ErrKeyReused.
-func (s *Service) claim(ctx context.Context, p identity.Principal, r Request, sent any) (*Request, error) {
-	body, err := json.Marshal(sent)
+// retried looks for a key already used, before the request is checked
+// against the clock or the catalog: a retry arriving days later, or after
+// the ingredient was removed, still gets the first result instead of an
+// error the queue cannot get past. It returns nil when the key is new (or
+// missing, which validation reports); claim settles a first call racing it.
+func (s *Service) retried(ctx context.Context, p identity.Principal, kind RequestKind, key uuid.UUID, body string) (*Request, error) {
+	if key == uuid.Nil {
+		return nil, nil
+	}
+	held, err := s.repo.GetRequest(ctx, p.TenantID, kind, key)
+	if errors.Is(err, apperr.ErrNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	r.Body, r.ActorID = string(body), p.AuthUserID
+	if err := sameRequest(held, body, p.AuthUserID); err != nil {
+		return nil, err
+	}
+	return &held, nil
+}
+
+// claim claims r's key in the caller's transaction. It returns nil when r
+// claimed it, so its effect follows, and the first request when a call
+// with the same key got there first, which has no effect again.
+func (s *Service) claim(ctx context.Context, p identity.Principal, r Request) (*Request, error) {
+	r.ActorID = p.AuthUserID
 	held, claimed, err := s.repo.ClaimRequest(ctx, p.TenantID, r)
 	if err != nil || claimed {
 		return nil, err
 	}
-	if held.Body != r.Body {
-		return nil, ErrKeyReused
+	if err := sameRequest(held, r.Body, r.ActorID); err != nil {
+		return nil, err
 	}
 	return &held, nil
+}
+
+// sameRequest refuses a key held by other fields or another person: a
+// client bug, never a retry.
+func sameRequest(held Request, body string, actor uuid.UUID) error {
+	if held.Body != body || held.ActorID != actor {
+		return ErrKeyReused
+	}
+	return nil
 }
 
 // intake records a delivery as the new lot l under the ingredient's lock:
@@ -559,25 +597,47 @@ func (s *Service) Count(ctx context.Context, in CountInput) (IngredientStock, er
 	if err != nil {
 		return IngredientStock{}, err
 	}
-	labels, err := s.catalog.Labels(ctx, p.TenantID)
+	ingredientID, actual, reason := in.IngredientID, in.Actual, strings.TrimSpace(in.Reason)
+	body, err := json.Marshal(countBody{IngredientID: ingredientID, Actual: actual, Reason: reason})
 	if err != nil {
 		return IngredientStock{}, err
 	}
-	ingredientID, actual, reason := in.IngredientID, in.Actual, strings.TrimSpace(in.Reason)
+	first, err := s.retried(ctx, p, RequestCount, in.IdempotencyKey, string(body))
+	if err != nil {
+		return IngredientStock{}, err
+	}
+	if first == nil {
+		if err := s.count(ctx, p, in.IdempotencyKey, ingredientID, actual, reason, string(body)); err != nil {
+			return IngredientStock{}, err
+		}
+	}
+	st, err := s.stock(ctx, p.TenantID, []uuid.UUID{ingredientID})
+	if err != nil || len(st) == 0 {
+		return IngredientStock{}, err
+	}
+	return st[0], nil
+}
+
+// count checks a count and applies it under the ingredient's lock, unless
+// a call with the same key got there first.
+func (s *Service) count(ctx context.Context, p identity.Principal, key, ingredientID uuid.UUID, actual int64, reason, body string) error {
+	labels, err := s.catalog.Labels(ctx, p.TenantID)
+	if err != nil {
+		return err
+	}
 	ing, known := labels.Ingredients[ingredientID]
 	f := apperr.Fields{}
-	f.Check(in.IdempotencyKey != uuid.Nil, "idempotency_key", "Muat ulang halaman lalu coba lagi.")
+	f.Check(key != uuid.Nil, "idempotency_key", "Muat ulang halaman lalu coba lagi.")
 	f.Check(known, "ingredient_id", "Bahan tidak dikenal.")
 	f.Check(actual >= 0 && actual <= maxQty, "actual_qty", "Isi jumlah yang ada sekarang.")
 	f.Check(reason != "", "reason", "Isi alasan penyesuaian.")
 	f.Check(utf8.RuneCountInString(reason) <= maxNote, "reason", "Alasan paling panjang 500 karakter.")
 	if err := f.Err(); err != nil {
-		return IngredientStock{}, err
+		return err
 	}
 	now := s.clock.Now()
-	sent := countBody{IngredientID: ingredientID, Actual: actual, Reason: reason}
-	err = s.tx.Tx(ctx, func(ctx context.Context) error {
-		first, err := s.claim(ctx, p, Request{Kind: RequestCount, Key: in.IdempotencyKey, ResultID: ingredientID, At: now}, sent)
+	return s.tx.Tx(ctx, func(ctx context.Context) error {
+		first, err := s.claim(ctx, p, Request{Kind: RequestCount, Key: key, Body: body, ResultID: ingredientID, At: now})
 		if err != nil || first != nil {
 			return err
 		}
@@ -645,14 +705,6 @@ func (s *Service) Count(ctx context.Context, in CountInput) (IngredientStock, er
 		}
 		return s.repo.Publish(ctx, stockChanged(p.TenantID, ingredientID, now))
 	})
-	if err != nil {
-		return IngredientStock{}, err
-	}
-	st, err := s.stock(ctx, p.TenantID, []uuid.UUID{ingredientID})
-	if err != nil || len(st) == 0 {
-		return IngredientStock{}, err
-	}
-	return st[0], nil
 }
 
 // newestAvailable returns the newest available lot with something left.

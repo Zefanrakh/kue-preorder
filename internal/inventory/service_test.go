@@ -32,15 +32,26 @@ type memStock struct {
 	audits    []audit.Entry
 	events    []outbox.Event
 	locks     []uuid.UUID
-	requests  map[string]inventory.Request // by kind and key
+	requests  map[string]inventory.Request // by tenant, kind and key
 }
 
 func newMemStock() *memStock {
 	return &memStock{lots: map[uuid.UUID]inventory.Lot{}, requests: map[string]inventory.Request{}}
 }
 
-func (m *memStock) ClaimRequest(_ context.Context, _ uuid.UUID, r inventory.Request) (inventory.Request, bool, error) {
-	k := string(r.Kind) + "/" + r.Key.String()
+func requestKey(tenant uuid.UUID, kind inventory.RequestKind, key uuid.UUID) string {
+	return tenant.String() + "/" + string(kind) + "/" + key.String()
+}
+
+func (m *memStock) GetRequest(_ context.Context, tenant uuid.UUID, kind inventory.RequestKind, key uuid.UUID) (inventory.Request, error) {
+	if held, ok := m.requests[requestKey(tenant, kind, key)]; ok {
+		return held, nil
+	}
+	return inventory.Request{}, apperr.ErrNotFound
+}
+
+func (m *memStock) ClaimRequest(_ context.Context, tenant uuid.UUID, r inventory.Request) (inventory.Request, bool, error) {
+	k := requestKey(tenant, r.Kind, r.Key)
 	if held, ok := m.requests[k]; ok {
 		return held, false, nil
 	}
@@ -460,6 +471,60 @@ func TestRetry_KeyReusedForOtherFields(t *testing.T) {
 	}
 	if p.repo.ledger(p.flour) != 800 {
 		t.Errorf("ledger = %d, want the first count's 800", p.repo.ledger(p.flour))
+	}
+}
+
+// A retry is answered before the request is checked against the clock or
+// the catalog: one arriving after the eggs' expiry, more than 30 days after
+// a back-dated delivery, or after the ingredient was removed still gets the
+// first result, not an error the queue cannot get past.
+func TestRetry_LateStillGetsTheFirstResult(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	tomorrow := p.clock.Now().Add(24 * time.Hour)
+	eggs := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.egg, Qty: 30, ExpiresAt: &tomorrow}
+	first, err := p.service.Receive(ctx, eggs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backdated := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1000, ReceivedAt: p.clock.Now().Add(-29 * 24 * time.Hour)}
+	old, err := p.service.Receive(ctx, backdated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := countOf(p.flour, 800, "Opname")
+	if _, err := p.service.Count(ctx, count); err != nil {
+		t.Fatal(err)
+	}
+	p.clock.Advance(3 * 24 * time.Hour)
+
+	if l, err := p.service.Receive(ctx, eggs); err != nil || l.ID != first.ID {
+		t.Errorf("retry after the expiry = %+v, %v; want the first lot", l, err)
+	}
+	if l, err := p.service.Receive(ctx, backdated); err != nil || l.ID != old.ID {
+		t.Errorf("retry 32 days after the delivery = %+v, %v; want the first lot", l, err)
+	}
+	delete(p.catalog.Ingredients, p.flour)
+	if _, err := p.service.Count(ctx, count); err != nil {
+		t.Errorf("retried count of a removed ingredient: error = %v, want none", err)
+	}
+	if len(p.repo.lots) != 2 || len(p.repo.audits) != 3 {
+		t.Errorf("%d lots, %d audits; want 2 and 3", len(p.repo.lots), len(p.repo.audits))
+	}
+}
+
+// A key someone else used is not theirs to retry.
+func TestRetry_KeyOfAnotherPerson(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	delivery := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1000}
+	if _, err := p.service.Receive(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	p.caller.user = uuid.New()
+
+	if _, err := p.service.Receive(ctx, delivery); !errors.Is(err, inventory.ErrKeyReused) {
+		t.Errorf("another person's key: error = %v, want %v", err, inventory.ErrKeyReused)
 	}
 }
 

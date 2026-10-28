@@ -144,7 +144,8 @@ func (r *Repository) ExpireLots(ctx context.Context, tenantID uuid.UUID, now tim
 
 // ClaimRequest implements inventory.Repository. The insert waits on a
 // claim of the same key still in flight; once that commits, the claim is
-// there to read.
+// there to read. That relies on Read Committed, which db.Tx uses: under
+// Repeatable Read the waiting call would fail to serialize instead.
 func (r *Repository) ClaimRequest(ctx context.Context, tenantID uuid.UUID, req inventory.Request) (inventory.Request, bool, error) {
 	q := r.q(ctx)
 	n, err := q.ClaimRequest(ctx, ClaimRequestParams{
@@ -157,14 +158,23 @@ func (r *Repository) ClaimRequest(ctx context.Context, tenantID uuid.UUID, req i
 	if n == 1 {
 		return req, true, nil
 	}
-	row, err := q.GetRequest(ctx, GetRequestParams{TenantID: tenantID, Rpc: string(req.Kind), IdempotencyKey: req.Key})
+	held, err := r.GetRequest(ctx, tenantID, req.Kind, req.Key)
+	return held, false, err
+}
+
+// GetRequest implements inventory.Repository.
+func (r *Repository) GetRequest(ctx context.Context, tenantID uuid.UUID, kind inventory.RequestKind, key uuid.UUID) (inventory.Request, error) {
+	row, err := r.q(ctx).GetRequest(ctx, GetRequestParams{TenantID: tenantID, Rpc: string(kind), IdempotencyKey: key})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return inventory.Request{}, apperr.ErrNotFound
+	}
 	if err != nil {
-		return inventory.Request{}, false, err
+		return inventory.Request{}, err
 	}
 	return inventory.Request{
 		Kind: inventory.RequestKind(row.Rpc), Key: row.IdempotencyKey, Body: row.Request, ResultID: row.ResultID,
 		ActorID: row.CreatedBy, At: row.CreatedAt,
-	}, false, nil
+	}, nil
 }
 
 // Audit implements inventory.Repository.

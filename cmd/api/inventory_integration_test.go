@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -138,6 +139,44 @@ func TestInventory_RetriesAtOnceMakeOneLot(t *testing.T) {
 	}
 	if _, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IngredientId: flour.String(), Qty: 1})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("no key: code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+}
+
+// A count sent twice at once is applied once (#45).
+func TestInventory_CountsAtOnceApplyOnce(t *testing.T) {
+	w := newWired(t)
+	ctx := t.Context()
+	_, flour := w.withRecipe(t)
+	kitchen := w.inventory(t, "kitchen")
+	_, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), Qty: 1000}))
+	noErr(t, err)
+	req := &inventoryv1.CountStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), ActualQty: 400, Reason: "Opname"}
+
+	const calls = 4
+	errs := make(chan error, calls)
+	var wg sync.WaitGroup
+	for range calls {
+		wg.Go(func() {
+			res, err := kitchen.CountStock(ctx, connect.NewRequest(req))
+			if err == nil && res.Msg.GetIngredient().GetTotal() != 400 {
+				err = fmt.Errorf("total = %d, want 400", res.Msg.GetIngredient().GetTotal())
+			}
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Errorf("CountStock(): %v", err)
+		}
+	}
+	var adjusts, audits int
+	noErr(t, w.d.Pool().QueryRow(ctx, `select (select count(*) from stock_movements where kind = 'adjust'),
+		(select count(*) from audit_log where action = 'inventory.stock.counted')`).Scan(&adjusts, &audits))
+	if adjusts != 1 || audits != 1 {
+		t.Errorf("%d adjust movements, %d audits; want one each", adjusts, audits)
 	}
 }
 
