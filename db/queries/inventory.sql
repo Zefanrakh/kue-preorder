@@ -54,3 +54,17 @@ select lot_id, max(checked_at)::timestamptz as checked_at
 from stock_checks
 where tenant_id = sqlc.arg(tenant_id) and lot_id = any(sqlc.arg(lot_ids)::uuid[]) and result = 'ok'
 group by lot_id;
+
+-- name: ClaimRequest :execrows
+-- Claims an idempotency key in the caller's transaction: 0 rows when it is
+-- already claimed. A claim still in flight elsewhere makes this wait for
+-- that transaction to end.
+insert into inventory_requests (tenant_id, rpc, idempotency_key, request, result_id, created_by, created_at)
+values (sqlc.arg(tenant_id), sqlc.arg(rpc), sqlc.arg(idempotency_key), sqlc.arg(request), sqlc.arg(result_id),
+        sqlc.arg(created_by), sqlc.arg(now))
+on conflict do nothing;
+
+-- name: GetRequest :one
+select rpc, idempotency_key, request, result_id, created_by, created_at
+from inventory_requests
+where tenant_id = sqlc.arg(tenant_id) and rpc = sqlc.arg(rpc) and idempotency_key = sqlc.arg(idempotency_key);

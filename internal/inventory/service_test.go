@@ -32,9 +32,32 @@ type memStock struct {
 	audits    []audit.Entry
 	events    []outbox.Event
 	locks     []uuid.UUID
+	requests  map[string]inventory.Request // by tenant, kind and key
 }
 
-func newMemStock() *memStock { return &memStock{lots: map[uuid.UUID]inventory.Lot{}} }
+func newMemStock() *memStock {
+	return &memStock{lots: map[uuid.UUID]inventory.Lot{}, requests: map[string]inventory.Request{}}
+}
+
+func requestKey(tenant uuid.UUID, kind inventory.RequestKind, key uuid.UUID) string {
+	return tenant.String() + "/" + string(kind) + "/" + key.String()
+}
+
+func (m *memStock) GetRequest(_ context.Context, tenant uuid.UUID, kind inventory.RequestKind, key uuid.UUID) (inventory.Request, error) {
+	if held, ok := m.requests[requestKey(tenant, kind, key)]; ok {
+		return held, nil
+	}
+	return inventory.Request{}, apperr.ErrNotFound
+}
+
+func (m *memStock) ClaimRequest(_ context.Context, tenant uuid.UUID, r inventory.Request) (inventory.Request, bool, error) {
+	k := requestKey(tenant, r.Kind, r.Key)
+	if held, ok := m.requests[k]; ok {
+		return held, false, nil
+	}
+	m.requests[k] = r
+	return r, true, nil
+}
 
 func (m *memStock) LockIngredient(_ context.Context, id uuid.UUID) error {
 	m.locks = append(m.locks, id)
@@ -182,12 +205,17 @@ func newPantry() *pantry {
 
 func (p *pantry) receive(t *testing.T, ingredient uuid.UUID, qty int64) inventory.Lot {
 	t.Helper()
-	l, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IngredientID: ingredient, Qty: qty})
+	l, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: ingredient, Qty: qty})
 	if err != nil {
 		t.Fatalf("Receive(%d) error = %v", qty, err)
 	}
 	p.clock.Advance(time.Minute) // lots keep a received order
 	return l
+}
+
+// countOf is a count entered once, with its own key.
+func countOf(ingredient uuid.UUID, actual int64, reason string) inventory.CountInput {
+	return inventory.CountInput{IngredientID: ingredient, Actual: actual, Reason: reason, IdempotencyKey: uuid.New()}
 }
 
 func fieldError(err error, field string) string {
@@ -223,17 +251,17 @@ func TestReceive_Rejects(t *testing.T) {
 	now := p.clock.Now()
 	before := now.Add(-time.Hour)
 	for field, in := range map[string]inventory.ReceiveInput{
-		"ingredient_id": {IngredientID: uuid.New(), Qty: 1},
-		"qty":           {IngredientID: p.flour},
-		"received_at":   {IngredientID: p.flour, Qty: 1, ReceivedAt: now.Add(time.Hour)},
-		"expires_at":    {IngredientID: p.flour, Qty: 1, ExpiresAt: &before},
-		"note":          {IngredientID: p.flour, Qty: 1, Note: strings.Repeat("x", 501)},
+		"ingredient_id": {IdempotencyKey: uuid.New(), IngredientID: uuid.New(), Qty: 1},
+		"qty":           {IdempotencyKey: uuid.New(), IngredientID: p.flour},
+		"received_at":   {IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1, ReceivedAt: now.Add(time.Hour)},
+		"expires_at":    {IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1, ExpiresAt: &before},
+		"note":          {IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1, Note: strings.Repeat("x", 501)},
 	} {
 		if _, err := p.service.Receive(t.Context(), in); fieldError(err, field) == "" {
 			t.Errorf("Receive(%+v) error = %v, want a message on %s", in, err, field)
 		}
 	}
-	if _, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IngredientID: p.flour, Qty: 1, ReceivedAt: now.Add(-31 * 24 * time.Hour)}); fieldError(err, "received_at") == "" {
+	if _, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1, ReceivedAt: now.Add(-31 * 24 * time.Hour)}); fieldError(err, "received_at") == "" {
 		t.Errorf("a delivery 31 days back: error = %v", err)
 	}
 	if len(p.repo.movements) != 0 {
@@ -320,7 +348,7 @@ func TestCount(t *testing.T) {
 	p := newPantry()
 	old, mid, fresh := p.receive(t, p.flour, 300), p.receive(t, p.flour, 500), p.receive(t, p.flour, 1000)
 
-	st, err := p.service.Count(t.Context(), p.flour, 1200, "Stok opname akhir pekan")
+	st, err := p.service.Count(t.Context(), countOf(p.flour, 1200, "Stok opname akhir pekan"))
 
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +370,7 @@ func TestCount(t *testing.T) {
 		t.Errorf("audit = %+v", a)
 	}
 
-	st, err = p.service.Count(t.Context(), p.flour, 1500, "Salah hitung kemarin")
+	st, err = p.service.Count(t.Context(), countOf(p.flour, 1500, "Salah hitung kemarin"))
 	if err != nil || st.Total != 1500 {
 		t.Fatalf("Count(1500) = %+v, %v", st, err)
 	}
@@ -351,7 +379,7 @@ func TestCount(t *testing.T) {
 	}
 
 	audits := len(p.repo.audits)
-	if _, err := p.service.Count(t.Context(), p.flour, 1500, "Sama"); err != nil || len(p.repo.audits) != audits {
+	if _, err := p.service.Count(t.Context(), countOf(p.flour, 1500, "Sama")); err != nil || len(p.repo.audits) != audits {
 		t.Errorf("counting what is recorded: %v, %d new audits; want nothing", err, len(p.repo.audits)-audits)
 	}
 }
@@ -360,16 +388,163 @@ func TestCount(t *testing.T) {
 func TestCount_FromNothing(t *testing.T) {
 	p := newPantry()
 
-	st, err := p.service.Count(t.Context(), p.egg, 8, "Ternyata masih ada")
+	st, err := p.service.Count(t.Context(), countOf(p.egg, 8, "Ternyata masih ada"))
 
 	if err != nil || st.Total != 8 || len(st.Lots) != 1 || st.Lots[0].Source != inventory.SourceAdjustment || st.Lots[0].ExpiresAt == nil {
 		t.Errorf("Count() = %+v, %v; want one adjustment lot of 8 with an expiry", st, err)
 	}
-	if _, err := p.service.Count(t.Context(), p.egg, -1, "x"); fieldError(err, "actual_qty") == "" {
+	if _, err := p.service.Count(t.Context(), countOf(p.egg, -1, "x")); fieldError(err, "actual_qty") == "" {
 		t.Errorf("negative count: error = %v", err)
 	}
-	if _, err := p.service.Count(t.Context(), p.egg, 1, " "); fieldError(err, "reason") == "" {
+	if _, err := p.service.Count(t.Context(), countOf(p.egg, 1, " ")); fieldError(err, "reason") == "" {
 		t.Errorf("count without a reason: error = %v", err)
+	}
+}
+
+// A retry from the PWA's offline queue has no second effect (#45): the same
+// delivery gives the first lot back, and the same count changes nothing
+// again, even after production used some of the stock in between.
+func TestRetry_HasNoSecondEffect(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	delivery := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1000, Note: "Toko Sinar"}
+	first, err := p.service.Receive(ctx, delivery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.clock.Advance(10 * time.Minute) // the retry arrives later; received_at is still unset
+
+	again, err := p.service.Receive(ctx, delivery)
+
+	if err != nil || again.ID != first.ID || again.Balance != 1000 {
+		t.Errorf("retried Receive() = %+v, %v; want the first lot, %s", again, err, first.ID)
+	}
+	if len(p.repo.lots) != 1 || len(p.repo.movements) != 1 || len(p.repo.audits) != 1 || len(p.repo.events) != 1 {
+		t.Errorf("after a retried delivery: %d lots, %d movements, %d audits, %d events; want one of each",
+			len(p.repo.lots), len(p.repo.movements), len(p.repo.audits), len(p.repo.events))
+	}
+
+	count := countOf(p.flour, 800, "Tumpah")
+	if st, err := p.service.Count(ctx, count); err != nil || st.Total != 800 {
+		t.Fatalf("Count(800) = %+v, %v", st, err)
+	}
+	if _, err := inventory.NewConsumer(p.repo).Consume(ctx, tenant, uuid.New(), []inventory.Use{{IngredientID: p.flour, Qty: 300}}, p.caller.user, p.clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := p.service.Count(ctx, count)
+
+	if err != nil || st.Total != 500 || p.repo.ledger(p.flour) != 500 {
+		t.Errorf("retried Count() = %+v, %v (ledger %d); want the 500 left after production, not 800 again", st, err, p.repo.ledger(p.flour))
+	}
+	if len(p.repo.audits) != 2 {
+		t.Errorf("%d audits, want the delivery and one count", len(p.repo.audits))
+	}
+}
+
+// A key sent again with other fields is a client bug, refused rather than
+// answered with the first result.
+func TestRetry_KeyReusedForOtherFields(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	key := uuid.New()
+	if _, err := p.service.Receive(ctx, inventory.ReceiveInput{IdempotencyKey: key, IngredientID: p.flour, Qty: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := p.service.Receive(ctx, inventory.ReceiveInput{IdempotencyKey: key, IngredientID: p.flour, Qty: 2000})
+
+	if !errors.Is(err, inventory.ErrKeyReused) {
+		t.Errorf("same key, other qty: error = %v, want %v", err, inventory.ErrKeyReused)
+	}
+	if len(p.repo.lots) != 1 {
+		t.Errorf("%d lots, want the first only", len(p.repo.lots))
+	}
+
+	count := countOf(p.flour, 800, "Tumpah")
+	if _, err := p.service.Count(ctx, count); err != nil {
+		t.Fatal(err)
+	}
+	count.Actual = 700
+	if _, err := p.service.Count(ctx, count); !errors.Is(err, inventory.ErrKeyReused) {
+		t.Errorf("same key, other count: error = %v, want %v", err, inventory.ErrKeyReused)
+	}
+	if p.repo.ledger(p.flour) != 800 {
+		t.Errorf("ledger = %d, want the first count's 800", p.repo.ledger(p.flour))
+	}
+}
+
+// A retry is answered before the request is checked against the clock or
+// the catalog: one arriving after the eggs' expiry, more than 30 days after
+// a back-dated delivery, or after the ingredient was removed still gets the
+// first result, not an error the queue cannot get past.
+func TestRetry_LateStillGetsTheFirstResult(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	tomorrow := p.clock.Now().Add(24 * time.Hour)
+	eggs := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.egg, Qty: 30, ExpiresAt: &tomorrow}
+	first, err := p.service.Receive(ctx, eggs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backdated := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1000, ReceivedAt: p.clock.Now().Add(-29 * 24 * time.Hour)}
+	old, err := p.service.Receive(ctx, backdated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := countOf(p.flour, 800, "Opname")
+	if _, err := p.service.Count(ctx, count); err != nil {
+		t.Fatal(err)
+	}
+	p.clock.Advance(3 * 24 * time.Hour)
+
+	if l, err := p.service.Receive(ctx, eggs); err != nil || l.ID != first.ID {
+		t.Errorf("retry after the expiry = %+v, %v; want the first lot", l, err)
+	}
+	if l, err := p.service.Receive(ctx, backdated); err != nil || l.ID != old.ID {
+		t.Errorf("retry 32 days after the delivery = %+v, %v; want the first lot", l, err)
+	}
+	delete(p.catalog.Ingredients, p.flour)
+	if _, err := p.service.Count(ctx, count); err != nil {
+		t.Errorf("retried count of a removed ingredient: error = %v, want none", err)
+	}
+	if len(p.repo.lots) != 2 || len(p.repo.audits) != 3 {
+		t.Errorf("%d lots, %d audits; want 2 and 3", len(p.repo.lots), len(p.repo.audits))
+	}
+}
+
+// A key someone else used is not theirs to retry.
+func TestRetry_KeyOfAnotherPerson(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	delivery := inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1000}
+	if _, err := p.service.Receive(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	p.caller.user = uuid.New()
+
+	if _, err := p.service.Receive(ctx, delivery); !errors.Is(err, inventory.ErrKeyReused) {
+		t.Errorf("another person's key: error = %v, want %v", err, inventory.ErrKeyReused)
+	}
+}
+
+// A key belongs to one RPC, and every change needs one.
+func TestRetry_KeyPerRPCAndRequired(t *testing.T) {
+	p := newPantry()
+	ctx := t.Context()
+	key := uuid.New()
+	if _, err := p.service.Receive(ctx, inventory.ReceiveInput{IdempotencyKey: key, IngredientID: p.flour, Qty: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := p.service.Count(ctx, inventory.CountInput{IdempotencyKey: key, IngredientID: p.flour, Actual: 900, Reason: "Opname"}); err != nil || st.Total != 900 {
+		t.Errorf("a count with the delivery's key = %+v, %v; want it counted", st, err)
+	}
+
+	if _, err := p.service.Receive(ctx, inventory.ReceiveInput{IngredientID: p.flour, Qty: 1}); fieldError(err, "idempotency_key") == "" {
+		t.Errorf("Receive() without a key: error = %v", err)
+	}
+	if _, err := p.service.Count(ctx, inventory.CountInput{IngredientID: p.flour, Actual: 1, Reason: "x"}); fieldError(err, "idempotency_key") == "" {
+		t.Errorf("Count() without a key: error = %v", err)
 	}
 }
 
@@ -404,7 +579,7 @@ func TestService_Roles(t *testing.T) {
 	if _, err := p.service.Stock(t.Context()); !errors.Is(err, apperr.ErrForbidden) {
 		t.Errorf("customer Stock() error = %v, want ErrForbidden", err)
 	}
-	if _, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IngredientID: p.flour, Qty: 1}); !errors.Is(err, apperr.ErrForbidden) {
+	if _, err := p.service.Receive(t.Context(), inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: p.flour, Qty: 1}); !errors.Is(err, apperr.ErrForbidden) {
 		t.Errorf("customer Receive() error = %v, want ErrForbidden", err)
 	}
 	p.caller.roles = []identity.Role{identity.RoleOwner}
@@ -442,11 +617,11 @@ func TestProperty_StockIsTheLedger(t *testing.T) {
 			ing := rapid.SampledFrom([]uuid.UUID{p.flour, p.egg}).Draw(rt, "ingredient")
 			switch rapid.IntRange(0, 3).Draw(rt, "action") {
 			case 0:
-				_, _ = p.service.Receive(t.Context(), inventory.ReceiveInput{IngredientID: ing, Qty: rapid.Int64Range(1, 2000).Draw(rt, "qty")})
+				_, _ = p.service.Receive(t.Context(), inventory.ReceiveInput{IdempotencyKey: uuid.New(), IngredientID: ing, Qty: rapid.Int64Range(1, 2000).Draw(rt, "qty")})
 				p.clock.Advance(time.Minute)
 			case 1:
 				actual := rapid.Int64Range(0, 3000).Draw(rt, "actual")
-				if st, err := p.service.Count(t.Context(), ing, actual, "opname"); err == nil && st.Total != actual {
+				if st, err := p.service.Count(t.Context(), countOf(ing, actual, "opname")); err == nil && st.Total != actual {
 					rt.Fatalf("count to %d left %d", actual, st.Total)
 				}
 			case 2:

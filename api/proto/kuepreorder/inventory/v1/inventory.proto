@@ -100,6 +100,11 @@ message ReceiveStockRequest {
   google.protobuf.Timestamp expires_at = 4;
   // Up to 500 characters, such as the shop it came from.
   string note = 5;
+  // Required UUID, one per delivery entered: the offline queue sends it
+  // again on a retry, which returns the first lot without a second one. The
+  // same key with different fields is FailedPrecondition
+  // "idempotency_key_reused".
+  string idempotency_key = 6;
 }
 
 message ReceiveStockResponse {
@@ -157,6 +162,11 @@ message CountStockRequest {
   int64 actual_qty = 2;
   // Required, up to 500 characters. It is the audit reason.
   string reason = 3;
+  // Required UUID, one per count entered: a retry with it changes nothing
+  // again, even when the stock moved since, and returns the stock as it is
+  // now. The same key with different fields is FailedPrecondition
+  // "idempotency_key_reused".
+  string idempotency_key = 4;
 }
 
 message CountStockResponse {

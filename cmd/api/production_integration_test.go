@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	aggregationv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/aggregation/v1"
 	inventoryv1 "github.com/Zefanrakh/kue-preorder/api/gen/go/kuepreorder/inventory/v1"
@@ -30,7 +31,7 @@ func TestProduction_FinishedBatchUsesTheStock(t *testing.T) {
 	}
 	pantry := w.inventory(t, "kitchen")
 	for _, qty := range []int64{300, 1000} {
-		_, err := pantry.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IngredientId: flour.String(), Qty: qty}))
+		_, err := pantry.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), Qty: qty}))
 		noErr(t, err)
 		w.clock.Advance(time.Minute) // deliveries keep their order; Postgres keeps microseconds
 	}
