@@ -432,6 +432,13 @@ stock_checks (                       -- hasil "cek stok" oleh ibu
   reason text null,                  -- discard: 'smell' | 'mold' | 'expired' | 'other' (other wajib note)
   checked_by uuid, checked_at timestamptz, note text
 )
+inventory_requests (                 -- M5.1: kiriman ulang antrean offline PWA tidak berefek dua kali
+  tenant_id, rpc text,               -- 'receive' | 'count'
+  idempotency_key uuid,              -- PK (tenant_id, rpc, idempotency_key); diklaim di transaksi efeknya
+  request text,                      -- field kiriman pertama (JSON kanonik); kunci sama + isi lain = ditolak
+  result_id uuid,                    -- receive: lot baru; count: bahannya
+  created_by uuid, created_at timestamptz
+)
 ```
 
 ### 9.5 Jadwal

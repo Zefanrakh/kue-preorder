@@ -34,7 +34,10 @@ func NewHandler(svc *inventory.Service, logger *slog.Logger) *Handler {
 func (h *Handler) ReceiveStock(ctx context.Context, req *connect.Request[inventoryv1.ReceiveStockRequest]) (*connect.Response[inventoryv1.ReceiveStockResponse], error) {
 	m := req.Msg
 	var ids rpcerr.IDs
-	in := inventory.ReceiveInput{IngredientID: ids.Parse("ingredient_id", m.GetIngredientId()), Qty: m.GetQty(), Note: m.GetNote()}
+	in := inventory.ReceiveInput{
+		IngredientID: ids.Parse("ingredient_id", m.GetIngredientId()), Qty: m.GetQty(), Note: m.GetNote(),
+		IdempotencyKey: ids.Parse("idempotency_key", m.GetIdempotencyKey()),
+	}
 	if err := ids.Err(); err != nil {
 		return nil, rpcerr.Wrap(ctx, h.logger, err, nil)
 	}
@@ -101,11 +104,14 @@ func (h *Handler) CheckLot(ctx context.Context, req *connect.Request[inventoryv1
 func (h *Handler) CountStock(ctx context.Context, req *connect.Request[inventoryv1.CountStockRequest]) (*connect.Response[inventoryv1.CountStockResponse], error) {
 	m := req.Msg
 	var ids rpcerr.IDs
-	ingredientID := ids.Parse("ingredient_id", m.GetIngredientId())
+	in := inventory.CountInput{
+		IngredientID: ids.Parse("ingredient_id", m.GetIngredientId()), Actual: m.GetActualQty(), Reason: m.GetReason(),
+		IdempotencyKey: ids.Parse("idempotency_key", m.GetIdempotencyKey()),
+	}
 	if err := ids.Err(); err != nil {
 		return nil, rpcerr.Wrap(ctx, h.logger, err, nil)
 	}
-	st, err := h.svc.Count(ctx, ingredientID, m.GetActualQty(), m.GetReason())
+	st, err := h.svc.Count(ctx, in)
 	if err != nil {
 		return nil, rpcerr.Wrap(ctx, h.logger, err, nil)
 	}

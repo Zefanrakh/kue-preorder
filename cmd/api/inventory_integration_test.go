@@ -3,6 +3,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestInventory_StockReachesTheShoppingList(t *testing.T) {
 	}
 	kitchen := w.inventory(t, "kitchen")
 
-	lot, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IngredientId: flour.String(), Qty: 600, Note: "Toko Sinar"}))
+	lot, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), Qty: 600, Note: "Toko Sinar"}))
 
 	noErr(t, err)
 	if l := lot.Msg.GetLot(); l.GetBalance() != 600 || l.GetStatus() != inventoryv1.LotStatus_LOT_STATUS_AVAILABLE || l.GetSource() != inventoryv1.LotSource_LOT_SOURCE_MANUAL {
@@ -65,7 +66,7 @@ func TestInventory_StockReachesTheShoppingList(t *testing.T) {
 		t.Errorf("after 600 g in: %v, want 600 from stock and 400 g to buy in 1 pack", l)
 	}
 
-	counted, err := kitchen.CountStock(ctx, connect.NewRequest(&inventoryv1.CountStockRequest{IngredientId: flour.String(), ActualQty: 450, Reason: "Tumpah sedikit"}))
+	counted, err := kitchen.CountStock(ctx, connect.NewRequest(&inventoryv1.CountStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), ActualQty: 450, Reason: "Tumpah sedikit"}))
 	noErr(t, err)
 	if st := counted.Msg.GetIngredient(); st.GetTotal() != 450 || st.GetUsableToday() != 450 || len(st.GetLots()) != 1 {
 		t.Errorf("after the count: %v, want 450 g", st)
@@ -86,6 +87,60 @@ func TestInventory_StockReachesTheShoppingList(t *testing.T) {
 	}
 }
 
+// The offline queue may send a delivery twice at once (#45): one lot, one
+// movement, one audit; both calls get that lot. The same key with another
+// quantity is refused.
+func TestInventory_RetriesAtOnceMakeOneLot(t *testing.T) {
+	w := newWired(t)
+	ctx := t.Context()
+	_, flour := w.withRecipe(t)
+	kitchen := w.inventory(t, "kitchen")
+	req := &inventoryv1.ReceiveStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: flour.String(), Qty: 600}
+
+	const calls = 4
+	lots := make(chan string, calls)
+	errs := make(chan error, calls)
+	var wg sync.WaitGroup
+	for range calls {
+		wg.Go(func() {
+			res, err := kitchen.ReceiveStock(ctx, connect.NewRequest(req))
+			if err != nil {
+				errs <- err
+				return
+			}
+			lots <- res.Msg.GetLot().GetId()
+		})
+	}
+	wg.Wait()
+	close(lots)
+	close(errs)
+
+	for err := range errs {
+		t.Errorf("ReceiveStock() error = %v", err)
+	}
+	ids := map[string]bool{}
+	for id := range lots {
+		ids[id] = true
+	}
+	if len(ids) != 1 {
+		t.Errorf("calls got lots %v, want one lot for all", ids)
+	}
+	var lotCount, movements, audits int
+	noErr(t, w.d.Pool().QueryRow(ctx, `select (select count(*) from stock_lots), (select count(*) from stock_movements),
+		(select count(*) from audit_log where action = 'inventory.stock.received')`).Scan(&lotCount, &movements, &audits))
+	if lotCount != 1 || movements != 1 || audits != 1 {
+		t.Errorf("%d lots, %d movements, %d audits; want one of each", lotCount, movements, audits)
+	}
+
+	req.Qty = 700
+	if _, err := kitchen.ReceiveStock(ctx, connect.NewRequest(req)); precondition(t, err) != "idempotency_key_reused" {
+		t.Errorf("same key, other qty: error = %v", err)
+	}
+	if _, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IngredientId: flour.String(), Qty: 1})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("no key: code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+}
+
 // Fresh eggs count at once; a day later they need a check; thrown away,
 // nothing is left.
 func TestInventory_CheckingPerishables(t *testing.T) {
@@ -97,7 +152,7 @@ func TestInventory_CheckingPerishables(t *testing.T) {
 	}, wib(5, 9, 0))
 	noErr(t, err)
 	kitchen := w.inventory(t, "kitchen")
-	lot, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IngredientId: egg.ID.String(), Qty: 30}))
+	lot, err := kitchen.ReceiveStock(ctx, connect.NewRequest(&inventoryv1.ReceiveStockRequest{IdempotencyKey: uuid.NewString(), IngredientId: egg.ID.String(), Qty: 30}))
 	noErr(t, err)
 	lotID := lot.Msg.GetLot().GetId()
 	if lot.Msg.GetLot().GetExpiresAt() == nil {

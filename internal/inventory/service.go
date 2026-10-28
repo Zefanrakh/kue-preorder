@@ -3,6 +3,7 @@ package inventory
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -59,6 +60,10 @@ type Repository interface {
 	// ExpireLots marks the available lots past their expiry at now and
 	// returns how many.
 	ExpireLots(ctx context.Context, tenantID uuid.UUID, now time.Time) (int64, error)
+	// ClaimRequest claims r's key for r. It returns the request holding the
+	// key and whether r just claimed it. A claim in another transaction
+	// still in flight makes it wait for that transaction to end.
+	ClaimRequest(ctx context.Context, tenantID uuid.UUID, r Request) (Request, bool, error)
 	Audit(ctx context.Context, e audit.Entry) error
 	Publish(ctx context.Context, e outbox.Event) error
 }
@@ -135,6 +140,18 @@ type ReceiveInput struct {
 	// ExpiresAt defaults to ReceivedAt plus the ingredient's shelf life.
 	ExpiresAt *time.Time
 	Note      string
+	// IdempotencyKey is one per delivery entered: a retry with it returns the
+	// first lot instead of a second one.
+	IdempotencyKey uuid.UUID
+}
+
+// receiveBody is a ReceiveInput as sent, before any default.
+type receiveBody struct {
+	IngredientID uuid.UUID  `json:"ingredient_id"`
+	Qty          int64      `json:"qty"`
+	ReceivedAt   *time.Time `json:"received_at,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	Note         string     `json:"note,omitempty"`
 }
 
 // Receive records a delivery as a new lot ("Belanja masuk"). Staff only.
@@ -148,12 +165,22 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 		return Lot{}, err
 	}
 	now := s.clock.Now()
+	in.Note = strings.TrimSpace(in.Note)
+	sent := receiveBody{IngredientID: in.IngredientID, Qty: in.Qty, Note: in.Note}
+	if !in.ReceivedAt.IsZero() {
+		t := in.ReceivedAt.UTC()
+		sent.ReceivedAt = &t
+	}
+	if in.ExpiresAt != nil {
+		t := in.ExpiresAt.UTC()
+		sent.ExpiresAt = &t
+	}
 	if in.ReceivedAt.IsZero() {
 		in.ReceivedAt = now
 	}
-	in.Note = strings.TrimSpace(in.Note)
 	ing, known := labels.Ingredients[in.IngredientID]
 	f := apperr.Fields{}
+	f.Check(in.IdempotencyKey != uuid.Nil, "idempotency_key", "Muat ulang halaman lalu coba lagi.")
 	f.Check(known, "ingredient_id", "Bahan tidak dikenal.")
 	f.Check(in.Qty > 0 && in.Qty <= maxQty, "qty", "Isi jumlah yang diterima.")
 	f.Check(!in.ReceivedAt.After(now.Add(5*time.Minute)), "received_at", "Tanggal belanja tidak boleh di masa depan.")
@@ -172,13 +199,42 @@ func (s *Service) Receive(ctx context.Context, in ReceiveInput) (Lot, error) {
 	if reason == "" {
 		reason = "Belanja masuk"
 	}
+	var first *Request
 	err = s.tx.Tx(ctx, func(ctx context.Context) error {
+		var err error
+		first, err = s.claim(ctx, p, Request{Kind: RequestReceive, Key: in.IdempotencyKey, ResultID: lot.ID, At: now}, sent)
+		if err != nil || first != nil {
+			return err
+		}
 		return intake(ctx, s.repo, p.TenantID, ing, lot, in.Qty, p.AuthUserID, reason, now)
 	})
 	if err != nil {
 		return Lot{}, err
 	}
+	if first != nil {
+		return s.repo.GetLot(ctx, p.TenantID, first.ResultID)
+	}
 	return s.repo.GetLot(ctx, p.TenantID, lot.ID)
+}
+
+// claim claims r's key for the request sent, in the caller's transaction.
+// It returns nil when r claimed it, so its effect follows, and the first
+// request when this is a retry of it, which has no effect again. The key
+// used for other fields is ErrKeyReused.
+func (s *Service) claim(ctx context.Context, p identity.Principal, r Request, sent any) (*Request, error) {
+	body, err := json.Marshal(sent)
+	if err != nil {
+		return nil, err
+	}
+	r.Body, r.ActorID = string(body), p.AuthUserID
+	held, claimed, err := s.repo.ClaimRequest(ctx, p.TenantID, r)
+	if err != nil || claimed {
+		return nil, err
+	}
+	if held.Body != r.Body {
+		return nil, ErrKeyReused
+	}
+	return &held, nil
 }
 
 // intake records a delivery as the new lot l under the ingredient's lock:
@@ -473,12 +529,32 @@ func (s *Service) discard(ctx context.Context, p identity.Principal, lot Lot, in
 	})
 }
 
+// CountInput is what the kitchen counted of one ingredient.
+type CountInput struct {
+	IngredientID uuid.UUID
+	// Actual is what is there now, in the base unit.
+	Actual int64
+	// Reason is required; it is the audit reason.
+	Reason string
+	// IdempotencyKey is one per count entered: a retry with it changes
+	// nothing again, even when the stock moved since.
+	IdempotencyKey uuid.UUID
+}
+
+// countBody is a CountInput as sent.
+type countBody struct {
+	IngredientID uuid.UUID `json:"ingredient_id"`
+	Actual       int64     `json:"actual_qty"`
+	Reason       string    `json:"reason"`
+}
+
 // Count sets an ingredient's stock to what the kitchen counted (stok
 // opname, decided per ingredient on 2026-09-29). Less than recorded comes
 // out of the oldest lots first; more goes into the newest available lot, or
 // a new one when there is none. A reason is required. Counting what is
-// already recorded changes nothing. Staff only.
-func (s *Service) Count(ctx context.Context, ingredientID uuid.UUID, actual int64, reason string) (IngredientStock, error) {
+// already recorded changes nothing. It returns the stock as it is now, also
+// for a retry. Staff only.
+func (s *Service) Count(ctx context.Context, in CountInput) (IngredientStock, error) {
 	p, err := s.authorize(ctx)
 	if err != nil {
 		return IngredientStock{}, err
@@ -487,9 +563,10 @@ func (s *Service) Count(ctx context.Context, ingredientID uuid.UUID, actual int6
 	if err != nil {
 		return IngredientStock{}, err
 	}
-	reason = strings.TrimSpace(reason)
+	ingredientID, actual, reason := in.IngredientID, in.Actual, strings.TrimSpace(in.Reason)
 	ing, known := labels.Ingredients[ingredientID]
 	f := apperr.Fields{}
+	f.Check(in.IdempotencyKey != uuid.Nil, "idempotency_key", "Muat ulang halaman lalu coba lagi.")
 	f.Check(known, "ingredient_id", "Bahan tidak dikenal.")
 	f.Check(actual >= 0 && actual <= maxQty, "actual_qty", "Isi jumlah yang ada sekarang.")
 	f.Check(reason != "", "reason", "Isi alasan penyesuaian.")
@@ -498,7 +575,12 @@ func (s *Service) Count(ctx context.Context, ingredientID uuid.UUID, actual int6
 		return IngredientStock{}, err
 	}
 	now := s.clock.Now()
+	sent := countBody{IngredientID: ingredientID, Actual: actual, Reason: reason}
 	err = s.tx.Tx(ctx, func(ctx context.Context) error {
+		first, err := s.claim(ctx, p, Request{Kind: RequestCount, Key: in.IdempotencyKey, ResultID: ingredientID, At: now}, sent)
+		if err != nil || first != nil {
+			return err
+		}
 		if err := s.repo.LockIngredient(ctx, ingredientID); err != nil {
 			return err
 		}

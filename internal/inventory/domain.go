@@ -142,4 +142,33 @@ var (
 		Reason:  "lot_expired",
 		Message: "Bahan ini sudah lewat tanggal kedaluwarsa, jadi tidak dihitung lagi. Pilih Buang kalau sudah dibuang.",
 	}
+	// ErrKeyReused refuses a key already used for other fields: a client bug,
+	// never a retry.
+	ErrKeyReused = &apperr.PreconditionError{
+		Reason:  "idempotency_key_reused",
+		Message: "Data ini berbeda dari kiriman sebelumnya. Muat ulang halaman lalu isi lagi.",
+	}
 )
+
+// RequestKind is the RPC an idempotency key belongs to.
+type RequestKind string
+
+// Request kinds.
+const (
+	RequestReceive RequestKind = "receive"
+	RequestCount   RequestKind = "count"
+)
+
+// Request is a ReceiveStock or CountStock as first sent. The PWA's offline
+// queue sends it again with the same key on a retry, which then has no
+// second effect.
+type Request struct {
+	Kind RequestKind
+	Key  uuid.UUID
+	// Body is the request's fields as canonical JSON; a retry must match it.
+	Body string
+	// ResultID is the new lot for a receive, the ingredient for a count.
+	ResultID uuid.UUID
+	ActorID  uuid.UUID
+	At       time.Time
+}

@@ -529,9 +529,14 @@ type ReceiveStockRequest struct {
 	// Defaults to received_at plus the ingredient's shelf life.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// Up to 500 characters, such as the shop it came from.
-	Note          string `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Note string `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	// Required UUID, one per delivery entered: the offline queue sends it
+	// again on a retry, which returns the first lot without a second one. The
+	// same key with different fields is FailedPrecondition
+	// "idempotency_key_reused".
+	IdempotencyKey string `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ReceiveStockRequest) Reset() {
@@ -595,6 +600,13 @@ func (x *ReceiveStockRequest) GetExpiresAt() *timestamppb.Timestamp {
 func (x *ReceiveStockRequest) GetNote() string {
 	if x != nil {
 		return x.Note
+	}
+	return ""
+}
+
+func (x *ReceiveStockRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
 	}
 	return ""
 }
@@ -923,9 +935,14 @@ type CountStockRequest struct {
 	// What is there now, in the base unit.
 	ActualQty int64 `protobuf:"varint,2,opt,name=actual_qty,json=actualQty,proto3" json:"actual_qty,omitempty"`
 	// Required, up to 500 characters. It is the audit reason.
-	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Required UUID, one per count entered: a retry with it changes nothing
+	// again, even when the stock moved since, and returns the stock as it is
+	// now. The same key with different fields is FailedPrecondition
+	// "idempotency_key_reused".
+	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CountStockRequest) Reset() {
@@ -975,6 +992,13 @@ func (x *CountStockRequest) GetActualQty() int64 {
 func (x *CountStockRequest) GetReason() string {
 	if x != nil {
 		return x.Reason
+	}
+	return ""
+}
+
+func (x *CountStockRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
 	}
 	return ""
 }
@@ -1054,7 +1078,7 @@ const file_kuepreorder_inventory_v1_inventory_proto_rawDesc = "" +
 	"\x03lot\x18\x01 \x01(\v2\x1d.kuepreorder.inventory.v1.LotR\x03lot\x12'\n" +
 	"\x0fingredient_name\x18\x02 \x01(\tR\x0eingredientName\x12=\n" +
 	"\tbase_unit\x18\x03 \x01(\x0e2 .kuepreorder.catalog.v1.BaseUnitR\bbaseUnit\x12\x18\n" +
-	"\aexpired\x18\x04 \x01(\bR\aexpired\"\xd8\x01\n" +
+	"\aexpired\x18\x04 \x01(\bR\aexpired\"\x81\x02\n" +
 	"\x13ReceiveStockRequest\x12#\n" +
 	"\ringredient_id\x18\x01 \x01(\tR\fingredientId\x12\x10\n" +
 	"\x03qty\x18\x02 \x01(\x03R\x03qty\x12;\n" +
@@ -1062,7 +1086,8 @@ const file_kuepreorder_inventory_v1_inventory_proto_rawDesc = "" +
 	"receivedAt\x129\n" +
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x12\n" +
-	"\x04note\x18\x05 \x01(\tR\x04note\"G\n" +
+	"\x04note\x18\x05 \x01(\tR\x04note\x12'\n" +
+	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\"G\n" +
 	"\x14ReceiveStockResponse\x12/\n" +
 	"\x03lot\x18\x01 \x01(\v2\x1d.kuepreorder.inventory.v1.LotR\x03lot\"\x12\n" +
 	"\x10ListStockRequest\"`\n" +
@@ -1077,12 +1102,13 @@ const file_kuepreorder_inventory_v1_inventory_proto_rawDesc = "" +
 	"\x06reason\x18\x03 \x01(\x0e2'.kuepreorder.inventory.v1.DiscardReasonR\x06reason\x12\x12\n" +
 	"\x04note\x18\x04 \x01(\tR\x04note\"C\n" +
 	"\x10CheckLotResponse\x12/\n" +
-	"\x03lot\x18\x01 \x01(\v2\x1d.kuepreorder.inventory.v1.LotR\x03lot\"o\n" +
+	"\x03lot\x18\x01 \x01(\v2\x1d.kuepreorder.inventory.v1.LotR\x03lot\"\x98\x01\n" +
 	"\x11CountStockRequest\x12#\n" +
 	"\ringredient_id\x18\x01 \x01(\tR\fingredientId\x12\x1d\n" +
 	"\n" +
 	"actual_qty\x18\x02 \x01(\x03R\tactualQty\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"_\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\"_\n" +
 	"\x12CountStockResponse\x12I\n" +
 	"\n" +
 	"ingredient\x18\x01 \x01(\v2).kuepreorder.inventory.v1.IngredientStockR\n" +

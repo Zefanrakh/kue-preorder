@@ -12,6 +12,42 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimRequest = `-- name: ClaimRequest :execrows
+insert into inventory_requests (tenant_id, rpc, idempotency_key, request, result_id, created_by, created_at)
+values ($1, $2, $3, $4, $5,
+        $6, $7)
+on conflict do nothing
+`
+
+type ClaimRequestParams struct {
+	TenantID       uuid.UUID
+	Rpc            string
+	IdempotencyKey uuid.UUID
+	Request        string
+	ResultID       uuid.UUID
+	CreatedBy      uuid.UUID
+	Now            time.Time
+}
+
+// Claims an idempotency key in the caller's transaction: 0 rows when it is
+// already claimed. A claim still in flight elsewhere makes this wait for
+// that transaction to end.
+func (q *Queries) ClaimRequest(ctx context.Context, arg ClaimRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimRequest,
+		arg.TenantID,
+		arg.Rpc,
+		arg.IdempotencyKey,
+		arg.Request,
+		arg.ResultID,
+		arg.CreatedBy,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const expireLots = `-- name: ExpireLots :execrows
 update stock_lots set status = 'expired', updated_at = $1
 where tenant_id = $2 and status = 'available' and expires_at <= $1
@@ -70,6 +106,41 @@ func (q *Queries) GetLot(ctx context.Context, arg GetLotParams) (GetLotRow, erro
 		&i.Note,
 		&i.CreatedAt,
 		&i.Balance,
+	)
+	return i, err
+}
+
+const getRequest = `-- name: GetRequest :one
+select rpc, idempotency_key, request, result_id, created_by, created_at
+from inventory_requests
+where tenant_id = $1 and rpc = $2 and idempotency_key = $3
+`
+
+type GetRequestParams struct {
+	TenantID       uuid.UUID
+	Rpc            string
+	IdempotencyKey uuid.UUID
+}
+
+type GetRequestRow struct {
+	Rpc            string
+	IdempotencyKey uuid.UUID
+	Request        string
+	ResultID       uuid.UUID
+	CreatedBy      uuid.UUID
+	CreatedAt      time.Time
+}
+
+func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (GetRequestRow, error) {
+	row := q.db.QueryRow(ctx, getRequest, arg.TenantID, arg.Rpc, arg.IdempotencyKey)
+	var i GetRequestRow
+	err := row.Scan(
+		&i.Rpc,
+		&i.IdempotencyKey,
+		&i.Request,
+		&i.ResultID,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }

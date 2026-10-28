@@ -144,6 +144,38 @@ func TestExpireLots(t *testing.T) {
 	}
 }
 
+// A key is claimed once per tenant and RPC; claiming it again returns the
+// first request.
+func TestClaimRequest(t *testing.T) {
+	d := dbtest.New(t)
+	repo := postgres.NewRepository(d)
+	ctx := t.Context()
+	tenant := dbtest.DefaultTenantID
+	key := uuid.New()
+	first := inventory.Request{Kind: inventory.RequestReceive, Key: key, Body: `{"qty":1}`, ResultID: uuid.New(), ActorID: uuid.New(), At: now}
+
+	held, claimed, err := repo.ClaimRequest(ctx, tenant, first)
+	if err != nil || !claimed || held.ResultID != first.ResultID {
+		t.Fatalf("first claim = %+v, %v, %v; want claimed", held, claimed, err)
+	}
+	retry := first
+	retry.Body, retry.ResultID = `{"qty":2}`, uuid.New()
+	held, claimed, err = repo.ClaimRequest(ctx, tenant, retry)
+	if err != nil || claimed || held.ResultID != first.ResultID || held.Body != first.Body || !held.At.Equal(now) {
+		t.Errorf("second claim = %+v, %v, %v; want the first request back", held, claimed, err)
+	}
+
+	count := first
+	count.Kind = inventory.RequestCount
+	if _, claimed, err := repo.ClaimRequest(ctx, tenant, count); err != nil || !claimed {
+		t.Errorf("same key for a count: claimed %v, %v; want its own claim", claimed, err)
+	}
+	other := dbtest.CreateTenant(t, d, "Toko Lain")
+	if _, claimed, err := repo.ClaimRequest(ctx, other, first); err != nil || !claimed {
+		t.Errorf("same key in another tenant: claimed %v, %v; want its own claim", claimed, err)
+	}
+}
+
 // Changes to one ingredient take turns under its lock, inside the caller's
 // transaction.
 func TestLockIngredientJoinsTheTransaction(t *testing.T) {
