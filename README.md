@@ -116,9 +116,11 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...          # celah keamanan 
 
 `.github/workflows/ci.yml` menjalankan semua perintah di atas pada setiap PR dan push ke `main`, dengan tiga job: `go`, `codegen`, dan `ts`. Kalau CI merah, jalankan perintah yang sama di lokal.
 
-**Aturan merge:** hanya merge PR kalau ketiga job hijau. Repo ini private di paket GitHub Free, yang tidak menyediakan proteksi branch maupun *required status checks*, jadi aturan ini dijaga dengan disiplin, bukan dipaksa oleh GitHub. Kalau repo pindah ke paket berbayar atau menjadi public, aktifkan ruleset untuk `main`: *Require a pull request*, *Require status checks* (ketiga job di atas), dan *Block force pushes*.
+**Aturan merge (sejak 2026-11-17):** repo ini publik, jadi `main` dilindungi branch protection yang gratis untuk repo publik: wajib lewat PR, ketiga job wajib hijau (*Go (tidy, vet, lint, test)*, *Codegen (sqlc, buf, workflows)*, *TypeScript client*), tanpa force push dan tanpa hapus branch, dan berlaku juga untuk admin. Auto-merge menyala: PR yang auto-merge-nya dinyalakan di-merge GitHub (merge commit) begitu ketiga job hijau, lalu branch-nya dihapus. Kapan agent menyalakannya ada di `docs/sdlc.md` langkah 6–9.
 
-Kuota Actions paket Free (2.000 menit/bulan untuk repo private) jauh cukup: satu run sekitar 8 menit. Semua budget billing di-set $0, jadi kelebihan pemakaian dihentikan, bukan ditagih.
+**Kalau repo dijadikan private lagi:** di paket GitHub Free proteksi branch tidak berlaku untuk repo private, sehingga auto-merge akan me-merge tanpa menunggu CI. Sebelum mengubah visibilitas, matikan auto-merge di PR yang terbuka (`gh pr merge <N> --disable-auto`) dan kembali merge manual setelah ketiga job hijau, atau pindah ke paket berbayar.
+
+Repo publik memakai runner standar GitHub Actions tanpa kuota menit. Semua budget billing tetap di-set $0, jadi pemakaian berbayar dihentikan, bukan ditagih.
 
 ## Dependency dan supply chain
 

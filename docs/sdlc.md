@@ -6,9 +6,9 @@ Cara kerja dari issue sampai merge, untuk manusia dan agent. Diadaptasi dari SDL
 
 | Peran | Siapa | Tugas |
 |---|---|---|
-| **Lead** | Zefan | Keputusan bisnis, review dan merge PR, review mingguan |
+| **Lead** | Zefan | Keputusan bisnis, menilai PR (merge-nya otomatis setelah CI hijau), review mingguan |
 | **Operator** | Zefan | Menjalankan agent, mengklik hasilnya, menulis catatan Operator di PR |
-| **Agent** | Claude Code | Merencanakan, menulis kode dan test, memutuskan hal teknis (`[Operator]` di keputusan), membuka PR |
+| **Agent** | Claude Code | Merencanakan, menulis kode dan test, memutuskan hal teknis (`[Operator]` di keputusan), membuka PR dan menyalakan auto-merge |
 
 Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis atau yang mahal. Batasnya ada di `.agents/rules/00-project.md`.
 
@@ -19,10 +19,12 @@ Agent memutuskan detail teknis sendiri dan hanya bertanya untuk keputusan bisnis
 3. **Rencana:** ikuti `.agents/workflows/implement-milestone.md`. Agent menyampaikan rencana singkat lalu langsung mengerjakannya; berhenti dan bertanya hanya untuk keputusan bisnis, yang memakan biaya, atau yang sulit dibalik.
 4. **Kerja:** sebelum menyentuh modul, baca Handoff-nya di `docs/features/<modul>.md`; belum ada, buat dari `docs/features/_TEMPLATE.md`. Test dulu atau bersamaan untuk modul inti. Handoff dan Changelog modul diperbarui di PR yang sama. Keputusan arsitektur baru ditulis sebagai ADR di `docs/decisions/`; keputusan lama tetap di §27 `docs/architecture.md`.
 5. **Gerbang lokal:** hook pre-commit dan pre-push berjalan sendiri; `make check` hijau sebelum commit terakhir.
-6. **Commit dan PR:** agent commit, push, dan membuka PR (`gh pr create`) tanpa menunggu persetujuan; Lead menilai di PR. PR yang dasarnya belum di-merge ditumpuk di atas branch-nya. Sebelum push ke branch yang sudah punya PR, cek `gh pr view`: kalau PR-nya sudah di-merge, commit baru masuk branch dan PR baru dari `main`, karena push ke branch itu tidak akan sampai ke `main` (#34).
-7. **Review:** PR `risk:high` (uang, stok, status order, auth, migrasi): setelah PR dibuka, agent langsung menjalankan review-pr di konteks bersih: subagent yang membaca `skills/review-pr/SKILL.md` plugin `zefan-sdlc` dari disk (skill plugin tidak bisa dipanggil agent sendiri), bukan konteks yang menulis PR, ditambah `/code-review <N>` kalau ada kode, lalu menulis hasilnya sebagai komentar di PR sebelum Lead merge. PR `risk:low`: pesan penutup agent menyebut bahwa review-pr dilewati beserta perintahnya.
+6. **Commit dan PR:** agent commit, push, dan membuka PR (`gh pr create`) tanpa menunggu persetujuan; Lead menilai di PR. PR yang dasarnya belum di-merge ditumpuk di atas branch-nya. PR `risk:low` dengan base `main` langsung dinyalakan auto-merge-nya (langkah 9); PR `risk:high` setelah langkah 7. Sebelum push ke branch yang sudah punya PR, cek `gh pr view`: kalau PR-nya sudah di-merge (dengan auto-merge ini bisa terjadi tanpa ada yang mengklik), commit baru masuk branch dan PR baru dari `main`, karena push ke branch itu tidak akan sampai ke `main` (#34).
+7. **Review:** PR `risk:high` (uang, stok, status order, auth, migrasi): setelah PR dibuka, agent langsung menjalankan review-pr di konteks bersih: subagent yang membaca `skills/review-pr/SKILL.md` plugin `zefan-sdlc` dari disk (skill plugin tidak bisa dipanggil agent sendiri), bukan konteks yang menulis PR, ditambah `/code-review <N>` kalau ada kode, lalu menulis hasilnya sebagai komentar di PR. Auto-merge baru dinyalakan setelah temuan wajibnya diperbaiki dan saran yang tidak diambil dibalas di PR. PR `risk:low`: pesan penutup agent menyebut bahwa review-pr dilewati beserta perintahnya.
 8. **Tutup sesi:** `make session-close ARGS='--done "…" --tests "…" --next "…" --apply'` menulis *Session log* ke PR. Pelajaran: tambah `--lesson "apa · akar masalah · usul"`. `session-close` memperingatkan kalau PR branch ini sudah di-merge tetapi ada commit yang belum ada di `main`, dan kalau PR-nya bertumpuk (base bukan `main`) beserta PR di bawahnya.
-9. **Merge:** hanya Lead, di GitHub. Setelah itu `git pull --ff-only` di `main`. PR bertumpuk di-merge satu per satu dari bawah, dan PR berikutnya hanya setelah GitHub menampilkan base `main` untuknya. GitHub memindahkan base saat branch dasarnya terhapus setelah merge; kalau belum pindah, jalankan `gh pr edit <N> --base main`. Merge sebelum base pindah memasukkan PR ke branch dasarnya, bukan ke `main` (#34).
+9. **Merge otomatis** (sejak 2026-11-17, Lead: "buatlah agar merge itu otomatis"): `main` dilindungi branch protection (wajib lewat PR, ketiga job CI wajib hijau, tanpa force push, berlaku juga untuk admin). Agent menyalakan auto-merge dengan `gh pr merge <N> --auto --merge`, dan GitHub me-merge PR (merge commit) begitu CI hijau, lalu menghapus branch-nya. Kalau PR sudah hijau saat dinyalakan, GitHub menolak (*clean status*); agent langsung `gh pr merge <N> --merge`. Lead tetap bisa menahan PR dengan `gh pr merge <N> --disable-auto`. Setelah merge: `git pull --ff-only` di `main`.
+   - **PR bertumpuk:** auto-merge hanya untuk PR yang base-nya `main`. PR di atasnya dinyalakan setelah GitHub memindahkan base-nya ke `main` (terjadi saat branch dasarnya terhapus setelah merge; kalau belum pindah, `gh pr edit <N> --base main`). Merge sebelum base pindah memasukkan PR ke branch dasarnya, bukan ke `main` (#34).
+   - **Syaratnya repo publik.** Di paket GitHub Free, branch protection hanya berlaku untuk repo publik. Kalau repo dijadikan private lagi, auto-merge akan me-merge tanpa menunggu CI: matikan dulu auto-merge di PR yang terbuka dan kembali merge manual setelah CI hijau (README "CI").
 
 ## Perintah
 
@@ -46,7 +48,7 @@ Yang masih berbeda dari CI: CI berjalan di Linux dengan Node 22 (lokal memakai N
 | pre-commit | gofmt, golangci-lint pada baris baru, gitleaks | Setiap commit |
 | pre-push | `go vet`, test paket yang berubah | Setiap push |
 | `make check` | Gerbang penuh | Sebelum commit terakhir sebuah potongan |
-| CI GitHub | Isi yang sama | **Belum jalan**: GitHub Actions terkunci billing. Begitu terbuka, jadikan check wajib di `main` (branch protection di repo private butuh GitHub Pro) |
+| CI GitHub | Isi yang sama | Setiap PR dan push ke `main`. Ketiga job-nya check wajib di `main` dan syarat auto-merge (sejak 2026-11-17) |
 
 ## Sesi Claude Code dan kerja jarak jauh
 
