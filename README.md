@@ -116,7 +116,7 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...          # celah keamanan 
 
 `.github/workflows/ci.yml` menjalankan semua perintah di atas pada setiap PR dan push ke `main`, dengan tiga job: `go`, `codegen`, dan `ts`. Kalau CI merah, jalankan perintah yang sama di lokal.
 
-**Aturan merge (sejak 2026-11-17):** repo ini publik, jadi `main` dilindungi branch protection yang gratis untuk repo publik: wajib lewat PR, ketiga job wajib hijau (*Go (tidy, vet, lint, test)*, *Codegen (sqlc, buf, workflows)*, *TypeScript client*), tanpa force push dan tanpa hapus branch, dan berlaku juga untuk admin. Auto-merge menyala: PR yang auto-merge-nya dinyalakan di-merge GitHub (merge commit) begitu ketiga job hijau, lalu branch-nya dihapus. Kapan agent menyalakannya ada di `docs/sdlc.md` langkah 6–9.
+**Aturan merge (sejak 2026-11-17):** repo ini publik, jadi `main` dilindungi branch protection yang gratis untuk repo publik: wajib lewat PR, ketiga job wajib hijau (*Go (tidy, vet, lint, test)*, *Codegen (sqlc, buf, workflows)*, *TypeScript client*), tanpa force push dan tanpa hapus branch, dan berlaku juga untuk admin. Auto-merge menyala: PR yang auto-merge-nya dinyalakan di-merge GitHub (merge commit) begitu ketiga job hijau, lalu branch-nya dihapus. Agent menyalakannya hanya setelah review-pr di konteks bersih diposting di PR dan temuan wajibnya diperbaiki (`docs/sdlc.md` langkah 6–9).
 
 **Kalau repo dijadikan private lagi:** di paket GitHub Free proteksi branch tidak berlaku untuk repo private, sehingga auto-merge akan me-merge tanpa menunggu CI. Sebelum mengubah visibilitas, matikan auto-merge di PR yang terbuka (`gh pr merge <N> --disable-auto`) dan kembali merge manual setelah ketiga job hijau, atau pindah ke paket berbayar.
 
