@@ -49,7 +49,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 && [[ "$branc
   if [[ "$pr_state" == "OPEN" && -n "$pr_base" && "$pr_base" != "main" ]]; then
     below=$(gh pr list --head "$pr_base" --state all -L 1 --json number,title,state \
       -q '.[] | "#\(.number) \(.title) (\(.state))"' 2>/dev/null)
-    echo "!  PR #$pr is stacked on $pr_base${below:+ - PR below: $below}; merge #$pr only after GitHub shows base main"; warn=1
+    echo "!  PR #$pr is stacked on $pr_base${below:+ - PR below: $below}; turn on auto-merge for #$pr only after GitHub shows base main"; warn=1
   fi
 fi
 

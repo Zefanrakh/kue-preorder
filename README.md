@@ -116,7 +116,7 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...          # celah keamanan 
 
 `.github/workflows/ci.yml` menjalankan semua perintah di atas pada setiap PR dan push ke `main`, dengan tiga job: `go`, `codegen`, dan `ts`. Kalau CI merah, jalankan perintah yang sama di lokal.
 
-**Aturan merge (sejak 2026-11-17):** repo ini publik, jadi `main` dilindungi branch protection yang gratis untuk repo publik: wajib lewat PR, ketiga job wajib hijau (*Go (tidy, vet, lint, test)*, *Codegen (sqlc, buf, workflows)*, *TypeScript client*), tanpa force push dan tanpa hapus branch, dan berlaku juga untuk admin. Auto-merge menyala: PR yang auto-merge-nya dinyalakan di-merge GitHub (merge commit) begitu ketiga job hijau, lalu branch-nya dihapus. Agent menyalakannya hanya setelah review-pr di konteks bersih diposting di PR dan temuan wajibnya diperbaiki (`docs/sdlc.md` langkah 6–9).
+**Aturan merge (sejak 2026-11-17):** repo ini publik, jadi `main` dilindungi branch protection yang gratis untuk repo publik: wajib lewat PR, ketiga job wajib hijau (*Go (tidy, vet, lint, test)*, *Codegen (sqlc, buf, workflows)*, *TypeScript client*), tanpa force push dan tanpa hapus branch, dan berlaku juga untuk admin. Auto-merge menyala: PR yang auto-merge-nya dinyalakan di-merge GitHub (merge commit) begitu ketiga job hijau, lalu branch-nya dihapus. Agent menyalakannya hanya setelah review-pr di konteks bersih diposting di PR, temuan wajibnya diperbaiki, dan saran yang tidak diambil dibalas, dan hanya untuk PR yang base-nya `main` dengan ketiga check wajib terlihat di PR (`docs/sdlc.md` langkah 6–9).
 
 **Kalau repo dijadikan private lagi:** di paket GitHub Free proteksi branch tidak berlaku untuk repo private, sehingga auto-merge akan me-merge tanpa menunggu CI. Sebelum mengubah visibilitas, matikan auto-merge di PR yang terbuka (`gh pr merge <N> --disable-auto`) dan kembali merge manual setelah ketiga job hijau, atau pindah ke paket berbayar.
 
@@ -131,8 +131,8 @@ Pengaman yang sudah terpasang:
 - Modul Go tidak punya script install, dan setiap versi dikunci `go.sum` serta dicocokkan dengan checksum database publik Go.
 
 Aturan untuk PR Dependabot:
-1. **Jangan pernah aktifkan auto-merge.**
-2. Merge hanya kalau CI hijau.
+1. **Jangan nyalakan auto-merge hanya karena CI hijau.** Auto-merge baru dinyalakan setelah langkah 3–4 di bawah dikerjakan dan review-pr diposting (`docs/sdlc.md` langkah 7).
+2. Merge hanya kalau CI hijau (dipaksa branch protection `main`).
 3. Baca changelog atau release notes versi barunya.
 4. Periksa diff `package-lock.json` / `go.sum`: curigai dependency baru yang tidak dijelaskan di changelog, dan paket dengan `"hasInstallScript": true`.
 5. Jangan mencoba PR yang mencurigakan dengan `npm install` di laptop.

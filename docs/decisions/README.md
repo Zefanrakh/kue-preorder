@@ -29,7 +29,11 @@ Detail implementasi yang mudah diubah cukup ditandai `[Operator]` di badan PR.
 
 - Nama file `NNNN-<slug>.md`, nomor naik dari `0001`. Mulai dari `_TEMPLATE.md`.
 - ADR ditulis langsung berstatus **diterima**, di PR yang sama dengan perubahan
-  yang ditimbulkannya; merge oleh Lead adalah penerimaannya. Status **usulan**
+  yang ditimbulkannya; merge PR-nya adalah penerimaannya. Sejak 2026-11-17
+  merge itu otomatis setelah review-pr dan CI hijau (`docs/sdlc.md` langkah 9),
+  tanpa klik Lead: Lead menahan ADR yang ingin dinilainya sendiri dengan
+  `gh pr merge <N> --disable-auto`, dan pilihan bisnis atau berbiaya di dalam
+  ADR tetap ditanyakan ke Lead di chat sebelum ditulis. Status **usulan**
   hanya untuk ADR yang dibuka untuk dibahas dulu, tanpa perubahan lain.
 - ADR berstatus **diterima** tidak pernah diedit. Kalau keputusannya berubah,
   tulis ADR baru yang menggantikannya; di ADR lama hanya baris Status yang
