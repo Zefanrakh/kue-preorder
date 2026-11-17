@@ -1268,10 +1268,10 @@ Retry berbatas dengan backoff. Job yang gagal permanen masuk antrean gagal River
   - `codegen`: `sqlc diff`, `buf lint`/`format`/`breaking`, hasil `buf generate` tanpa perbedaan, actionlint.
   - `ts`: `npm ci --ignore-scripts`, `npm audit signatures`, `tsc` strict atas client TS hasil generate.
 
-  Merge ke `main` hanya lewat PR dengan ketiga job hijau. Repo private di GitHub Free tidak menyediakan proteksi branch, jadi aturan ini dijaga dengan disiplin sampai repo pindah ke paket yang mendukungnya (lalu aktifkan ruleset: PR wajib, status check wajib, blok force push).
+  Merge ke `main` hanya lewat PR dengan ketiga job hijau, dipaksa branch protection sejak 2026-11-17 (repo publik, jadi tersedia di GitHub Free): PR wajib, ketiga job wajib, tanpa force push, berlaku juga untuk admin. PR di-merge otomatis lewat auto-merge GitHub setelah review-pr di konteks bersih (`docs/sdlc.md` langkah 7–9). Kalau repo dijadikan private lagi di GitHub Free, proteksi ini tidak berlaku: matikan auto-merge dulu.
 - **Supply chain:**
   - Action dikunci ke commit SHA; token CI hanya-baca, tanpa secret, kredensial checkout tidak disimpan.
-  - Dependabot memperbarui Go, npm, dan Actions tiap minggu secara berkelompok, dengan **cooldown 7 hari** (14 untuk versi mayor) agar rilis dari akun maintainer yang dibajak sempat ketahuan dan ditarik. PR Dependabot tidak pernah di-auto-merge.
+  - Dependabot memperbarui Go, npm, dan Actions tiap minggu secara berkelompok, dengan **cooldown 7 hari** (14 untuk versi mayor) agar rilis dari akun maintainer yang dibajak sempat ketahuan dan ditarik. PR Dependabot tidak pernah di-auto-merge, juga sejak PR lain di-merge otomatis: Lead yang me-merge setelah changelog dan diff lock file-nya dibaca.
   - `api/.npmrc` mematikan lifecycle scripts npm (`ignore-scripts=true`) di laptop dan CI.
   - Versi tool di `ci.yml` dan plugin `protoc-gen-es` diperbarui manual.
 - Dua binary (`api`, `worker`) dari satu image Docker, di Fly.io / Railway / Render / Cloud Run region Singapura.
