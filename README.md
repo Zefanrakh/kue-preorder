@@ -12,7 +12,7 @@ Status: **M0 (fondasi) selesai**: skeleton + `platform`, migrasi awal + sqlc, ko
 
 | Tool | Versi | Untuk |
 |---|---|---|
-| Go | 1.26 (`go.mod` memasang toolchain go1.26.10 otomatis; Go lokal yang lebih baru juga boleh) | build dan test |
+| Go | 1.26 (`go.mod` memasang toolchain go1.26.11 otomatis; Go lokal yang lebih baru juga boleh) | build dan test |
 | golangci-lint | v2.15.0 (v2.13.x tidak bisa membaca paket Go 1.27.3) | lint |
 | goose | v3.28.0 | migrasi |
 | buf | v1.73.0 | kontrak API (mulai M0.3) |
