@@ -131,7 +131,7 @@ Pengaman yang sudah terpasang:
 - Modul Go tidak punya script install, dan setiap versi dikunci `go.sum` serta dicocokkan dengan checksum database publik Go.
 
 Aturan untuk PR Dependabot:
-1. **Jangan nyalakan auto-merge hanya karena CI hijau.** Auto-merge baru dinyalakan setelah langkah 3–4 di bawah dikerjakan dan review-pr diposting (`docs/sdlc.md` langkah 7).
+1. **Jangan pernah aktifkan auto-merge**, juga sejak PR lain di-merge otomatis (`docs/sdlc.md` langkah 9). Agent mengerjakan langkah 3–4 di bawah dan menjalankan review-pr; Lead yang me-merge.
 2. Merge hanya kalau CI hijau (dipaksa branch protection `main`).
 3. Baca changelog atau release notes versi barunya.
 4. Periksa diff `package-lock.json` / `go.sum`: curigai dependency baru yang tidak dijelaskan di changelog, dan paket dengan `"hasInstallScript": true`.
