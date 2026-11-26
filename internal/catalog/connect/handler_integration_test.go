@@ -329,9 +329,16 @@ func TestCatalogAPI_FitPreview(t *testing.T) {
 	if r := byType[catalogv1.ModelType_MODEL_TYPE_AFFINE]; r.GetError() != "" || r.GetParamsJson() == "" || len(r.GetResiduals()) != 2 {
 		t.Errorf("affine = %v, want params and one residual per point", r)
 	}
+	// The chart draws Go's samples: (0, 0), then 0.5 apart up to u = 100.
+	// The best line through (1, 0) and (2, 10) has a < 0, so the fit goes
+	// through the origin instead: 4u, which is 400 at u = 100.
+	if c := byType[catalogv1.ModelType_MODEL_TYPE_AFFINE].GetCurve(); len(c) != 201 || c[0].GetUnits() != 0 || c[0].GetAmount() != 0 ||
+		c[1].GetUnits() != 0.5 || c[200].GetUnits() != 100 || c[200].GetAmount() != 400 {
+		t.Errorf("affine curve = %d samples %v ... %v, want 201 from (0, 0) to (100, 400)", len(c), c[:min(2, len(c))], c[max(0, len(c)-1):])
+	}
 	// Power needs every amount > 0; the reason is for the person editing.
-	if r := byType[catalogv1.ModelType_MODEL_TYPE_POWER]; !strings.HasPrefix(r.GetError(), "Titik ukur tidak bisa dipakai") || r.GetParamsJson() != "" {
-		t.Errorf("power = %v, want an Indonesian reason and no params", r)
+	if r := byType[catalogv1.ModelType_MODEL_TYPE_POWER]; !strings.HasPrefix(r.GetError(), "Titik ukur tidak bisa dipakai") || r.GetParamsJson() != "" || len(r.GetCurve()) != 0 {
+		t.Errorf("power = %v, want an Indonesian reason, no params, and no curve", r)
 	}
 }
 

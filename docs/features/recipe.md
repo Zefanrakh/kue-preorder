@@ -2,7 +2,7 @@
 
 ## Handoff
 
-- **Posisi:** engine selesai dan stabil (M1.1, M1.2, M1.6); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Perbaikan terakhir: pembulatan `pcs` di jumlah besar (#31).
+- **Posisi:** engine selesai dan stabil (M1.1, M1.2, M1.6); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Terakhir: `Curve`, titik kurva grafik fit (M5.2, #51).
 - **Berikutnya:** tidak ada pekerjaan terjadwal. Modul ini disentuh lagi hanya kalau ada model baru atau bug.
 - **Jebakan:** pembulatan ke atas memakai `floatNoise`, bukan `slack` (Traps 1). `Resolve(0) == 0` walau affine punya `a` (Traps 2). Fit wajib lolos `Validate` (Traps 3).
 - **Menunggu keputusan:** tidak ada.
@@ -29,7 +29,7 @@ Aturan pembulatan per bahan berasal dari satuan dasarnya: `catalog.BaseUnit.Roun
 ## Alur
 
 1. **Simpan resep** (`catalog.RecipeLineInput.resolve`): dari `params` → `Build` → `Validate`; atau dari titik ukur → `FitAffine`/`FitPower`/`FitPiecewise`. Hasilnya disimpan lewat `Params`. Baris yang gagal tidak pernah tersimpan (§9.3, "Aturan menyimpan resep").
-2. **Pratinjau fit** (`catalog.Service.FitPreview`): `FitAll` mengembalikan ketiga model plus `FitReport` (R², selisih per titik) untuk grafik CMS, tanpa menyimpan.
+2. **Pratinjau fit** (`catalog.Service.FitPreview`): `FitAll` mengembalikan ketiga model plus `FitReport` (R², selisih per titik) dan `Curve` (sampel model untuk digambar) untuk grafik CMS, tanpa menyimpan.
 3. **Hitung batch** (`aggregation`, §11): `catalog.Reader` merakit baris menjadi `recipe.Model` dengan `Build`; baris yang gagal dirakit menjadi `catalog.BrokenRecipeError` (`ErrBrokenRecipe`, §9.3). `aggregation.Totals` (`compute.go`) memanggil `Quantity` dengan **total unit komponen per batch** dan menjumlahkan hasil `int64` lintas komponen menjadi `Need` per bahan. Error dari `Quantity`, dan `BrokenRecipeError` yang dibungkus di `engine.go`, menjadi `RecipeError`: batch ditandai error, tidak ditebak. Pembulatan ke `pack_size` terjadi belakangan, di `aggregation.Shop` (`packsFor`) setelah stok dikurangi.
 
 ## Akses
@@ -48,12 +48,13 @@ Engine tidak punya endpoint. Endpoint yang memakainya ada di `kuepreorder.catalo
 | `internal/recipe/validate.go` | `Validate` (u = 0,5..100, langkah 0,5), `slack` |
 | `internal/recipe/quantity.go` | `Quantity`, `Rounding`, `floatNoise`, batas 2^53 |
 | `internal/recipe/fit.go` | `FitAffine`, `FitPower`, `FitPiecewise`, `FitAll`, `FitReport`, `ErrFit` |
+| `internal/recipe/curve.go` | `Curve`: u = 0 lalu 200 langkah sama sampai 100, atau kelipatan 100 di atas titik ukur terjauh |
 | `internal/recipe/testdata/rapid/` | kasus gagal yang ditemukan `rapid`, diputar ulang setiap test |
 
 **Dipakai oleh:**
 - `catalog`:
   - `recipes.go` (simpan baris resep): `Build`, `Validate`, `Params`, `FitAffine`/`FitPower`/`FitPiecewise`, `MaxPoints`, `ErrDecreasing`, `ErrFit`, `ErrInvalidResult`.
-  - `service_recipes.go` (pratinjau fit): `FitAll`, `FitResult`.
+  - `service_recipes.go` (pratinjau fit): `FitAll`, `FitResult` (termasuk `Curve`).
   - `reader.go` (model untuk agregasi): `Build`, `Model`, `Rounding`.
   - `domain.go`: `Rounding`, `RoundNearest`, `RoundUp`.
   - `connect/convert.go`, `postgres/recipes.go` (konversi proto dan DB): `ModelType` dan konstantanya, `Point`, `FitResult`, `Params`.
@@ -67,13 +68,14 @@ go test -run '^$' -fuzz FuzzFormula -fuzztime 60s ./internal/recipe/   # sandbox
 ```
 
 - Property test (`property_test.go`, `fit_property_test.go`, `pgregory.net/rapid`): semua invariant §10 (`Resolve(0) == 0`, finite `>= 0`, tidak turun, power `b < 1` sublinear), `Quantity` dalam satu unit dari nilai pasti dan tidak turun, fit mengembalikan model yang valid, `Params` ↔ `Build` bolak-balik.
-- Contoh dari dokumen sebagai table test (`models_test.go`, `fit_test.go`, `quantity_test.go`), termasuk input yang ditemukan `rapid` di #31.
+- Contoh dari dokumen sebagai table test (`models_test.go`, `fit_test.go`, `quantity_test.go`, `curve_test.go`), termasuk input yang ditemukan `rapid` di #31.
+- Kurva fit: `TestProperty_FitsOfRisingDataAreValidModels` juga memeriksa bahwa setiap sampel sama dengan `Resolve` dan kurvanya mencapai titik ukur terjauh.
 - Batas modul: `internal/archtest`.
 
 ## Celah
 
 - `Validate` hanya mencicipi setiap 0,5 unit. Rumus yang turun lalu naik lagi di antara dua sampel bisa lolos; saat berjalan hasilnya tetap finite dan `>= 0` (§10). Dibiarkan karena rumus seperti itu hampir pasti salah ketik, dan grafik di CMS memperlihatkannya.
-- `Validate` tidak memeriksa di atas u = 100. `piecewise` meneruskan kemiringan terakhir dan `affine`/`power` monoton dari bentuknya, jadi yang berisiko hanya `formula`.
+- `Validate` tidak memeriksa di atas u = 100. `piecewise` meneruskan kemiringan terakhir dan `affine`/`power` monoton dari bentuknya, jadi yang berisiko hanya `formula`. `Curve` boleh melewati 100 (sampai titik ukur terjauh); kalau model gagal di sana, kurvanya berhenti sebelum titik itu, tidak mengisi angka palsu.
 - Rumus hanya mengenal `u`. Bahan yang bergantung pada dua komponen sekaligus belum bisa dinyatakan; belum ada kebutuhan.
 
 ## Traps
@@ -85,6 +87,7 @@ go test -run '^$' -fuzz FuzzFormula -fuzztime 60s ./internal/recipe/   # sandbox
 
 ## Changelog
 
+- 2026-11-26 · #51 · `Curve` dan `FitResult.Curve`: titik kurva grafik fit dari Go (celah API 7).
 - 2026-10-26 · #38 · Dokumen modul ini dibuat (SDLC-4).
 - 2026-10-22 · #31 · `RoundUp` memakai `floatNoise`, tidak lagi kehilangan satu unit di jumlah besar.
 - 2026-09-25 · M1.6 (`82b6a8d`) · Batas `MaxPoints` = 100 titik untuk fit dan `piecewise`.
