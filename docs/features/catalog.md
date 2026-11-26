@@ -2,7 +2,7 @@
 
 ## Handoff
 
-- **Posisi:** skema, service, dan API admin + storefront selesai (M1.3–M1.7); `Reader` dipakai `aggregation`, `orders`, `inventory`, `procurement`. `FitPreview` mengembalikan titik kurva untuk grafik fit (M5.2, #51).
+- **Posisi:** skema, service, dan API admin + storefront selesai (M1.3–M1.7); `Reader` dipakai `aggregation`, `orders`, `inventory`, `procurement`. `FitPreview` mengembalikan titik kurva untuk grafik fit (M5.2, #53).
 - **Berikutnya:** celah API 5 (foto produk dan bukti bayar, `docs/screens.md`), belum ada issue. Layar CMS C2–C4 (M5, menunggu desain disetujui).
 - **Jebakan:** `version` resep hanya naik pada perubahan nyata (Traps 1). Varian nonaktif tetap dibaca agregasi (Traps 2). `FitPreview` tidak gagal hanya karena tidak ada model yang cocok (Traps 3).
 - **Menunggu keputusan:** tidak ada.
@@ -79,7 +79,7 @@ go test -race -tags=integration ./internal/catalog/...   # butuh Docker
 
 ## Changelog
 
-- 2026-11-26 · #51 · `FitResult.curve`: titik kurva setiap model yang cocok, dihitung `recipe.Curve` (celah API 7). Dokumen modul ini dibuat.
+- 2026-11-26 · #53 · `FitResult.curve`: titik kurva setiap model yang cocok, dihitung `recipe.Curve` (celah API 7). Dokumen modul ini dibuat.
 - 2026-09-29 · #23 · `Reader.Labels` untuk daftar belanja (M3.1).
 - 2026-09-26 · #15 · `Reader.IngredientCosts` untuk penawaran order dan DP (M2.3).
 - 2026-09-25 · #12 · Storefront API publik (M1.7).

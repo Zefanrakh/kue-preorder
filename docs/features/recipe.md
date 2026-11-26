@@ -2,7 +2,7 @@
 
 ## Handoff
 
-- **Posisi:** engine selesai dan stabil (M1.1, M1.2, M1.6); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Terakhir: `Curve`, titik kurva grafik fit (M5.2, #51).
+- **Posisi:** engine selesai dan stabil (M1.1, M1.2, M1.6); dipakai `catalog` (simpan + fit) dan `aggregation` (`Quantity`). Terakhir: `Curve`, titik kurva grafik fit (M5.2, #53).
 - **Berikutnya:** tidak ada pekerjaan terjadwal. Modul ini disentuh lagi hanya kalau ada model baru atau bug.
 - **Jebakan:** pembulatan ke atas memakai `floatNoise`, bukan `slack` (Traps 1). `Resolve(0) == 0` walau affine punya `a` (Traps 2). Fit wajib lolos `Validate` (Traps 3).
 - **Menunggu keputusan:** tidak ada.
@@ -87,7 +87,7 @@ go test -run '^$' -fuzz FuzzFormula -fuzztime 60s ./internal/recipe/   # sandbox
 
 ## Changelog
 
-- 2026-11-26 · #51 · `Curve` dan `FitResult.Curve`: titik kurva grafik fit dari Go (celah API 7).
+- 2026-11-26 · #53 · `Curve` dan `FitResult.Curve`: titik kurva grafik fit dari Go (celah API 7).
 - 2026-10-26 · #38 · Dokumen modul ini dibuat (SDLC-4).
 - 2026-10-22 · #31 · `RoundUp` memakai `floatNoise`, tidak lagi kehilangan satu unit di jumlah besar.
 - 2026-09-25 · M1.6 (`82b6a8d`) · Batas `MaxPoints` = 100 titik untuk fit dan `piecewise`.
