@@ -30,6 +30,7 @@ func TestCurve_ReachesTheFurthestPoint(t *testing.T) {
 		{"no points", 0, 100},
 		{"within Validate's range", 100, 100},
 		{"just beyond it", 100.5, 200},
+		{"on a multiple of 100", 200, 200},
 		{"well beyond it", 250, 300},
 		{"not a number", math.NaN(), 100},
 		{"infinite", math.Inf(1), 100},

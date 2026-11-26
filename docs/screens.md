@@ -319,7 +319,7 @@ Tombol yang tidak boleh dipakai peran itu **disembunyikan**, tidak hanya dimatik
     - R², selisih per titik, selisih terbesar
     - alasan gagal per model
   - Pilih satu model, lalu simpan.
-- **Grafik fit** menampilkan titik ukur dan kurva tiap model. Kurvanya digambar dari `FitResult.curve` (201 titik dari Go, mulai u = 0, sampai u = 100 atau melewati titik ukur terjauh); browser tidak menghitung rumus.
+- **Grafik fit** menampilkan titik ukur dan kurva tiap model. Kurvanya digambar dari `FitResult.curve` (sampai 201 titik dari Go, mulai u = 0, sampai u = 100 atau titik ukur terjauh; bisa lebih pendek kalau model tidak bisa dihitung di ujungnya); browser tidak menghitung rumus.
 - **Keadaan**: rumus ditolak engine → `FieldErrors` pada `params_json` atau `points`, ditampilkan di samping isiannya.
 - **RPC**: `CatalogAdminService` (`ListComponents`, `CreateComponent`, `UpdateComponent`, `ListVariantComponents`, `SetVariantComponents`, `ListRecipeLines`, `SetRecipeLine`, `RemoveRecipeLine`, `FitPreview`).
 

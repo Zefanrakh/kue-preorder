@@ -1030,8 +1030,10 @@ type FitResult struct {
 	MaxAbsError float64   `protobuf:"fixed64,6,opt,name=max_abs_error,json=maxAbsError,proto3" json:"max_abs_error,omitempty"`
 	MaxRelError float64   `protobuf:"fixed64,7,opt,name=max_rel_error,json=maxRelError,proto3" json:"max_rel_error,omitempty"`
 	// The fitted model sampled for the chart, so the browser never evaluates a
-	// recipe: u = 0, then 200 equal steps to u = 100, or to the next multiple
-	// of 100 above the furthest measured point. Empty when error is set.
+	// recipe: u = 0, then 200 equal steps to u = 100, or to the smallest
+	// multiple of 100 at or above the furthest measured point. It ends early,
+	// before the first u the model cannot resolve, so it may hold fewer than
+	// 201 points; draw what is there. Empty when error is set.
 	Curve         []*CurvePoint `protobuf:"bytes,8,rep,name=curve,proto3" json:"curve,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

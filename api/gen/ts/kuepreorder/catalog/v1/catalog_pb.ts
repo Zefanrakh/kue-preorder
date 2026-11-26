@@ -477,8 +477,10 @@ export type FitResult = Message<"kuepreorder.catalog.v1.FitResult"> & {
 
   /**
    * The fitted model sampled for the chart, so the browser never evaluates a
-   * recipe: u = 0, then 200 equal steps to u = 100, or to the next multiple
-   * of 100 above the furthest measured point. Empty when error is set.
+   * recipe: u = 0, then 200 equal steps to u = 100, or to the smallest
+   * multiple of 100 at or above the furthest measured point. It ends early,
+   * before the first u the model cannot resolve, so it may hold fewer than
+   * 201 points; draw what is there. Empty when error is set.
    *
    * @generated from field: repeated kuepreorder.catalog.v1.CurvePoint curve = 8;
    */

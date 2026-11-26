@@ -33,7 +33,7 @@ type FitResult struct {
 	Model  Model // nil when Err is set
 	Report FitReport
 	// Curve is Model sampled for the chart (see Curve), reaching the furthest
-	// measured point; nil when Err is set.
+	// measured point unless the model fails before it; nil when Err is set.
 	Curve []Point
 	Err   error
 }

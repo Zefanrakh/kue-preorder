@@ -48,8 +48,8 @@ Engine tidak punya endpoint. Endpoint yang memakainya ada di `kuepreorder.catalo
 | `internal/recipe/validate.go` | `Validate` (u = 0,5..100, langkah 0,5), `slack` |
 | `internal/recipe/quantity.go` | `Quantity`, `Rounding`, `floatNoise`, batas 2^53 |
 | `internal/recipe/fit.go` | `FitAffine`, `FitPower`, `FitPiecewise`, `FitAll`, `FitReport`, `ErrFit` |
-| `internal/recipe/curve.go` | `Curve`: u = 0 lalu 200 langkah sama sampai 100, atau kelipatan 100 di atas titik ukur terjauh |
-| `internal/recipe/testdata/rapid/` | kasus gagal yang ditemukan `rapid`, diputar ulang setiap test |
+| `internal/recipe/curve.go` | `Curve`: u = 0 lalu 200 langkah sama sampai 100, atau kelipatan 100 terkecil yang mencakup titik ukur terjauh |
+| `internal/recipe/testdata/rapid/` | kasus gagal yang ditemukan `rapid`, diputar ulang di mesin yang menemukannya. Folder ini di-`.gitignore`, jadi tidak ikut CI; kasus yang perlu dijaga dipindah ke table test (seperti #31) |
 
 **Dipakai oleh:**
 - `catalog`:

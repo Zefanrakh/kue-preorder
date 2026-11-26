@@ -63,7 +63,8 @@ go test -race -tags=integration ./internal/catalog/...   # butuh Docker
 - `service_integration_test.go`: tabel peran §8, data tenant lain tidak terlihat, harga yang diaudit.
 - `recipes_integration_test.go`: versi resep hanya naik pada perubahan nyata (dan event `outbox`-nya), resep tidak menyeberang tenant, `FitPreview`, `Reader` (termasuk `BrokenRecipeError` dan `IngredientCosts`).
 - `postgres/catalog_integration_test.go`: constraint skema dan query baca agregasi.
-- `connect/handler_integration_test.go`: API ujung ke ujung, `FieldErrors`, kurva `FitPreview`; `storefront_integration_test.go`: hanya yang aktif tampil.
+- `storefront_integration_test.go` dan `connect/storefront_integration_test.go`: hanya yang aktif tampil, lewat service dan lewat API.
+- `connect/handler_integration_test.go`: API ujung ke ujung, `FieldErrors`, kurva `FitPreview`; `connect/errors_test.go`: nama field di `FieldErrors` (`params` → `params_json`).
 - Kurva dan fit sendiri diuji di `internal/recipe` (`curve_test.go`, `fit_property_test.go`).
 
 ## Celah
