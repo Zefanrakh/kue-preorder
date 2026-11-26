@@ -32,12 +32,15 @@ type FitResult struct {
 	Type   ModelType
 	Model  Model // nil when Err is set
 	Report FitReport
-	Err    error
+	// Curve is Model sampled for the chart (see Curve), reaching the furthest
+	// measured point unless the model fails before it; nil when Err is set.
+	Curve []Point
+	Err   error
 }
 
 // FitAll fits every model type that can be fitted (affine, power, piecewise)
-// to points. Each result carries either a model and its report or the reason
-// it could not be fitted.
+// to points. Each result carries either a model, its report, and its curve,
+// or the reason it could not be fitted.
 func FitAll(points []Point) []FitResult {
 	fits := []struct {
 		typ ModelType
@@ -47,13 +50,20 @@ func FitAll(points []Point) []FitResult {
 		{Power, func(p []Point) (Model, FitReport, error) { return FitPower(p) }},
 		{Piecewise, func(p []Point) (Model, FitReport, error) { return FitPiecewise(p) }},
 	}
+	upTo := 0.0
+	for _, p := range points {
+		upTo = math.Max(upTo, p.U)
+	}
 	results := make([]FitResult, 0, len(fits))
 	for _, f := range fits {
 		m, report, err := f.fit(points)
+		var curve []Point
 		if err != nil {
 			m = nil
+		} else {
+			curve = Curve(m, upTo)
 		}
-		results = append(results, FitResult{Type: f.typ, Model: m, Report: report, Err: err})
+		results = append(results, FitResult{Type: f.typ, Model: m, Report: report, Curve: curve, Err: err})
 	}
 	return results
 }

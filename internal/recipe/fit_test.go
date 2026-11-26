@@ -172,11 +172,11 @@ func TestFitAll(t *testing.T) {
 	for _, r := range results {
 		byType[r.Type] = r
 	}
-	if r := byType[recipe.Affine]; r.Err != nil || r.Model == nil {
-		t.Errorf("affine = %+v, want fitted", r)
+	if r := byType[recipe.Affine]; r.Err != nil || r.Model == nil || len(r.Curve) != 201 {
+		t.Errorf("affine = %+v, want fitted, with a curve", r)
 	}
-	if r := byType[recipe.Power]; !errors.Is(r.Err, recipe.ErrFit) || r.Model != nil {
-		t.Errorf("power = %+v, want ErrFit (an amount is 0) and no model", r)
+	if r := byType[recipe.Power]; !errors.Is(r.Err, recipe.ErrFit) || r.Model != nil || r.Curve != nil {
+		t.Errorf("power = %+v, want ErrFit (an amount is 0), no model, and no curve", r)
 	}
 	if r := byType[recipe.Piecewise]; r.Err != nil || r.Model.Type() != recipe.Piecewise {
 		t.Errorf("piecewise = %+v, want fitted", r)

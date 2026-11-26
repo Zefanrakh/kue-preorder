@@ -1026,9 +1026,15 @@ type FitResult struct {
 	// Coefficient of determination of the amounts; 1 is a perfect fit.
 	R2 float64 `protobuf:"fixed64,4,opt,name=r2,proto3" json:"r2,omitempty"`
 	// Fitted minus measured amount, one per point, in request order.
-	Residuals     []float64 `protobuf:"fixed64,5,rep,packed,name=residuals,proto3" json:"residuals,omitempty"`
-	MaxAbsError   float64   `protobuf:"fixed64,6,opt,name=max_abs_error,json=maxAbsError,proto3" json:"max_abs_error,omitempty"`
-	MaxRelError   float64   `protobuf:"fixed64,7,opt,name=max_rel_error,json=maxRelError,proto3" json:"max_rel_error,omitempty"`
+	Residuals   []float64 `protobuf:"fixed64,5,rep,packed,name=residuals,proto3" json:"residuals,omitempty"`
+	MaxAbsError float64   `protobuf:"fixed64,6,opt,name=max_abs_error,json=maxAbsError,proto3" json:"max_abs_error,omitempty"`
+	MaxRelError float64   `protobuf:"fixed64,7,opt,name=max_rel_error,json=maxRelError,proto3" json:"max_rel_error,omitempty"`
+	// The fitted model sampled for the chart, so the browser never evaluates a
+	// recipe: u = 0, then 200 equal steps to u = 100, or to the smallest
+	// multiple of 100 at or above the furthest measured point. It ends early,
+	// before the first u the model cannot resolve, so it may hold fewer than
+	// 201 points; draw what is there. Empty when error is set.
+	Curve         []*CurvePoint `protobuf:"bytes,8,rep,name=curve,proto3" json:"curve,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1112,6 +1118,68 @@ func (x *FitResult) GetMaxRelError() float64 {
 	return 0
 }
 
+func (x *FitResult) GetCurve() []*CurvePoint {
+	if x != nil {
+		return x.Curve
+	}
+	return nil
+}
+
+// CurvePoint is one sample of a fitted model.
+type CurvePoint struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Units of the component, >= 0.
+	Units float64 `protobuf:"fixed64,1,opt,name=units,proto3" json:"units,omitempty"`
+	// Amount of the ingredient, in its base unit, before the waste factor.
+	Amount        float64 `protobuf:"fixed64,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CurvePoint) Reset() {
+	*x = CurvePoint{}
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CurvePoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CurvePoint) ProtoMessage() {}
+
+func (x *CurvePoint) ProtoReflect() protoreflect.Message {
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CurvePoint.ProtoReflect.Descriptor instead.
+func (*CurvePoint) Descriptor() ([]byte, []int) {
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CurvePoint) GetUnits() float64 {
+	if x != nil {
+		return x.Units
+	}
+	return 0
+}
+
+func (x *CurvePoint) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
 type ListProductsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1120,7 +1188,7 @@ type ListProductsRequest struct {
 
 func (x *ListProductsRequest) Reset() {
 	*x = ListProductsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[10]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1132,7 +1200,7 @@ func (x *ListProductsRequest) String() string {
 func (*ListProductsRequest) ProtoMessage() {}
 
 func (x *ListProductsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[10]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1145,7 +1213,7 @@ func (x *ListProductsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProductsRequest.ProtoReflect.Descriptor instead.
 func (*ListProductsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{10}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{11}
 }
 
 type ListProductsResponse struct {
@@ -1157,7 +1225,7 @@ type ListProductsResponse struct {
 
 func (x *ListProductsResponse) Reset() {
 	*x = ListProductsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[11]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1169,7 +1237,7 @@ func (x *ListProductsResponse) String() string {
 func (*ListProductsResponse) ProtoMessage() {}
 
 func (x *ListProductsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[11]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1182,7 +1250,7 @@ func (x *ListProductsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProductsResponse.ProtoReflect.Descriptor instead.
 func (*ListProductsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{11}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListProductsResponse) GetProducts() []*Product {
@@ -1206,7 +1274,7 @@ type CreateProductRequest struct {
 
 func (x *CreateProductRequest) Reset() {
 	*x = CreateProductRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[12]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1218,7 +1286,7 @@ func (x *CreateProductRequest) String() string {
 func (*CreateProductRequest) ProtoMessage() {}
 
 func (x *CreateProductRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[12]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1231,7 +1299,7 @@ func (x *CreateProductRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProductRequest.ProtoReflect.Descriptor instead.
 func (*CreateProductRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{12}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateProductRequest) GetName() string {
@@ -1278,7 +1346,7 @@ type CreateProductResponse struct {
 
 func (x *CreateProductResponse) Reset() {
 	*x = CreateProductResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[13]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1290,7 +1358,7 @@ func (x *CreateProductResponse) String() string {
 func (*CreateProductResponse) ProtoMessage() {}
 
 func (x *CreateProductResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[13]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1303,7 +1371,7 @@ func (x *CreateProductResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProductResponse.ProtoReflect.Descriptor instead.
 func (*CreateProductResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{13}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateProductResponse) GetProduct() *Product {
@@ -1327,7 +1395,7 @@ type UpdateProductRequest struct {
 
 func (x *UpdateProductRequest) Reset() {
 	*x = UpdateProductRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[14]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1339,7 +1407,7 @@ func (x *UpdateProductRequest) String() string {
 func (*UpdateProductRequest) ProtoMessage() {}
 
 func (x *UpdateProductRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[14]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1352,7 +1420,7 @@ func (x *UpdateProductRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProductRequest.ProtoReflect.Descriptor instead.
 func (*UpdateProductRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{14}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UpdateProductRequest) GetId() string {
@@ -1406,7 +1474,7 @@ type UpdateProductResponse struct {
 
 func (x *UpdateProductResponse) Reset() {
 	*x = UpdateProductResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[15]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1418,7 +1486,7 @@ func (x *UpdateProductResponse) String() string {
 func (*UpdateProductResponse) ProtoMessage() {}
 
 func (x *UpdateProductResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[15]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1431,7 +1499,7 @@ func (x *UpdateProductResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProductResponse.ProtoReflect.Descriptor instead.
 func (*UpdateProductResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{15}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UpdateProductResponse) GetProduct() *Product {
@@ -1450,7 +1518,7 @@ type ListVariantsRequest struct {
 
 func (x *ListVariantsRequest) Reset() {
 	*x = ListVariantsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[16]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1462,7 +1530,7 @@ func (x *ListVariantsRequest) String() string {
 func (*ListVariantsRequest) ProtoMessage() {}
 
 func (x *ListVariantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[16]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1475,7 +1543,7 @@ func (x *ListVariantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVariantsRequest.ProtoReflect.Descriptor instead.
 func (*ListVariantsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{16}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListVariantsRequest) GetProductId() string {
@@ -1494,7 +1562,7 @@ type ListVariantsResponse struct {
 
 func (x *ListVariantsResponse) Reset() {
 	*x = ListVariantsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[17]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1506,7 +1574,7 @@ func (x *ListVariantsResponse) String() string {
 func (*ListVariantsResponse) ProtoMessage() {}
 
 func (x *ListVariantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[17]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1519,7 +1587,7 @@ func (x *ListVariantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVariantsResponse.ProtoReflect.Descriptor instead.
 func (*ListVariantsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{17}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListVariantsResponse) GetVariants() []*Variant {
@@ -1545,7 +1613,7 @@ type CreateVariantRequest struct {
 
 func (x *CreateVariantRequest) Reset() {
 	*x = CreateVariantRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[18]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1557,7 +1625,7 @@ func (x *CreateVariantRequest) String() string {
 func (*CreateVariantRequest) ProtoMessage() {}
 
 func (x *CreateVariantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[18]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1570,7 +1638,7 @@ func (x *CreateVariantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateVariantRequest.ProtoReflect.Descriptor instead.
 func (*CreateVariantRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{18}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CreateVariantRequest) GetProductId() string {
@@ -1638,7 +1706,7 @@ type CreateVariantResponse struct {
 
 func (x *CreateVariantResponse) Reset() {
 	*x = CreateVariantResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[19]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1650,7 +1718,7 @@ func (x *CreateVariantResponse) String() string {
 func (*CreateVariantResponse) ProtoMessage() {}
 
 func (x *CreateVariantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[19]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1663,7 +1731,7 @@ func (x *CreateVariantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateVariantResponse.ProtoReflect.Descriptor instead.
 func (*CreateVariantResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{19}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CreateVariantResponse) GetVariant() *Variant {
@@ -1688,7 +1756,7 @@ type UpdateVariantRequest struct {
 
 func (x *UpdateVariantRequest) Reset() {
 	*x = UpdateVariantRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[20]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1700,7 +1768,7 @@ func (x *UpdateVariantRequest) String() string {
 func (*UpdateVariantRequest) ProtoMessage() {}
 
 func (x *UpdateVariantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[20]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1713,7 +1781,7 @@ func (x *UpdateVariantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateVariantRequest.ProtoReflect.Descriptor instead.
 func (*UpdateVariantRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{20}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateVariantRequest) GetId() string {
@@ -1774,7 +1842,7 @@ type UpdateVariantResponse struct {
 
 func (x *UpdateVariantResponse) Reset() {
 	*x = UpdateVariantResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[21]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1786,7 +1854,7 @@ func (x *UpdateVariantResponse) String() string {
 func (*UpdateVariantResponse) ProtoMessage() {}
 
 func (x *UpdateVariantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[21]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1799,7 +1867,7 @@ func (x *UpdateVariantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateVariantResponse.ProtoReflect.Descriptor instead.
 func (*UpdateVariantResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{21}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *UpdateVariantResponse) GetVariant() *Variant {
@@ -1821,7 +1889,7 @@ type ChangeVariantPriceRequest struct {
 
 func (x *ChangeVariantPriceRequest) Reset() {
 	*x = ChangeVariantPriceRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[22]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1833,7 +1901,7 @@ func (x *ChangeVariantPriceRequest) String() string {
 func (*ChangeVariantPriceRequest) ProtoMessage() {}
 
 func (x *ChangeVariantPriceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[22]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1846,7 +1914,7 @@ func (x *ChangeVariantPriceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangeVariantPriceRequest.ProtoReflect.Descriptor instead.
 func (*ChangeVariantPriceRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{22}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ChangeVariantPriceRequest) GetId() string {
@@ -1879,7 +1947,7 @@ type ChangeVariantPriceResponse struct {
 
 func (x *ChangeVariantPriceResponse) Reset() {
 	*x = ChangeVariantPriceResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[23]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1891,7 +1959,7 @@ func (x *ChangeVariantPriceResponse) String() string {
 func (*ChangeVariantPriceResponse) ProtoMessage() {}
 
 func (x *ChangeVariantPriceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[23]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1904,7 +1972,7 @@ func (x *ChangeVariantPriceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChangeVariantPriceResponse.ProtoReflect.Descriptor instead.
 func (*ChangeVariantPriceResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{23}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ChangeVariantPriceResponse) GetVariant() *Variant {
@@ -1922,7 +1990,7 @@ type ListComponentsRequest struct {
 
 func (x *ListComponentsRequest) Reset() {
 	*x = ListComponentsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[24]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1934,7 +2002,7 @@ func (x *ListComponentsRequest) String() string {
 func (*ListComponentsRequest) ProtoMessage() {}
 
 func (x *ListComponentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[24]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1947,7 +2015,7 @@ func (x *ListComponentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListComponentsRequest.ProtoReflect.Descriptor instead.
 func (*ListComponentsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{24}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{25}
 }
 
 type ListComponentsResponse struct {
@@ -1959,7 +2027,7 @@ type ListComponentsResponse struct {
 
 func (x *ListComponentsResponse) Reset() {
 	*x = ListComponentsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[25]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1971,7 +2039,7 @@ func (x *ListComponentsResponse) String() string {
 func (*ListComponentsResponse) ProtoMessage() {}
 
 func (x *ListComponentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[25]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1984,7 +2052,7 @@ func (x *ListComponentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListComponentsResponse.ProtoReflect.Descriptor instead.
 func (*ListComponentsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{25}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListComponentsResponse) GetComponents() []*Component {
@@ -2004,7 +2072,7 @@ type CreateComponentRequest struct {
 
 func (x *CreateComponentRequest) Reset() {
 	*x = CreateComponentRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[26]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2016,7 +2084,7 @@ func (x *CreateComponentRequest) String() string {
 func (*CreateComponentRequest) ProtoMessage() {}
 
 func (x *CreateComponentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[26]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2029,7 +2097,7 @@ func (x *CreateComponentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateComponentRequest.ProtoReflect.Descriptor instead.
 func (*CreateComponentRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{26}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CreateComponentRequest) GetName() string {
@@ -2055,7 +2123,7 @@ type CreateComponentResponse struct {
 
 func (x *CreateComponentResponse) Reset() {
 	*x = CreateComponentResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[27]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2067,7 +2135,7 @@ func (x *CreateComponentResponse) String() string {
 func (*CreateComponentResponse) ProtoMessage() {}
 
 func (x *CreateComponentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[27]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2080,7 +2148,7 @@ func (x *CreateComponentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateComponentResponse.ProtoReflect.Descriptor instead.
 func (*CreateComponentResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{27}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreateComponentResponse) GetComponent() *Component {
@@ -2101,7 +2169,7 @@ type UpdateComponentRequest struct {
 
 func (x *UpdateComponentRequest) Reset() {
 	*x = UpdateComponentRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[28]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2113,7 +2181,7 @@ func (x *UpdateComponentRequest) String() string {
 func (*UpdateComponentRequest) ProtoMessage() {}
 
 func (x *UpdateComponentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[28]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2126,7 +2194,7 @@ func (x *UpdateComponentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateComponentRequest.ProtoReflect.Descriptor instead.
 func (*UpdateComponentRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{28}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *UpdateComponentRequest) GetId() string {
@@ -2159,7 +2227,7 @@ type UpdateComponentResponse struct {
 
 func (x *UpdateComponentResponse) Reset() {
 	*x = UpdateComponentResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[29]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2171,7 +2239,7 @@ func (x *UpdateComponentResponse) String() string {
 func (*UpdateComponentResponse) ProtoMessage() {}
 
 func (x *UpdateComponentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[29]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2184,7 +2252,7 @@ func (x *UpdateComponentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateComponentResponse.ProtoReflect.Descriptor instead.
 func (*UpdateComponentResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{29}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *UpdateComponentResponse) GetComponent() *Component {
@@ -2202,7 +2270,7 @@ type ListIngredientsRequest struct {
 
 func (x *ListIngredientsRequest) Reset() {
 	*x = ListIngredientsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[30]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2214,7 +2282,7 @@ func (x *ListIngredientsRequest) String() string {
 func (*ListIngredientsRequest) ProtoMessage() {}
 
 func (x *ListIngredientsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[30]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2227,7 +2295,7 @@ func (x *ListIngredientsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIngredientsRequest.ProtoReflect.Descriptor instead.
 func (*ListIngredientsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{30}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{31}
 }
 
 type ListIngredientsResponse struct {
@@ -2239,7 +2307,7 @@ type ListIngredientsResponse struct {
 
 func (x *ListIngredientsResponse) Reset() {
 	*x = ListIngredientsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[31]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2251,7 +2319,7 @@ func (x *ListIngredientsResponse) String() string {
 func (*ListIngredientsResponse) ProtoMessage() {}
 
 func (x *ListIngredientsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[31]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2264,7 +2332,7 @@ func (x *ListIngredientsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIngredientsResponse.ProtoReflect.Descriptor instead.
 func (*ListIngredientsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{31}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListIngredientsResponse) GetIngredients() []*Ingredient {
@@ -2287,7 +2355,7 @@ type CreateIngredientRequest struct {
 
 func (x *CreateIngredientRequest) Reset() {
 	*x = CreateIngredientRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[32]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2299,7 +2367,7 @@ func (x *CreateIngredientRequest) String() string {
 func (*CreateIngredientRequest) ProtoMessage() {}
 
 func (x *CreateIngredientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[32]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2312,7 +2380,7 @@ func (x *CreateIngredientRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateIngredientRequest.ProtoReflect.Descriptor instead.
 func (*CreateIngredientRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{32}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *CreateIngredientRequest) GetName() string {
@@ -2359,7 +2427,7 @@ type CreateIngredientResponse struct {
 
 func (x *CreateIngredientResponse) Reset() {
 	*x = CreateIngredientResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[33]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2371,7 +2439,7 @@ func (x *CreateIngredientResponse) String() string {
 func (*CreateIngredientResponse) ProtoMessage() {}
 
 func (x *CreateIngredientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[33]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2384,7 +2452,7 @@ func (x *CreateIngredientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateIngredientResponse.ProtoReflect.Descriptor instead.
 func (*CreateIngredientResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{33}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CreateIngredientResponse) GetIngredient() *Ingredient {
@@ -2408,7 +2476,7 @@ type UpdateIngredientRequest struct {
 
 func (x *UpdateIngredientRequest) Reset() {
 	*x = UpdateIngredientRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[34]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2420,7 +2488,7 @@ func (x *UpdateIngredientRequest) String() string {
 func (*UpdateIngredientRequest) ProtoMessage() {}
 
 func (x *UpdateIngredientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[34]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2433,7 +2501,7 @@ func (x *UpdateIngredientRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateIngredientRequest.ProtoReflect.Descriptor instead.
 func (*UpdateIngredientRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{34}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UpdateIngredientRequest) GetId() string {
@@ -2487,7 +2555,7 @@ type UpdateIngredientResponse struct {
 
 func (x *UpdateIngredientResponse) Reset() {
 	*x = UpdateIngredientResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[35]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2499,7 +2567,7 @@ func (x *UpdateIngredientResponse) String() string {
 func (*UpdateIngredientResponse) ProtoMessage() {}
 
 func (x *UpdateIngredientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[35]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2512,7 +2580,7 @@ func (x *UpdateIngredientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateIngredientResponse.ProtoReflect.Descriptor instead.
 func (*UpdateIngredientResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{35}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UpdateIngredientResponse) GetIngredient() *Ingredient {
@@ -2530,7 +2598,7 @@ type ListSuppliersRequest struct {
 
 func (x *ListSuppliersRequest) Reset() {
 	*x = ListSuppliersRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[36]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2542,7 +2610,7 @@ func (x *ListSuppliersRequest) String() string {
 func (*ListSuppliersRequest) ProtoMessage() {}
 
 func (x *ListSuppliersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[36]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2555,7 +2623,7 @@ func (x *ListSuppliersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSuppliersRequest.ProtoReflect.Descriptor instead.
 func (*ListSuppliersRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{36}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{37}
 }
 
 type ListSuppliersResponse struct {
@@ -2567,7 +2635,7 @@ type ListSuppliersResponse struct {
 
 func (x *ListSuppliersResponse) Reset() {
 	*x = ListSuppliersResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[37]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2579,7 +2647,7 @@ func (x *ListSuppliersResponse) String() string {
 func (*ListSuppliersResponse) ProtoMessage() {}
 
 func (x *ListSuppliersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[37]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2592,7 +2660,7 @@ func (x *ListSuppliersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSuppliersResponse.ProtoReflect.Descriptor instead.
 func (*ListSuppliersResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{37}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListSuppliersResponse) GetSuppliers() []*Supplier {
@@ -2613,7 +2681,7 @@ type CreateSupplierRequest struct {
 
 func (x *CreateSupplierRequest) Reset() {
 	*x = CreateSupplierRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[38]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2625,7 +2693,7 @@ func (x *CreateSupplierRequest) String() string {
 func (*CreateSupplierRequest) ProtoMessage() {}
 
 func (x *CreateSupplierRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[38]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2638,7 +2706,7 @@ func (x *CreateSupplierRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSupplierRequest.ProtoReflect.Descriptor instead.
 func (*CreateSupplierRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{38}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CreateSupplierRequest) GetName() string {
@@ -2671,7 +2739,7 @@ type CreateSupplierResponse struct {
 
 func (x *CreateSupplierResponse) Reset() {
 	*x = CreateSupplierResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[39]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2683,7 +2751,7 @@ func (x *CreateSupplierResponse) String() string {
 func (*CreateSupplierResponse) ProtoMessage() {}
 
 func (x *CreateSupplierResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[39]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2696,7 +2764,7 @@ func (x *CreateSupplierResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSupplierResponse.ProtoReflect.Descriptor instead.
 func (*CreateSupplierResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{39}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CreateSupplierResponse) GetSupplier() *Supplier {
@@ -2718,7 +2786,7 @@ type UpdateSupplierRequest struct {
 
 func (x *UpdateSupplierRequest) Reset() {
 	*x = UpdateSupplierRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[40]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2730,7 +2798,7 @@ func (x *UpdateSupplierRequest) String() string {
 func (*UpdateSupplierRequest) ProtoMessage() {}
 
 func (x *UpdateSupplierRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[40]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2743,7 +2811,7 @@ func (x *UpdateSupplierRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSupplierRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSupplierRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{40}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *UpdateSupplierRequest) GetId() string {
@@ -2783,7 +2851,7 @@ type UpdateSupplierResponse struct {
 
 func (x *UpdateSupplierResponse) Reset() {
 	*x = UpdateSupplierResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[41]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2795,7 +2863,7 @@ func (x *UpdateSupplierResponse) String() string {
 func (*UpdateSupplierResponse) ProtoMessage() {}
 
 func (x *UpdateSupplierResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[41]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2808,7 +2876,7 @@ func (x *UpdateSupplierResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSupplierResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSupplierResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{41}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *UpdateSupplierResponse) GetSupplier() *Supplier {
@@ -2827,7 +2895,7 @@ type ListPacksRequest struct {
 
 func (x *ListPacksRequest) Reset() {
 	*x = ListPacksRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[42]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2839,7 +2907,7 @@ func (x *ListPacksRequest) String() string {
 func (*ListPacksRequest) ProtoMessage() {}
 
 func (x *ListPacksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[42]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2852,7 +2920,7 @@ func (x *ListPacksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPacksRequest.ProtoReflect.Descriptor instead.
 func (*ListPacksRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{42}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListPacksRequest) GetIngredientId() string {
@@ -2871,7 +2939,7 @@ type ListPacksResponse struct {
 
 func (x *ListPacksResponse) Reset() {
 	*x = ListPacksResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[43]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2883,7 +2951,7 @@ func (x *ListPacksResponse) String() string {
 func (*ListPacksResponse) ProtoMessage() {}
 
 func (x *ListPacksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[43]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2896,7 +2964,7 @@ func (x *ListPacksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPacksResponse.ProtoReflect.Descriptor instead.
 func (*ListPacksResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{43}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ListPacksResponse) GetPacks() []*Pack {
@@ -2920,7 +2988,7 @@ type CreatePackRequest struct {
 
 func (x *CreatePackRequest) Reset() {
 	*x = CreatePackRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[44]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2932,7 +3000,7 @@ func (x *CreatePackRequest) String() string {
 func (*CreatePackRequest) ProtoMessage() {}
 
 func (x *CreatePackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[44]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2945,7 +3013,7 @@ func (x *CreatePackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePackRequest.ProtoReflect.Descriptor instead.
 func (*CreatePackRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{44}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CreatePackRequest) GetIngredientId() string {
@@ -2999,7 +3067,7 @@ type CreatePackResponse struct {
 
 func (x *CreatePackResponse) Reset() {
 	*x = CreatePackResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[45]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3011,7 +3079,7 @@ func (x *CreatePackResponse) String() string {
 func (*CreatePackResponse) ProtoMessage() {}
 
 func (x *CreatePackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[45]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3024,7 +3092,7 @@ func (x *CreatePackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePackResponse.ProtoReflect.Descriptor instead.
 func (*CreatePackResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{45}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CreatePackResponse) GetPack() *Pack {
@@ -3048,7 +3116,7 @@ type UpdatePackRequest struct {
 
 func (x *UpdatePackRequest) Reset() {
 	*x = UpdatePackRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[46]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3060,7 +3128,7 @@ func (x *UpdatePackRequest) String() string {
 func (*UpdatePackRequest) ProtoMessage() {}
 
 func (x *UpdatePackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[46]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3073,7 +3141,7 @@ func (x *UpdatePackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePackRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePackRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{46}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *UpdatePackRequest) GetId() string {
@@ -3127,7 +3195,7 @@ type UpdatePackResponse struct {
 
 func (x *UpdatePackResponse) Reset() {
 	*x = UpdatePackResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[47]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3139,7 +3207,7 @@ func (x *UpdatePackResponse) String() string {
 func (*UpdatePackResponse) ProtoMessage() {}
 
 func (x *UpdatePackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[47]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3152,7 +3220,7 @@ func (x *UpdatePackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePackResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePackResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{47}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *UpdatePackResponse) GetPack() *Pack {
@@ -3171,7 +3239,7 @@ type SetDefaultPackRequest struct {
 
 func (x *SetDefaultPackRequest) Reset() {
 	*x = SetDefaultPackRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[48]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3183,7 +3251,7 @@ func (x *SetDefaultPackRequest) String() string {
 func (*SetDefaultPackRequest) ProtoMessage() {}
 
 func (x *SetDefaultPackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[48]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3196,7 +3264,7 @@ func (x *SetDefaultPackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetDefaultPackRequest.ProtoReflect.Descriptor instead.
 func (*SetDefaultPackRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{48}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SetDefaultPackRequest) GetId() string {
@@ -3215,7 +3283,7 @@ type SetDefaultPackResponse struct {
 
 func (x *SetDefaultPackResponse) Reset() {
 	*x = SetDefaultPackResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[49]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3227,7 +3295,7 @@ func (x *SetDefaultPackResponse) String() string {
 func (*SetDefaultPackResponse) ProtoMessage() {}
 
 func (x *SetDefaultPackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[49]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3240,7 +3308,7 @@ func (x *SetDefaultPackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetDefaultPackResponse.ProtoReflect.Descriptor instead.
 func (*SetDefaultPackResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{49}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SetDefaultPackResponse) GetPack() *Pack {
@@ -3259,7 +3327,7 @@ type ListVariantComponentsRequest struct {
 
 func (x *ListVariantComponentsRequest) Reset() {
 	*x = ListVariantComponentsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[50]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3271,7 +3339,7 @@ func (x *ListVariantComponentsRequest) String() string {
 func (*ListVariantComponentsRequest) ProtoMessage() {}
 
 func (x *ListVariantComponentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[50]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3284,7 +3352,7 @@ func (x *ListVariantComponentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVariantComponentsRequest.ProtoReflect.Descriptor instead.
 func (*ListVariantComponentsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{50}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ListVariantComponentsRequest) GetVariantId() string {
@@ -3303,7 +3371,7 @@ type ListVariantComponentsResponse struct {
 
 func (x *ListVariantComponentsResponse) Reset() {
 	*x = ListVariantComponentsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[51]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3315,7 +3383,7 @@ func (x *ListVariantComponentsResponse) String() string {
 func (*ListVariantComponentsResponse) ProtoMessage() {}
 
 func (x *ListVariantComponentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[51]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3328,7 +3396,7 @@ func (x *ListVariantComponentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVariantComponentsResponse.ProtoReflect.Descriptor instead.
 func (*ListVariantComponentsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{51}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListVariantComponentsResponse) GetComponents() []*VariantComponent {
@@ -3349,7 +3417,7 @@ type SetVariantComponentsRequest struct {
 
 func (x *SetVariantComponentsRequest) Reset() {
 	*x = SetVariantComponentsRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[52]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3361,7 +3429,7 @@ func (x *SetVariantComponentsRequest) String() string {
 func (*SetVariantComponentsRequest) ProtoMessage() {}
 
 func (x *SetVariantComponentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[52]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3374,7 +3442,7 @@ func (x *SetVariantComponentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVariantComponentsRequest.ProtoReflect.Descriptor instead.
 func (*SetVariantComponentsRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{52}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *SetVariantComponentsRequest) GetVariantId() string {
@@ -3400,7 +3468,7 @@ type SetVariantComponentsResponse struct {
 
 func (x *SetVariantComponentsResponse) Reset() {
 	*x = SetVariantComponentsResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[53]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3412,7 +3480,7 @@ func (x *SetVariantComponentsResponse) String() string {
 func (*SetVariantComponentsResponse) ProtoMessage() {}
 
 func (x *SetVariantComponentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[53]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3425,7 +3493,7 @@ func (x *SetVariantComponentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVariantComponentsResponse.ProtoReflect.Descriptor instead.
 func (*SetVariantComponentsResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{53}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SetVariantComponentsResponse) GetComponents() []*VariantComponent {
@@ -3444,7 +3512,7 @@ type ListRecipeLinesRequest struct {
 
 func (x *ListRecipeLinesRequest) Reset() {
 	*x = ListRecipeLinesRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[54]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3456,7 +3524,7 @@ func (x *ListRecipeLinesRequest) String() string {
 func (*ListRecipeLinesRequest) ProtoMessage() {}
 
 func (x *ListRecipeLinesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[54]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3469,7 +3537,7 @@ func (x *ListRecipeLinesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRecipeLinesRequest.ProtoReflect.Descriptor instead.
 func (*ListRecipeLinesRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{54}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListRecipeLinesRequest) GetComponentId() string {
@@ -3488,7 +3556,7 @@ type ListRecipeLinesResponse struct {
 
 func (x *ListRecipeLinesResponse) Reset() {
 	*x = ListRecipeLinesResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[55]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3500,7 +3568,7 @@ func (x *ListRecipeLinesResponse) String() string {
 func (*ListRecipeLinesResponse) ProtoMessage() {}
 
 func (x *ListRecipeLinesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[55]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3513,7 +3581,7 @@ func (x *ListRecipeLinesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRecipeLinesResponse.ProtoReflect.Descriptor instead.
 func (*ListRecipeLinesResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{55}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ListRecipeLinesResponse) GetLines() []*RecipeLine {
@@ -3542,7 +3610,7 @@ type SetRecipeLineRequest struct {
 
 func (x *SetRecipeLineRequest) Reset() {
 	*x = SetRecipeLineRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[56]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3554,7 +3622,7 @@ func (x *SetRecipeLineRequest) String() string {
 func (*SetRecipeLineRequest) ProtoMessage() {}
 
 func (x *SetRecipeLineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[56]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3567,7 +3635,7 @@ func (x *SetRecipeLineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRecipeLineRequest.ProtoReflect.Descriptor instead.
 func (*SetRecipeLineRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{56}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *SetRecipeLineRequest) GetComponentId() string {
@@ -3621,7 +3689,7 @@ type SetRecipeLineResponse struct {
 
 func (x *SetRecipeLineResponse) Reset() {
 	*x = SetRecipeLineResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[57]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3633,7 +3701,7 @@ func (x *SetRecipeLineResponse) String() string {
 func (*SetRecipeLineResponse) ProtoMessage() {}
 
 func (x *SetRecipeLineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[57]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3646,7 +3714,7 @@ func (x *SetRecipeLineResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRecipeLineResponse.ProtoReflect.Descriptor instead.
 func (*SetRecipeLineResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{57}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *SetRecipeLineResponse) GetLine() *RecipeLine {
@@ -3666,7 +3734,7 @@ type RemoveRecipeLineRequest struct {
 
 func (x *RemoveRecipeLineRequest) Reset() {
 	*x = RemoveRecipeLineRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[58]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3678,7 +3746,7 @@ func (x *RemoveRecipeLineRequest) String() string {
 func (*RemoveRecipeLineRequest) ProtoMessage() {}
 
 func (x *RemoveRecipeLineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[58]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3691,7 +3759,7 @@ func (x *RemoveRecipeLineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveRecipeLineRequest.ProtoReflect.Descriptor instead.
 func (*RemoveRecipeLineRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{58}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *RemoveRecipeLineRequest) GetComponentId() string {
@@ -3716,7 +3784,7 @@ type RemoveRecipeLineResponse struct {
 
 func (x *RemoveRecipeLineResponse) Reset() {
 	*x = RemoveRecipeLineResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[59]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3728,7 +3796,7 @@ func (x *RemoveRecipeLineResponse) String() string {
 func (*RemoveRecipeLineResponse) ProtoMessage() {}
 
 func (x *RemoveRecipeLineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[59]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3741,7 +3809,7 @@ func (x *RemoveRecipeLineResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveRecipeLineResponse.ProtoReflect.Descriptor instead.
 func (*RemoveRecipeLineResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{59}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{60}
 }
 
 type FitPreviewRequest struct {
@@ -3753,7 +3821,7 @@ type FitPreviewRequest struct {
 
 func (x *FitPreviewRequest) Reset() {
 	*x = FitPreviewRequest{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[60]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3765,7 +3833,7 @@ func (x *FitPreviewRequest) String() string {
 func (*FitPreviewRequest) ProtoMessage() {}
 
 func (x *FitPreviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[60]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3778,7 +3846,7 @@ func (x *FitPreviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FitPreviewRequest.ProtoReflect.Descriptor instead.
 func (*FitPreviewRequest) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{60}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *FitPreviewRequest) GetPoints() []*MeasuredPoint {
@@ -3798,7 +3866,7 @@ type FitPreviewResponse struct {
 
 func (x *FitPreviewResponse) Reset() {
 	*x = FitPreviewResponse{}
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[61]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3810,7 +3878,7 @@ func (x *FitPreviewResponse) String() string {
 func (*FitPreviewResponse) ProtoMessage() {}
 
 func (x *FitPreviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[61]
+	mi := &file_kuepreorder_catalog_v1_catalog_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3823,7 +3891,7 @@ func (x *FitPreviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FitPreviewResponse.ProtoReflect.Descriptor instead.
 func (*FitPreviewResponse) Descriptor() ([]byte, []int) {
-	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{61}
+	return file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *FitPreviewResponse) GetResults() []*FitResult {
@@ -3925,7 +3993,7 @@ const file_kuepreorder_catalog_v1_catalog_proto_rawDesc = "" +
 	"\fwaste_factor\x18\x06 \x01(\x01R\vwasteFactor\x12\x18\n" +
 	"\aversion\x18\a \x01(\x05R\aversion\x129\n" +
 	"\n" +
-	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xfa\x01\n" +
+	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb4\x02\n" +
 	"\tFitResult\x12@\n" +
 	"\n" +
 	"model_type\x18\x01 \x01(\x0e2!.kuepreorder.catalog.v1.ModelTypeR\tmodelType\x12\x1f\n" +
@@ -3935,7 +4003,12 @@ const file_kuepreorder_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x02r2\x18\x04 \x01(\x01R\x02r2\x12\x1c\n" +
 	"\tresiduals\x18\x05 \x03(\x01R\tresiduals\x12\"\n" +
 	"\rmax_abs_error\x18\x06 \x01(\x01R\vmaxAbsError\x12\"\n" +
-	"\rmax_rel_error\x18\a \x01(\x01R\vmaxRelError\"\x15\n" +
+	"\rmax_rel_error\x18\a \x01(\x01R\vmaxRelError\x128\n" +
+	"\x05curve\x18\b \x03(\v2\".kuepreorder.catalog.v1.CurvePointR\x05curve\":\n" +
+	"\n" +
+	"CurvePoint\x12\x14\n" +
+	"\x05units\x18\x01 \x01(\x01R\x05units\x12\x16\n" +
+	"\x06amount\x18\x02 \x01(\x01R\x06amount\"\x15\n" +
 	"\x13ListProductsRequest\"S\n" +
 	"\x14ListProductsResponse\x12;\n" +
 	"\bproducts\x18\x01 \x03(\v2\x1f.kuepreorder.catalog.v1.ProductR\bproducts\"\x97\x01\n" +
@@ -4198,7 +4271,7 @@ func file_kuepreorder_catalog_v1_catalog_proto_rawDescGZIP() []byte {
 }
 
 var file_kuepreorder_catalog_v1_catalog_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_kuepreorder_catalog_v1_catalog_proto_msgTypes = make([]protoimpl.MessageInfo, 65)
+var file_kuepreorder_catalog_v1_catalog_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_kuepreorder_catalog_v1_catalog_proto_goTypes = []any{
 	(BaseUnit)(0),                         // 0: kuepreorder.catalog.v1.BaseUnit
 	(LeftoverPolicy)(0),                   // 1: kuepreorder.catalog.v1.LeftoverPolicy
@@ -4214,172 +4287,174 @@ var file_kuepreorder_catalog_v1_catalog_proto_goTypes = []any{
 	(*MeasuredPoint)(nil),                 // 11: kuepreorder.catalog.v1.MeasuredPoint
 	(*RecipeLine)(nil),                    // 12: kuepreorder.catalog.v1.RecipeLine
 	(*FitResult)(nil),                     // 13: kuepreorder.catalog.v1.FitResult
-	(*ListProductsRequest)(nil),           // 14: kuepreorder.catalog.v1.ListProductsRequest
-	(*ListProductsResponse)(nil),          // 15: kuepreorder.catalog.v1.ListProductsResponse
-	(*CreateProductRequest)(nil),          // 16: kuepreorder.catalog.v1.CreateProductRequest
-	(*CreateProductResponse)(nil),         // 17: kuepreorder.catalog.v1.CreateProductResponse
-	(*UpdateProductRequest)(nil),          // 18: kuepreorder.catalog.v1.UpdateProductRequest
-	(*UpdateProductResponse)(nil),         // 19: kuepreorder.catalog.v1.UpdateProductResponse
-	(*ListVariantsRequest)(nil),           // 20: kuepreorder.catalog.v1.ListVariantsRequest
-	(*ListVariantsResponse)(nil),          // 21: kuepreorder.catalog.v1.ListVariantsResponse
-	(*CreateVariantRequest)(nil),          // 22: kuepreorder.catalog.v1.CreateVariantRequest
-	(*CreateVariantResponse)(nil),         // 23: kuepreorder.catalog.v1.CreateVariantResponse
-	(*UpdateVariantRequest)(nil),          // 24: kuepreorder.catalog.v1.UpdateVariantRequest
-	(*UpdateVariantResponse)(nil),         // 25: kuepreorder.catalog.v1.UpdateVariantResponse
-	(*ChangeVariantPriceRequest)(nil),     // 26: kuepreorder.catalog.v1.ChangeVariantPriceRequest
-	(*ChangeVariantPriceResponse)(nil),    // 27: kuepreorder.catalog.v1.ChangeVariantPriceResponse
-	(*ListComponentsRequest)(nil),         // 28: kuepreorder.catalog.v1.ListComponentsRequest
-	(*ListComponentsResponse)(nil),        // 29: kuepreorder.catalog.v1.ListComponentsResponse
-	(*CreateComponentRequest)(nil),        // 30: kuepreorder.catalog.v1.CreateComponentRequest
-	(*CreateComponentResponse)(nil),       // 31: kuepreorder.catalog.v1.CreateComponentResponse
-	(*UpdateComponentRequest)(nil),        // 32: kuepreorder.catalog.v1.UpdateComponentRequest
-	(*UpdateComponentResponse)(nil),       // 33: kuepreorder.catalog.v1.UpdateComponentResponse
-	(*ListIngredientsRequest)(nil),        // 34: kuepreorder.catalog.v1.ListIngredientsRequest
-	(*ListIngredientsResponse)(nil),       // 35: kuepreorder.catalog.v1.ListIngredientsResponse
-	(*CreateIngredientRequest)(nil),       // 36: kuepreorder.catalog.v1.CreateIngredientRequest
-	(*CreateIngredientResponse)(nil),      // 37: kuepreorder.catalog.v1.CreateIngredientResponse
-	(*UpdateIngredientRequest)(nil),       // 38: kuepreorder.catalog.v1.UpdateIngredientRequest
-	(*UpdateIngredientResponse)(nil),      // 39: kuepreorder.catalog.v1.UpdateIngredientResponse
-	(*ListSuppliersRequest)(nil),          // 40: kuepreorder.catalog.v1.ListSuppliersRequest
-	(*ListSuppliersResponse)(nil),         // 41: kuepreorder.catalog.v1.ListSuppliersResponse
-	(*CreateSupplierRequest)(nil),         // 42: kuepreorder.catalog.v1.CreateSupplierRequest
-	(*CreateSupplierResponse)(nil),        // 43: kuepreorder.catalog.v1.CreateSupplierResponse
-	(*UpdateSupplierRequest)(nil),         // 44: kuepreorder.catalog.v1.UpdateSupplierRequest
-	(*UpdateSupplierResponse)(nil),        // 45: kuepreorder.catalog.v1.UpdateSupplierResponse
-	(*ListPacksRequest)(nil),              // 46: kuepreorder.catalog.v1.ListPacksRequest
-	(*ListPacksResponse)(nil),             // 47: kuepreorder.catalog.v1.ListPacksResponse
-	(*CreatePackRequest)(nil),             // 48: kuepreorder.catalog.v1.CreatePackRequest
-	(*CreatePackResponse)(nil),            // 49: kuepreorder.catalog.v1.CreatePackResponse
-	(*UpdatePackRequest)(nil),             // 50: kuepreorder.catalog.v1.UpdatePackRequest
-	(*UpdatePackResponse)(nil),            // 51: kuepreorder.catalog.v1.UpdatePackResponse
-	(*SetDefaultPackRequest)(nil),         // 52: kuepreorder.catalog.v1.SetDefaultPackRequest
-	(*SetDefaultPackResponse)(nil),        // 53: kuepreorder.catalog.v1.SetDefaultPackResponse
-	(*ListVariantComponentsRequest)(nil),  // 54: kuepreorder.catalog.v1.ListVariantComponentsRequest
-	(*ListVariantComponentsResponse)(nil), // 55: kuepreorder.catalog.v1.ListVariantComponentsResponse
-	(*SetVariantComponentsRequest)(nil),   // 56: kuepreorder.catalog.v1.SetVariantComponentsRequest
-	(*SetVariantComponentsResponse)(nil),  // 57: kuepreorder.catalog.v1.SetVariantComponentsResponse
-	(*ListRecipeLinesRequest)(nil),        // 58: kuepreorder.catalog.v1.ListRecipeLinesRequest
-	(*ListRecipeLinesResponse)(nil),       // 59: kuepreorder.catalog.v1.ListRecipeLinesResponse
-	(*SetRecipeLineRequest)(nil),          // 60: kuepreorder.catalog.v1.SetRecipeLineRequest
-	(*SetRecipeLineResponse)(nil),         // 61: kuepreorder.catalog.v1.SetRecipeLineResponse
-	(*RemoveRecipeLineRequest)(nil),       // 62: kuepreorder.catalog.v1.RemoveRecipeLineRequest
-	(*RemoveRecipeLineResponse)(nil),      // 63: kuepreorder.catalog.v1.RemoveRecipeLineResponse
-	(*FitPreviewRequest)(nil),             // 64: kuepreorder.catalog.v1.FitPreviewRequest
-	(*FitPreviewResponse)(nil),            // 65: kuepreorder.catalog.v1.FitPreviewResponse
-	nil,                                   // 66: kuepreorder.catalog.v1.Variant.OptionsEntry
-	nil,                                   // 67: kuepreorder.catalog.v1.CreateVariantRequest.OptionsEntry
-	nil,                                   // 68: kuepreorder.catalog.v1.UpdateVariantRequest.OptionsEntry
-	(*timestamppb.Timestamp)(nil),         // 69: google.protobuf.Timestamp
+	(*CurvePoint)(nil),                    // 14: kuepreorder.catalog.v1.CurvePoint
+	(*ListProductsRequest)(nil),           // 15: kuepreorder.catalog.v1.ListProductsRequest
+	(*ListProductsResponse)(nil),          // 16: kuepreorder.catalog.v1.ListProductsResponse
+	(*CreateProductRequest)(nil),          // 17: kuepreorder.catalog.v1.CreateProductRequest
+	(*CreateProductResponse)(nil),         // 18: kuepreorder.catalog.v1.CreateProductResponse
+	(*UpdateProductRequest)(nil),          // 19: kuepreorder.catalog.v1.UpdateProductRequest
+	(*UpdateProductResponse)(nil),         // 20: kuepreorder.catalog.v1.UpdateProductResponse
+	(*ListVariantsRequest)(nil),           // 21: kuepreorder.catalog.v1.ListVariantsRequest
+	(*ListVariantsResponse)(nil),          // 22: kuepreorder.catalog.v1.ListVariantsResponse
+	(*CreateVariantRequest)(nil),          // 23: kuepreorder.catalog.v1.CreateVariantRequest
+	(*CreateVariantResponse)(nil),         // 24: kuepreorder.catalog.v1.CreateVariantResponse
+	(*UpdateVariantRequest)(nil),          // 25: kuepreorder.catalog.v1.UpdateVariantRequest
+	(*UpdateVariantResponse)(nil),         // 26: kuepreorder.catalog.v1.UpdateVariantResponse
+	(*ChangeVariantPriceRequest)(nil),     // 27: kuepreorder.catalog.v1.ChangeVariantPriceRequest
+	(*ChangeVariantPriceResponse)(nil),    // 28: kuepreorder.catalog.v1.ChangeVariantPriceResponse
+	(*ListComponentsRequest)(nil),         // 29: kuepreorder.catalog.v1.ListComponentsRequest
+	(*ListComponentsResponse)(nil),        // 30: kuepreorder.catalog.v1.ListComponentsResponse
+	(*CreateComponentRequest)(nil),        // 31: kuepreorder.catalog.v1.CreateComponentRequest
+	(*CreateComponentResponse)(nil),       // 32: kuepreorder.catalog.v1.CreateComponentResponse
+	(*UpdateComponentRequest)(nil),        // 33: kuepreorder.catalog.v1.UpdateComponentRequest
+	(*UpdateComponentResponse)(nil),       // 34: kuepreorder.catalog.v1.UpdateComponentResponse
+	(*ListIngredientsRequest)(nil),        // 35: kuepreorder.catalog.v1.ListIngredientsRequest
+	(*ListIngredientsResponse)(nil),       // 36: kuepreorder.catalog.v1.ListIngredientsResponse
+	(*CreateIngredientRequest)(nil),       // 37: kuepreorder.catalog.v1.CreateIngredientRequest
+	(*CreateIngredientResponse)(nil),      // 38: kuepreorder.catalog.v1.CreateIngredientResponse
+	(*UpdateIngredientRequest)(nil),       // 39: kuepreorder.catalog.v1.UpdateIngredientRequest
+	(*UpdateIngredientResponse)(nil),      // 40: kuepreorder.catalog.v1.UpdateIngredientResponse
+	(*ListSuppliersRequest)(nil),          // 41: kuepreorder.catalog.v1.ListSuppliersRequest
+	(*ListSuppliersResponse)(nil),         // 42: kuepreorder.catalog.v1.ListSuppliersResponse
+	(*CreateSupplierRequest)(nil),         // 43: kuepreorder.catalog.v1.CreateSupplierRequest
+	(*CreateSupplierResponse)(nil),        // 44: kuepreorder.catalog.v1.CreateSupplierResponse
+	(*UpdateSupplierRequest)(nil),         // 45: kuepreorder.catalog.v1.UpdateSupplierRequest
+	(*UpdateSupplierResponse)(nil),        // 46: kuepreorder.catalog.v1.UpdateSupplierResponse
+	(*ListPacksRequest)(nil),              // 47: kuepreorder.catalog.v1.ListPacksRequest
+	(*ListPacksResponse)(nil),             // 48: kuepreorder.catalog.v1.ListPacksResponse
+	(*CreatePackRequest)(nil),             // 49: kuepreorder.catalog.v1.CreatePackRequest
+	(*CreatePackResponse)(nil),            // 50: kuepreorder.catalog.v1.CreatePackResponse
+	(*UpdatePackRequest)(nil),             // 51: kuepreorder.catalog.v1.UpdatePackRequest
+	(*UpdatePackResponse)(nil),            // 52: kuepreorder.catalog.v1.UpdatePackResponse
+	(*SetDefaultPackRequest)(nil),         // 53: kuepreorder.catalog.v1.SetDefaultPackRequest
+	(*SetDefaultPackResponse)(nil),        // 54: kuepreorder.catalog.v1.SetDefaultPackResponse
+	(*ListVariantComponentsRequest)(nil),  // 55: kuepreorder.catalog.v1.ListVariantComponentsRequest
+	(*ListVariantComponentsResponse)(nil), // 56: kuepreorder.catalog.v1.ListVariantComponentsResponse
+	(*SetVariantComponentsRequest)(nil),   // 57: kuepreorder.catalog.v1.SetVariantComponentsRequest
+	(*SetVariantComponentsResponse)(nil),  // 58: kuepreorder.catalog.v1.SetVariantComponentsResponse
+	(*ListRecipeLinesRequest)(nil),        // 59: kuepreorder.catalog.v1.ListRecipeLinesRequest
+	(*ListRecipeLinesResponse)(nil),       // 60: kuepreorder.catalog.v1.ListRecipeLinesResponse
+	(*SetRecipeLineRequest)(nil),          // 61: kuepreorder.catalog.v1.SetRecipeLineRequest
+	(*SetRecipeLineResponse)(nil),         // 62: kuepreorder.catalog.v1.SetRecipeLineResponse
+	(*RemoveRecipeLineRequest)(nil),       // 63: kuepreorder.catalog.v1.RemoveRecipeLineRequest
+	(*RemoveRecipeLineResponse)(nil),      // 64: kuepreorder.catalog.v1.RemoveRecipeLineResponse
+	(*FitPreviewRequest)(nil),             // 65: kuepreorder.catalog.v1.FitPreviewRequest
+	(*FitPreviewResponse)(nil),            // 66: kuepreorder.catalog.v1.FitPreviewResponse
+	nil,                                   // 67: kuepreorder.catalog.v1.Variant.OptionsEntry
+	nil,                                   // 68: kuepreorder.catalog.v1.CreateVariantRequest.OptionsEntry
+	nil,                                   // 69: kuepreorder.catalog.v1.UpdateVariantRequest.OptionsEntry
+	(*timestamppb.Timestamp)(nil),         // 70: google.protobuf.Timestamp
 }
 var file_kuepreorder_catalog_v1_catalog_proto_depIdxs = []int32{
-	69, // 0: kuepreorder.catalog.v1.Product.updated_at:type_name -> google.protobuf.Timestamp
-	66, // 1: kuepreorder.catalog.v1.Variant.options:type_name -> kuepreorder.catalog.v1.Variant.OptionsEntry
-	69, // 2: kuepreorder.catalog.v1.Variant.updated_at:type_name -> google.protobuf.Timestamp
-	69, // 3: kuepreorder.catalog.v1.Component.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 0: kuepreorder.catalog.v1.Product.updated_at:type_name -> google.protobuf.Timestamp
+	67, // 1: kuepreorder.catalog.v1.Variant.options:type_name -> kuepreorder.catalog.v1.Variant.OptionsEntry
+	70, // 2: kuepreorder.catalog.v1.Variant.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 3: kuepreorder.catalog.v1.Component.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 4: kuepreorder.catalog.v1.Ingredient.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
 	1,  // 5: kuepreorder.catalog.v1.Ingredient.leftover_policy:type_name -> kuepreorder.catalog.v1.LeftoverPolicy
-	69, // 6: kuepreorder.catalog.v1.Ingredient.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 6: kuepreorder.catalog.v1.Ingredient.updated_at:type_name -> google.protobuf.Timestamp
 	2,  // 7: kuepreorder.catalog.v1.Supplier.adapter:type_name -> kuepreorder.catalog.v1.ProcurementAdapter
-	69, // 8: kuepreorder.catalog.v1.Supplier.updated_at:type_name -> google.protobuf.Timestamp
-	69, // 9: kuepreorder.catalog.v1.Pack.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 8: kuepreorder.catalog.v1.Supplier.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 9: kuepreorder.catalog.v1.Pack.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 10: kuepreorder.catalog.v1.RecipeLine.model_type:type_name -> kuepreorder.catalog.v1.ModelType
 	11, // 11: kuepreorder.catalog.v1.RecipeLine.points:type_name -> kuepreorder.catalog.v1.MeasuredPoint
-	69, // 12: kuepreorder.catalog.v1.RecipeLine.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 12: kuepreorder.catalog.v1.RecipeLine.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 13: kuepreorder.catalog.v1.FitResult.model_type:type_name -> kuepreorder.catalog.v1.ModelType
-	4,  // 14: kuepreorder.catalog.v1.ListProductsResponse.products:type_name -> kuepreorder.catalog.v1.Product
-	4,  // 15: kuepreorder.catalog.v1.CreateProductResponse.product:type_name -> kuepreorder.catalog.v1.Product
-	4,  // 16: kuepreorder.catalog.v1.UpdateProductResponse.product:type_name -> kuepreorder.catalog.v1.Product
-	5,  // 17: kuepreorder.catalog.v1.ListVariantsResponse.variants:type_name -> kuepreorder.catalog.v1.Variant
-	67, // 18: kuepreorder.catalog.v1.CreateVariantRequest.options:type_name -> kuepreorder.catalog.v1.CreateVariantRequest.OptionsEntry
-	5,  // 19: kuepreorder.catalog.v1.CreateVariantResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
-	68, // 20: kuepreorder.catalog.v1.UpdateVariantRequest.options:type_name -> kuepreorder.catalog.v1.UpdateVariantRequest.OptionsEntry
-	5,  // 21: kuepreorder.catalog.v1.UpdateVariantResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
-	5,  // 22: kuepreorder.catalog.v1.ChangeVariantPriceResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
-	6,  // 23: kuepreorder.catalog.v1.ListComponentsResponse.components:type_name -> kuepreorder.catalog.v1.Component
-	6,  // 24: kuepreorder.catalog.v1.CreateComponentResponse.component:type_name -> kuepreorder.catalog.v1.Component
-	6,  // 25: kuepreorder.catalog.v1.UpdateComponentResponse.component:type_name -> kuepreorder.catalog.v1.Component
-	7,  // 26: kuepreorder.catalog.v1.ListIngredientsResponse.ingredients:type_name -> kuepreorder.catalog.v1.Ingredient
-	0,  // 27: kuepreorder.catalog.v1.CreateIngredientRequest.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
-	1,  // 28: kuepreorder.catalog.v1.CreateIngredientRequest.leftover_policy:type_name -> kuepreorder.catalog.v1.LeftoverPolicy
-	7,  // 29: kuepreorder.catalog.v1.CreateIngredientResponse.ingredient:type_name -> kuepreorder.catalog.v1.Ingredient
-	0,  // 30: kuepreorder.catalog.v1.UpdateIngredientRequest.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
-	1,  // 31: kuepreorder.catalog.v1.UpdateIngredientRequest.leftover_policy:type_name -> kuepreorder.catalog.v1.LeftoverPolicy
-	7,  // 32: kuepreorder.catalog.v1.UpdateIngredientResponse.ingredient:type_name -> kuepreorder.catalog.v1.Ingredient
-	8,  // 33: kuepreorder.catalog.v1.ListSuppliersResponse.suppliers:type_name -> kuepreorder.catalog.v1.Supplier
-	2,  // 34: kuepreorder.catalog.v1.CreateSupplierRequest.adapter:type_name -> kuepreorder.catalog.v1.ProcurementAdapter
-	8,  // 35: kuepreorder.catalog.v1.CreateSupplierResponse.supplier:type_name -> kuepreorder.catalog.v1.Supplier
-	2,  // 36: kuepreorder.catalog.v1.UpdateSupplierRequest.adapter:type_name -> kuepreorder.catalog.v1.ProcurementAdapter
-	8,  // 37: kuepreorder.catalog.v1.UpdateSupplierResponse.supplier:type_name -> kuepreorder.catalog.v1.Supplier
-	9,  // 38: kuepreorder.catalog.v1.ListPacksResponse.packs:type_name -> kuepreorder.catalog.v1.Pack
-	9,  // 39: kuepreorder.catalog.v1.CreatePackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
-	9,  // 40: kuepreorder.catalog.v1.UpdatePackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
-	9,  // 41: kuepreorder.catalog.v1.SetDefaultPackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
-	10, // 42: kuepreorder.catalog.v1.ListVariantComponentsResponse.components:type_name -> kuepreorder.catalog.v1.VariantComponent
-	10, // 43: kuepreorder.catalog.v1.SetVariantComponentsRequest.components:type_name -> kuepreorder.catalog.v1.VariantComponent
-	10, // 44: kuepreorder.catalog.v1.SetVariantComponentsResponse.components:type_name -> kuepreorder.catalog.v1.VariantComponent
-	12, // 45: kuepreorder.catalog.v1.ListRecipeLinesResponse.lines:type_name -> kuepreorder.catalog.v1.RecipeLine
-	3,  // 46: kuepreorder.catalog.v1.SetRecipeLineRequest.model_type:type_name -> kuepreorder.catalog.v1.ModelType
-	11, // 47: kuepreorder.catalog.v1.SetRecipeLineRequest.points:type_name -> kuepreorder.catalog.v1.MeasuredPoint
-	12, // 48: kuepreorder.catalog.v1.SetRecipeLineResponse.line:type_name -> kuepreorder.catalog.v1.RecipeLine
-	11, // 49: kuepreorder.catalog.v1.FitPreviewRequest.points:type_name -> kuepreorder.catalog.v1.MeasuredPoint
-	13, // 50: kuepreorder.catalog.v1.FitPreviewResponse.results:type_name -> kuepreorder.catalog.v1.FitResult
-	14, // 51: kuepreorder.catalog.v1.CatalogAdminService.ListProducts:input_type -> kuepreorder.catalog.v1.ListProductsRequest
-	16, // 52: kuepreorder.catalog.v1.CatalogAdminService.CreateProduct:input_type -> kuepreorder.catalog.v1.CreateProductRequest
-	18, // 53: kuepreorder.catalog.v1.CatalogAdminService.UpdateProduct:input_type -> kuepreorder.catalog.v1.UpdateProductRequest
-	20, // 54: kuepreorder.catalog.v1.CatalogAdminService.ListVariants:input_type -> kuepreorder.catalog.v1.ListVariantsRequest
-	22, // 55: kuepreorder.catalog.v1.CatalogAdminService.CreateVariant:input_type -> kuepreorder.catalog.v1.CreateVariantRequest
-	24, // 56: kuepreorder.catalog.v1.CatalogAdminService.UpdateVariant:input_type -> kuepreorder.catalog.v1.UpdateVariantRequest
-	26, // 57: kuepreorder.catalog.v1.CatalogAdminService.ChangeVariantPrice:input_type -> kuepreorder.catalog.v1.ChangeVariantPriceRequest
-	28, // 58: kuepreorder.catalog.v1.CatalogAdminService.ListComponents:input_type -> kuepreorder.catalog.v1.ListComponentsRequest
-	30, // 59: kuepreorder.catalog.v1.CatalogAdminService.CreateComponent:input_type -> kuepreorder.catalog.v1.CreateComponentRequest
-	32, // 60: kuepreorder.catalog.v1.CatalogAdminService.UpdateComponent:input_type -> kuepreorder.catalog.v1.UpdateComponentRequest
-	34, // 61: kuepreorder.catalog.v1.CatalogAdminService.ListIngredients:input_type -> kuepreorder.catalog.v1.ListIngredientsRequest
-	36, // 62: kuepreorder.catalog.v1.CatalogAdminService.CreateIngredient:input_type -> kuepreorder.catalog.v1.CreateIngredientRequest
-	38, // 63: kuepreorder.catalog.v1.CatalogAdminService.UpdateIngredient:input_type -> kuepreorder.catalog.v1.UpdateIngredientRequest
-	40, // 64: kuepreorder.catalog.v1.CatalogAdminService.ListSuppliers:input_type -> kuepreorder.catalog.v1.ListSuppliersRequest
-	42, // 65: kuepreorder.catalog.v1.CatalogAdminService.CreateSupplier:input_type -> kuepreorder.catalog.v1.CreateSupplierRequest
-	44, // 66: kuepreorder.catalog.v1.CatalogAdminService.UpdateSupplier:input_type -> kuepreorder.catalog.v1.UpdateSupplierRequest
-	46, // 67: kuepreorder.catalog.v1.CatalogAdminService.ListPacks:input_type -> kuepreorder.catalog.v1.ListPacksRequest
-	48, // 68: kuepreorder.catalog.v1.CatalogAdminService.CreatePack:input_type -> kuepreorder.catalog.v1.CreatePackRequest
-	50, // 69: kuepreorder.catalog.v1.CatalogAdminService.UpdatePack:input_type -> kuepreorder.catalog.v1.UpdatePackRequest
-	52, // 70: kuepreorder.catalog.v1.CatalogAdminService.SetDefaultPack:input_type -> kuepreorder.catalog.v1.SetDefaultPackRequest
-	54, // 71: kuepreorder.catalog.v1.CatalogAdminService.ListVariantComponents:input_type -> kuepreorder.catalog.v1.ListVariantComponentsRequest
-	56, // 72: kuepreorder.catalog.v1.CatalogAdminService.SetVariantComponents:input_type -> kuepreorder.catalog.v1.SetVariantComponentsRequest
-	58, // 73: kuepreorder.catalog.v1.CatalogAdminService.ListRecipeLines:input_type -> kuepreorder.catalog.v1.ListRecipeLinesRequest
-	60, // 74: kuepreorder.catalog.v1.CatalogAdminService.SetRecipeLine:input_type -> kuepreorder.catalog.v1.SetRecipeLineRequest
-	62, // 75: kuepreorder.catalog.v1.CatalogAdminService.RemoveRecipeLine:input_type -> kuepreorder.catalog.v1.RemoveRecipeLineRequest
-	64, // 76: kuepreorder.catalog.v1.CatalogAdminService.FitPreview:input_type -> kuepreorder.catalog.v1.FitPreviewRequest
-	15, // 77: kuepreorder.catalog.v1.CatalogAdminService.ListProducts:output_type -> kuepreorder.catalog.v1.ListProductsResponse
-	17, // 78: kuepreorder.catalog.v1.CatalogAdminService.CreateProduct:output_type -> kuepreorder.catalog.v1.CreateProductResponse
-	19, // 79: kuepreorder.catalog.v1.CatalogAdminService.UpdateProduct:output_type -> kuepreorder.catalog.v1.UpdateProductResponse
-	21, // 80: kuepreorder.catalog.v1.CatalogAdminService.ListVariants:output_type -> kuepreorder.catalog.v1.ListVariantsResponse
-	23, // 81: kuepreorder.catalog.v1.CatalogAdminService.CreateVariant:output_type -> kuepreorder.catalog.v1.CreateVariantResponse
-	25, // 82: kuepreorder.catalog.v1.CatalogAdminService.UpdateVariant:output_type -> kuepreorder.catalog.v1.UpdateVariantResponse
-	27, // 83: kuepreorder.catalog.v1.CatalogAdminService.ChangeVariantPrice:output_type -> kuepreorder.catalog.v1.ChangeVariantPriceResponse
-	29, // 84: kuepreorder.catalog.v1.CatalogAdminService.ListComponents:output_type -> kuepreorder.catalog.v1.ListComponentsResponse
-	31, // 85: kuepreorder.catalog.v1.CatalogAdminService.CreateComponent:output_type -> kuepreorder.catalog.v1.CreateComponentResponse
-	33, // 86: kuepreorder.catalog.v1.CatalogAdminService.UpdateComponent:output_type -> kuepreorder.catalog.v1.UpdateComponentResponse
-	35, // 87: kuepreorder.catalog.v1.CatalogAdminService.ListIngredients:output_type -> kuepreorder.catalog.v1.ListIngredientsResponse
-	37, // 88: kuepreorder.catalog.v1.CatalogAdminService.CreateIngredient:output_type -> kuepreorder.catalog.v1.CreateIngredientResponse
-	39, // 89: kuepreorder.catalog.v1.CatalogAdminService.UpdateIngredient:output_type -> kuepreorder.catalog.v1.UpdateIngredientResponse
-	41, // 90: kuepreorder.catalog.v1.CatalogAdminService.ListSuppliers:output_type -> kuepreorder.catalog.v1.ListSuppliersResponse
-	43, // 91: kuepreorder.catalog.v1.CatalogAdminService.CreateSupplier:output_type -> kuepreorder.catalog.v1.CreateSupplierResponse
-	45, // 92: kuepreorder.catalog.v1.CatalogAdminService.UpdateSupplier:output_type -> kuepreorder.catalog.v1.UpdateSupplierResponse
-	47, // 93: kuepreorder.catalog.v1.CatalogAdminService.ListPacks:output_type -> kuepreorder.catalog.v1.ListPacksResponse
-	49, // 94: kuepreorder.catalog.v1.CatalogAdminService.CreatePack:output_type -> kuepreorder.catalog.v1.CreatePackResponse
-	51, // 95: kuepreorder.catalog.v1.CatalogAdminService.UpdatePack:output_type -> kuepreorder.catalog.v1.UpdatePackResponse
-	53, // 96: kuepreorder.catalog.v1.CatalogAdminService.SetDefaultPack:output_type -> kuepreorder.catalog.v1.SetDefaultPackResponse
-	55, // 97: kuepreorder.catalog.v1.CatalogAdminService.ListVariantComponents:output_type -> kuepreorder.catalog.v1.ListVariantComponentsResponse
-	57, // 98: kuepreorder.catalog.v1.CatalogAdminService.SetVariantComponents:output_type -> kuepreorder.catalog.v1.SetVariantComponentsResponse
-	59, // 99: kuepreorder.catalog.v1.CatalogAdminService.ListRecipeLines:output_type -> kuepreorder.catalog.v1.ListRecipeLinesResponse
-	61, // 100: kuepreorder.catalog.v1.CatalogAdminService.SetRecipeLine:output_type -> kuepreorder.catalog.v1.SetRecipeLineResponse
-	63, // 101: kuepreorder.catalog.v1.CatalogAdminService.RemoveRecipeLine:output_type -> kuepreorder.catalog.v1.RemoveRecipeLineResponse
-	65, // 102: kuepreorder.catalog.v1.CatalogAdminService.FitPreview:output_type -> kuepreorder.catalog.v1.FitPreviewResponse
-	77, // [77:103] is the sub-list for method output_type
-	51, // [51:77] is the sub-list for method input_type
-	51, // [51:51] is the sub-list for extension type_name
-	51, // [51:51] is the sub-list for extension extendee
-	0,  // [0:51] is the sub-list for field type_name
+	14, // 14: kuepreorder.catalog.v1.FitResult.curve:type_name -> kuepreorder.catalog.v1.CurvePoint
+	4,  // 15: kuepreorder.catalog.v1.ListProductsResponse.products:type_name -> kuepreorder.catalog.v1.Product
+	4,  // 16: kuepreorder.catalog.v1.CreateProductResponse.product:type_name -> kuepreorder.catalog.v1.Product
+	4,  // 17: kuepreorder.catalog.v1.UpdateProductResponse.product:type_name -> kuepreorder.catalog.v1.Product
+	5,  // 18: kuepreorder.catalog.v1.ListVariantsResponse.variants:type_name -> kuepreorder.catalog.v1.Variant
+	68, // 19: kuepreorder.catalog.v1.CreateVariantRequest.options:type_name -> kuepreorder.catalog.v1.CreateVariantRequest.OptionsEntry
+	5,  // 20: kuepreorder.catalog.v1.CreateVariantResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
+	69, // 21: kuepreorder.catalog.v1.UpdateVariantRequest.options:type_name -> kuepreorder.catalog.v1.UpdateVariantRequest.OptionsEntry
+	5,  // 22: kuepreorder.catalog.v1.UpdateVariantResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
+	5,  // 23: kuepreorder.catalog.v1.ChangeVariantPriceResponse.variant:type_name -> kuepreorder.catalog.v1.Variant
+	6,  // 24: kuepreorder.catalog.v1.ListComponentsResponse.components:type_name -> kuepreorder.catalog.v1.Component
+	6,  // 25: kuepreorder.catalog.v1.CreateComponentResponse.component:type_name -> kuepreorder.catalog.v1.Component
+	6,  // 26: kuepreorder.catalog.v1.UpdateComponentResponse.component:type_name -> kuepreorder.catalog.v1.Component
+	7,  // 27: kuepreorder.catalog.v1.ListIngredientsResponse.ingredients:type_name -> kuepreorder.catalog.v1.Ingredient
+	0,  // 28: kuepreorder.catalog.v1.CreateIngredientRequest.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
+	1,  // 29: kuepreorder.catalog.v1.CreateIngredientRequest.leftover_policy:type_name -> kuepreorder.catalog.v1.LeftoverPolicy
+	7,  // 30: kuepreorder.catalog.v1.CreateIngredientResponse.ingredient:type_name -> kuepreorder.catalog.v1.Ingredient
+	0,  // 31: kuepreorder.catalog.v1.UpdateIngredientRequest.base_unit:type_name -> kuepreorder.catalog.v1.BaseUnit
+	1,  // 32: kuepreorder.catalog.v1.UpdateIngredientRequest.leftover_policy:type_name -> kuepreorder.catalog.v1.LeftoverPolicy
+	7,  // 33: kuepreorder.catalog.v1.UpdateIngredientResponse.ingredient:type_name -> kuepreorder.catalog.v1.Ingredient
+	8,  // 34: kuepreorder.catalog.v1.ListSuppliersResponse.suppliers:type_name -> kuepreorder.catalog.v1.Supplier
+	2,  // 35: kuepreorder.catalog.v1.CreateSupplierRequest.adapter:type_name -> kuepreorder.catalog.v1.ProcurementAdapter
+	8,  // 36: kuepreorder.catalog.v1.CreateSupplierResponse.supplier:type_name -> kuepreorder.catalog.v1.Supplier
+	2,  // 37: kuepreorder.catalog.v1.UpdateSupplierRequest.adapter:type_name -> kuepreorder.catalog.v1.ProcurementAdapter
+	8,  // 38: kuepreorder.catalog.v1.UpdateSupplierResponse.supplier:type_name -> kuepreorder.catalog.v1.Supplier
+	9,  // 39: kuepreorder.catalog.v1.ListPacksResponse.packs:type_name -> kuepreorder.catalog.v1.Pack
+	9,  // 40: kuepreorder.catalog.v1.CreatePackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
+	9,  // 41: kuepreorder.catalog.v1.UpdatePackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
+	9,  // 42: kuepreorder.catalog.v1.SetDefaultPackResponse.pack:type_name -> kuepreorder.catalog.v1.Pack
+	10, // 43: kuepreorder.catalog.v1.ListVariantComponentsResponse.components:type_name -> kuepreorder.catalog.v1.VariantComponent
+	10, // 44: kuepreorder.catalog.v1.SetVariantComponentsRequest.components:type_name -> kuepreorder.catalog.v1.VariantComponent
+	10, // 45: kuepreorder.catalog.v1.SetVariantComponentsResponse.components:type_name -> kuepreorder.catalog.v1.VariantComponent
+	12, // 46: kuepreorder.catalog.v1.ListRecipeLinesResponse.lines:type_name -> kuepreorder.catalog.v1.RecipeLine
+	3,  // 47: kuepreorder.catalog.v1.SetRecipeLineRequest.model_type:type_name -> kuepreorder.catalog.v1.ModelType
+	11, // 48: kuepreorder.catalog.v1.SetRecipeLineRequest.points:type_name -> kuepreorder.catalog.v1.MeasuredPoint
+	12, // 49: kuepreorder.catalog.v1.SetRecipeLineResponse.line:type_name -> kuepreorder.catalog.v1.RecipeLine
+	11, // 50: kuepreorder.catalog.v1.FitPreviewRequest.points:type_name -> kuepreorder.catalog.v1.MeasuredPoint
+	13, // 51: kuepreorder.catalog.v1.FitPreviewResponse.results:type_name -> kuepreorder.catalog.v1.FitResult
+	15, // 52: kuepreorder.catalog.v1.CatalogAdminService.ListProducts:input_type -> kuepreorder.catalog.v1.ListProductsRequest
+	17, // 53: kuepreorder.catalog.v1.CatalogAdminService.CreateProduct:input_type -> kuepreorder.catalog.v1.CreateProductRequest
+	19, // 54: kuepreorder.catalog.v1.CatalogAdminService.UpdateProduct:input_type -> kuepreorder.catalog.v1.UpdateProductRequest
+	21, // 55: kuepreorder.catalog.v1.CatalogAdminService.ListVariants:input_type -> kuepreorder.catalog.v1.ListVariantsRequest
+	23, // 56: kuepreorder.catalog.v1.CatalogAdminService.CreateVariant:input_type -> kuepreorder.catalog.v1.CreateVariantRequest
+	25, // 57: kuepreorder.catalog.v1.CatalogAdminService.UpdateVariant:input_type -> kuepreorder.catalog.v1.UpdateVariantRequest
+	27, // 58: kuepreorder.catalog.v1.CatalogAdminService.ChangeVariantPrice:input_type -> kuepreorder.catalog.v1.ChangeVariantPriceRequest
+	29, // 59: kuepreorder.catalog.v1.CatalogAdminService.ListComponents:input_type -> kuepreorder.catalog.v1.ListComponentsRequest
+	31, // 60: kuepreorder.catalog.v1.CatalogAdminService.CreateComponent:input_type -> kuepreorder.catalog.v1.CreateComponentRequest
+	33, // 61: kuepreorder.catalog.v1.CatalogAdminService.UpdateComponent:input_type -> kuepreorder.catalog.v1.UpdateComponentRequest
+	35, // 62: kuepreorder.catalog.v1.CatalogAdminService.ListIngredients:input_type -> kuepreorder.catalog.v1.ListIngredientsRequest
+	37, // 63: kuepreorder.catalog.v1.CatalogAdminService.CreateIngredient:input_type -> kuepreorder.catalog.v1.CreateIngredientRequest
+	39, // 64: kuepreorder.catalog.v1.CatalogAdminService.UpdateIngredient:input_type -> kuepreorder.catalog.v1.UpdateIngredientRequest
+	41, // 65: kuepreorder.catalog.v1.CatalogAdminService.ListSuppliers:input_type -> kuepreorder.catalog.v1.ListSuppliersRequest
+	43, // 66: kuepreorder.catalog.v1.CatalogAdminService.CreateSupplier:input_type -> kuepreorder.catalog.v1.CreateSupplierRequest
+	45, // 67: kuepreorder.catalog.v1.CatalogAdminService.UpdateSupplier:input_type -> kuepreorder.catalog.v1.UpdateSupplierRequest
+	47, // 68: kuepreorder.catalog.v1.CatalogAdminService.ListPacks:input_type -> kuepreorder.catalog.v1.ListPacksRequest
+	49, // 69: kuepreorder.catalog.v1.CatalogAdminService.CreatePack:input_type -> kuepreorder.catalog.v1.CreatePackRequest
+	51, // 70: kuepreorder.catalog.v1.CatalogAdminService.UpdatePack:input_type -> kuepreorder.catalog.v1.UpdatePackRequest
+	53, // 71: kuepreorder.catalog.v1.CatalogAdminService.SetDefaultPack:input_type -> kuepreorder.catalog.v1.SetDefaultPackRequest
+	55, // 72: kuepreorder.catalog.v1.CatalogAdminService.ListVariantComponents:input_type -> kuepreorder.catalog.v1.ListVariantComponentsRequest
+	57, // 73: kuepreorder.catalog.v1.CatalogAdminService.SetVariantComponents:input_type -> kuepreorder.catalog.v1.SetVariantComponentsRequest
+	59, // 74: kuepreorder.catalog.v1.CatalogAdminService.ListRecipeLines:input_type -> kuepreorder.catalog.v1.ListRecipeLinesRequest
+	61, // 75: kuepreorder.catalog.v1.CatalogAdminService.SetRecipeLine:input_type -> kuepreorder.catalog.v1.SetRecipeLineRequest
+	63, // 76: kuepreorder.catalog.v1.CatalogAdminService.RemoveRecipeLine:input_type -> kuepreorder.catalog.v1.RemoveRecipeLineRequest
+	65, // 77: kuepreorder.catalog.v1.CatalogAdminService.FitPreview:input_type -> kuepreorder.catalog.v1.FitPreviewRequest
+	16, // 78: kuepreorder.catalog.v1.CatalogAdminService.ListProducts:output_type -> kuepreorder.catalog.v1.ListProductsResponse
+	18, // 79: kuepreorder.catalog.v1.CatalogAdminService.CreateProduct:output_type -> kuepreorder.catalog.v1.CreateProductResponse
+	20, // 80: kuepreorder.catalog.v1.CatalogAdminService.UpdateProduct:output_type -> kuepreorder.catalog.v1.UpdateProductResponse
+	22, // 81: kuepreorder.catalog.v1.CatalogAdminService.ListVariants:output_type -> kuepreorder.catalog.v1.ListVariantsResponse
+	24, // 82: kuepreorder.catalog.v1.CatalogAdminService.CreateVariant:output_type -> kuepreorder.catalog.v1.CreateVariantResponse
+	26, // 83: kuepreorder.catalog.v1.CatalogAdminService.UpdateVariant:output_type -> kuepreorder.catalog.v1.UpdateVariantResponse
+	28, // 84: kuepreorder.catalog.v1.CatalogAdminService.ChangeVariantPrice:output_type -> kuepreorder.catalog.v1.ChangeVariantPriceResponse
+	30, // 85: kuepreorder.catalog.v1.CatalogAdminService.ListComponents:output_type -> kuepreorder.catalog.v1.ListComponentsResponse
+	32, // 86: kuepreorder.catalog.v1.CatalogAdminService.CreateComponent:output_type -> kuepreorder.catalog.v1.CreateComponentResponse
+	34, // 87: kuepreorder.catalog.v1.CatalogAdminService.UpdateComponent:output_type -> kuepreorder.catalog.v1.UpdateComponentResponse
+	36, // 88: kuepreorder.catalog.v1.CatalogAdminService.ListIngredients:output_type -> kuepreorder.catalog.v1.ListIngredientsResponse
+	38, // 89: kuepreorder.catalog.v1.CatalogAdminService.CreateIngredient:output_type -> kuepreorder.catalog.v1.CreateIngredientResponse
+	40, // 90: kuepreorder.catalog.v1.CatalogAdminService.UpdateIngredient:output_type -> kuepreorder.catalog.v1.UpdateIngredientResponse
+	42, // 91: kuepreorder.catalog.v1.CatalogAdminService.ListSuppliers:output_type -> kuepreorder.catalog.v1.ListSuppliersResponse
+	44, // 92: kuepreorder.catalog.v1.CatalogAdminService.CreateSupplier:output_type -> kuepreorder.catalog.v1.CreateSupplierResponse
+	46, // 93: kuepreorder.catalog.v1.CatalogAdminService.UpdateSupplier:output_type -> kuepreorder.catalog.v1.UpdateSupplierResponse
+	48, // 94: kuepreorder.catalog.v1.CatalogAdminService.ListPacks:output_type -> kuepreorder.catalog.v1.ListPacksResponse
+	50, // 95: kuepreorder.catalog.v1.CatalogAdminService.CreatePack:output_type -> kuepreorder.catalog.v1.CreatePackResponse
+	52, // 96: kuepreorder.catalog.v1.CatalogAdminService.UpdatePack:output_type -> kuepreorder.catalog.v1.UpdatePackResponse
+	54, // 97: kuepreorder.catalog.v1.CatalogAdminService.SetDefaultPack:output_type -> kuepreorder.catalog.v1.SetDefaultPackResponse
+	56, // 98: kuepreorder.catalog.v1.CatalogAdminService.ListVariantComponents:output_type -> kuepreorder.catalog.v1.ListVariantComponentsResponse
+	58, // 99: kuepreorder.catalog.v1.CatalogAdminService.SetVariantComponents:output_type -> kuepreorder.catalog.v1.SetVariantComponentsResponse
+	60, // 100: kuepreorder.catalog.v1.CatalogAdminService.ListRecipeLines:output_type -> kuepreorder.catalog.v1.ListRecipeLinesResponse
+	62, // 101: kuepreorder.catalog.v1.CatalogAdminService.SetRecipeLine:output_type -> kuepreorder.catalog.v1.SetRecipeLineResponse
+	64, // 102: kuepreorder.catalog.v1.CatalogAdminService.RemoveRecipeLine:output_type -> kuepreorder.catalog.v1.RemoveRecipeLineResponse
+	66, // 103: kuepreorder.catalog.v1.CatalogAdminService.FitPreview:output_type -> kuepreorder.catalog.v1.FitPreviewResponse
+	78, // [78:104] is the sub-list for method output_type
+	52, // [52:78] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_kuepreorder_catalog_v1_catalog_proto_init() }
@@ -4389,17 +4464,17 @@ func file_kuepreorder_catalog_v1_catalog_proto_init() {
 	}
 	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[3].OneofWrappers = []any{}
 	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[5].OneofWrappers = []any{}
-	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[32].OneofWrappers = []any{}
-	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[34].OneofWrappers = []any{}
-	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[44].OneofWrappers = []any{}
-	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[46].OneofWrappers = []any{}
+	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[33].OneofWrappers = []any{}
+	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[35].OneofWrappers = []any{}
+	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[45].OneofWrappers = []any{}
+	file_kuepreorder_catalog_v1_catalog_proto_msgTypes[47].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kuepreorder_catalog_v1_catalog_proto_rawDesc), len(file_kuepreorder_catalog_v1_catalog_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   65,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

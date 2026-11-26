@@ -105,8 +105,28 @@ func TestProperty_FitsOfRisingDataAreValidModels(t *testing.T) {
 			if r.Report.R2 > 1+1e-9 {
 				t.Fatalf("%s: R2 = %v > 1", r.Type, r.Report.R2)
 			}
+			checkCurve(t, r, points)
 		}
 	})
+}
+
+// checkCurve holds a fitted result's chart to the model: 201 samples of the
+// model itself from u = 0, reaching the furthest measured point.
+func checkCurve(t *rapid.T, r recipe.FitResult, points []recipe.Point) {
+	if len(r.Curve) != 201 {
+		t.Fatalf("%s: curve has %d samples, want 201", r.Type, len(r.Curve))
+	}
+	if first := r.Curve[0]; first.U != 0 || first.Amount != 0 {
+		t.Fatalf("%s: curve starts at %+v, want (0, 0)", r.Type, first)
+	}
+	if last := r.Curve[200].U; last < points[len(points)-1].U || last < 100 {
+		t.Fatalf("%s: curve ends at u = %v, before 100 or the furthest point u = %v", r.Type, last, points[len(points)-1].U)
+	}
+	for _, p := range r.Curve {
+		if want := resolve(t, r.Model, p.U); p.Amount != want {
+			t.Fatalf("%s: curve at u = %v is %v, want Resolve = %v", r.Type, p.U, p.Amount, want)
+		}
+	}
 }
 
 func TestProperty_FitPiecewisePassesThroughEveryPoint(t *testing.T) {

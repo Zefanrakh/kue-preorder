@@ -319,7 +319,7 @@ Tombol yang tidak boleh dipakai peran itu **disembunyikan**, tidak hanya dimatik
     - R², selisih per titik, selisih terbesar
     - alasan gagal per model
   - Pilih satu model, lalu simpan.
-- **Grafik fit** menampilkan titik ukur dan kurva tiap model. Kurva butuh titik sampel dari Go (**CELAH 7**). Sampai celah itu ditutup, yang digambar hanya titik ukur dan nilai hasil cocok di titik-titik itu (titik ukur + selisih).
+- **Grafik fit** menampilkan titik ukur dan kurva tiap model. Kurvanya digambar dari `FitResult.curve` (sampai 201 titik dari Go, mulai u = 0, sampai u = 100 atau titik ukur terjauh; bisa lebih pendek kalau model tidak bisa dihitung di ujungnya); browser tidak menghitung rumus.
 - **Keadaan**: rumus ditolak engine → `FieldErrors` pada `params_json` atau `points`, ditampilkan di samping isiannya.
 - **RPC**: `CatalogAdminService` (`ListComponents`, `CreateComponent`, `UpdateComponent`, `ListVariantComponents`, `SetVariantComponents`, `ListRecipeLines`, `SetRecipeLine`, `RemoveRecipeLine`, `FitPreview`).
 
@@ -383,7 +383,7 @@ Setiap celah di bawah dipastikan dengan membaca `api/proto` (Oktober 2026). Penu
 | 4 | **Staf**: cara masuk staf belum ditetapkan; belum ada RPC untuk kelola staf (§8: "owner mengelola staf lewat CMS (M5)"). | A1, C8 | Usul: staf masuk dengan email dan kata sandi Supabase (tidak bergantung template WhatsApp). `IdentityService`: `ListStaff`, `InviteStaff`, `SetStaffRole`, `RemoveStaff`, dengan pengaman owner terakhir |
 | 5 | **Foto.** `image_path` sudah ada di produk, tetapi bucket Storage dan aturan siapa boleh meng-upload belum ada. Foto bukti pembayaran manual belum punya tempat di `RecordManualPayment` (§14). | C2, C3 | Bucket `products` (publik baca, staf tulis) dan `payment-proofs` (privat); kolom `proof_path` di pembayaran manual |
 | 6 | ~~**Kirim ulang dari antrean offline.**~~ **Selesai (M5.1, #45).** `ReceiveStock` tidak punya kunci idempotensi, jadi belanja masuk yang terkirim dua kali menjadi dua lot. `CountStock` yang terkirim dua kali mencatat dua audit. | A4, A5 | `idempotency_key` di `ReceiveStockRequest` dan `CountStockRequest`, seperti `PlaceOrderRequest` |
-| 7 | **Kurva grafik fit.** `FitPreview` mengembalikan parameter dan selisih per titik, tetapi tidak ada titik kurva. Frontend tidak boleh menghitung rumus sendiri. | C4 | Tambah `curve` (titik `units`, `amount` pada rentang yang sama dengan `recipe.Validate`) ke `FitResult` |
+| 7 | ~~**Kurva grafik fit.**~~ **Selesai (M5.2, #50).** `FitPreview` mengembalikan parameter dan selisih per titik, tetapi tidak ada titik kurva. Frontend tidak boleh menghitung rumus sendiri. | C4 | `curve` (titik `units`, `amount`) di `FitResult`: rentang `recipe.Validate`, diteruskan sampai melewati titik ukur terjauh |
 | 8 | **Ganti cara bayar pelunasan** (§27: M2.6b atau M5). | B7 | Bersama M2.6b |
 
 Bukan celah API, tetapi menunggu keputusan atau isi dari pemilik:

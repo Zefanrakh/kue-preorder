@@ -231,6 +231,20 @@ message FitResult {
   repeated double residuals = 5;
   double max_abs_error = 6;
   double max_rel_error = 7;
+  // The fitted model sampled for the chart, so the browser never evaluates a
+  // recipe: u = 0, then 200 equal steps to u = 100, or to the smallest
+  // multiple of 100 at or above the furthest measured point. It ends early,
+  // before the first u the model cannot resolve, so it may hold fewer than
+  // 201 points; draw what is there. Empty when error is set.
+  repeated CurvePoint curve = 8;
+}
+
+// CurvePoint is one sample of a fitted model.
+message CurvePoint {
+  // Units of the component, >= 0.
+  double units = 1;
+  // Amount of the ingredient, in its base unit, before the waste factor.
+  double amount = 2;
 }
 
 message ListProductsRequest {}

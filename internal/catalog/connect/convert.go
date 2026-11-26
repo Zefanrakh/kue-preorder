@@ -133,6 +133,10 @@ func fitResultToProto(r recipe.FitResult) *catalogv1.FitResult {
 	if params, err := recipe.Params(r.Model); err == nil {
 		out.ParamsJson = string(params)
 	}
+	out.Curve = make([]*catalogv1.CurvePoint, len(r.Curve))
+	for i, p := range r.Curve {
+		out.Curve[i] = &catalogv1.CurvePoint{Units: p.U, Amount: p.Amount}
+	}
 	return out
 }
 
